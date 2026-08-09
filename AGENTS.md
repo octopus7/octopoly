@@ -153,6 +153,18 @@ URL은 `https://octopoly.pages.dev/`이다. 초기 제품은 정적 Pages SPA이
 - 정상 경로뿐 아니라 실패/취소 경로와 경계 조건을 검증한다.
 - 성능이나 iPad 동작을 직접 검증하지 못했으면 통과로 추정하지 않고 `Known limitations`에 남긴다.
 
+### 디자인 이미지와 ImageGen
+
+- 이 규칙은 모든 작업 대화와 서브에이전트에 적용한다.
+- 디자인 작업에 새로운 래스터 이미지, 일러스트, 텍스처, 스프라이트, 사진형 asset 또는 기존 래스터
+  이미지 편집이 실제로 필요하면 `imagegen` 스킬과 제공 도구를 사용한다.
+- 단순 도형, 아이콘, 로고 시스템, 다이어그램, wireframe 또는 UI 장식처럼 SVG, HTML/CSS, canvas나 기존
+  코드 기반 asset이 더 적합하면 코드-native 방식을 사용한다.
+- 이미지가 제품 목표나 사용자 경험에 실질적으로 필요하지 않으면 ImageGen 사용을 억지로 추가하지 않는다.
+- 생성 asset을 제품에서 사용할 때는 작업 Ownership 안의 저장소 경로로 옮기고 consuming code와 검증을
+  함께 갱신한다. 미선택 variant나 외부 임시 경로를 제품 dependency로 남기지 않는다.
+- 기존 편집 가능한 SVG/vector/code asset을 ImageGen 결과로 임의 교체하지 않는다.
+
 ## 8. Optional 기능 규칙
 
 10~13은 Optional Extension이고 14는 이 산출물을 main에 조립하는 Optional Integration이다.
