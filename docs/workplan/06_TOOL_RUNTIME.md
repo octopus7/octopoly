@@ -137,25 +137,58 @@ docs/workplan/06_TOOL_RUNTIME.md (RESULT만)
 - [ ] `typecheck`, `tests/tools/runtime/**`, baseline의 canonical test command가 통과한다.
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- canonical `PointerSample`만 받는 tool runtime facade와 logical pointer capture/router
+- register/unregister/direct/scoped activation, active tool lifecycle 및 idempotent disposal
+- idle/hover/armed/dragging/commit/cancel session state와 preview revision 추적
+- gesture 단위 history transaction coordinator: successful end의 단일 commit, cancel/예외의 rollback
+- normalized cancel, tool switch/unregister/deactivate/dispose 및 callback 예외의 공통 cleanup
+- capture 중 foreign pointer 차단과 coalesced sample 순서/identity 보존
 
 ### Files created or modified
--
+- `src/tools/runtime/index.ts`
+- `src/tools/runtime/pointer-capture-state.ts`
+- `src/tools/runtime/pointer-router.ts`
+- `src/tools/runtime/tool-lifecycle.ts`
+- `src/tools/runtime/tool-registry.ts`
+- `src/tools/runtime/tool-session.ts`
+- `src/tools/runtime/transaction-coordinator.ts`
+- `tests/tools/runtime/pointer-capture-state.test.ts`
+- `tests/tools/runtime/pointer-router.test.ts`
+- `tests/tools/runtime/tool-lifecycle.test.ts`
+- `tests/tools/runtime/tool-registry.test.ts`
+- `tests/tools/runtime/tool-session.test.ts`
+- `tests/tools/runtime/transaction-coordinator.test.ts`
+- `tests/tools/runtime/runtime.integration.test.ts`
+- `docs/workplan/06_TOOL_RUNTIME.md` (`RESULT` only)
 
 ### Public API
--
+- `ToolRuntime`, `createToolRuntime`
+- `ToolLifecycle`, `ToolRegistryImpl`, `createToolRegistry`
+- `ToolSession`, `ToolSessionState`, `TransactionCoordinator`
+- `PointerRouter`, `PointerRouterDelegate`, `PointerCaptureState`
 
 ### Tests / validation
--
+- `npm ci`: PASS — 86 packages
+- `npx vitest run tests/tools/runtime`: PASS — 7 files / 41 tests
+- `npm run typecheck`: PASS
+- `npm run ci`: PASS — 11 files / 63 tests, strict typecheck, production build, baseline artifact verifier
+- runtime `PointerEvent` scan: NO_MATCH
+- integration fixtures: ordered coalesced dispatch/capture/up commit, foreign pointer rejection, normalized
+  lost-capture cancel rollback, tool switch/unregister cleanup, callback exception rollback, active dispose cleanup PASS
 
 ### Integration notes
--
+- 01 input adapter는 `ToolRuntime.dispatch` 결과의 capture/release 의도를 동일 `pointerId`의 DOM capture에
+  반영하고 lost capture를 normalized `cancel` sample로 다시 dispatch해야 한다.
+- tool switch/unregister/dispose는 runtime logical capture를 즉시 reset한다. sample 없이 일어나는 전환의
+  실제 DOM capture release는 01 adapter의 capture ownership과 09 composition에서 함께 연결·검증한다.
+- concrete Select/Move/Quad Draw tool과 concrete history/mesh/renderer 연결은 구현하지 않았다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 DOM pointer capture와 iPad Safari/Apple Pencil 동작은 이 순수 runtime fixture에서 검증하지 않았으며
+  01 input adapter 및 09 integration device gate에 남긴다.
