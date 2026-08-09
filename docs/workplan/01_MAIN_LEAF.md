@@ -289,25 +289,90 @@ tests/ui/**
 - contract gap이 있으면 Change Request Format에 맞춘 요청; 없으면 `NONE`
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- Pencil/touch/mouse pointer normalization, coalesced ordering/deduplication, DOM capture/release와
+  lost-capture/disconnect/dispose cancel cleanup, panel-local `NormalizedInputSurfaceFactory`
+- touch navigation과 pen/mouse modeling 분리 정책, immutable perspective camera와 orbit/pan/zoom,
+  CSS-pixel projection/unprojection 및 pure transform helpers
+- deterministic face/corner triangulation, retopo mesh raycast와 CSS-pixel vertex/edge/face picking,
+  injected `SurfaceQuery` snapping helpers
+- OBJ 및 embedded glTF 2.0/GLB import/export, `SerializedMesh` triangulation과 project-unit conversion
+- project schema validation/migration, unknown `extensionData`와 legacy image revision 보존,
+  IndexedDB project/image/reference stores와 atomic repository/autosave boundary
+- revision-aware `ImageAssetService`, synchronous edit/commit/revert/apply/cancel, notifications, durable
+  flush와 retained revision/memory budget; project-local `ReferenceAssetService`
+- immutable overlay builders, select/move/delete 및 create-vertex/split-edge/extrude-faces tools,
+  `PanelRegistry`, callback 기반 viewport shell과 injected `ToolRegistry` tool palette
 
 ### Files created or modified
--
+- Agent A source/tests: `src/input/{pen,touch,surface}/**`, `src/camera/**`,
+  `src/surface/snapping/**`, `src/picking/**`, `src/transforms/**`와 대응 `tests/**`
+- Agent B source/tests: `src/io/{import,export}/**`, `src/project/**`와 대응 `tests/**`
+- Agent C source/tests: `src/renderer/overlays/**`, `src/tools/{basic,vertex,edge,face}/**`,
+  `src/ui/**`와 대응 `tests/**`
+- Status record: `docs/workplan/01_MAIN_LEAF.md`의 이 `RESULT` 섹션
 
 ### Public API
--
+- Input/camera: `normalizePointerEvent`, `pointerPhase`, `isModelingPointer`,
+  `isNavigationPointer`, `createNormalizedInputSurfaceFactory`, `createPerspectiveCameraSnapshot`,
+  `OrbitCameraController`, transform/project/unproject helpers
+- Picking/surface: `DeterministicMeshTriangulationService`, `createMeshTriangulationService`,
+  `ScreenPickingService`, `createPickingService`, `snapRayToSurface`, `snapPointToSurface`,
+  `snapScreenPointToSurface`
+- IO/project: `importObj`, `importGltf`, `exportObj`, `exportGltf`, `exportGlb`, `toTriangleMesh`,
+  `IndexedDbProjectStorage`, `ProjectRepository`, `ProjectAutosave`,
+  `IndexedDbImageAssetService`, `IndexedDbReferenceAssetService`, `browserImagePixelCodec`,
+  `migrateProjectDocument`, `validateProjectDocument`
+- Overlays/tools/UI: `pointsOverlay`, `polylineOverlay`, `trianglesOverlay`, `toolPreview`,
+  `reviseToolPreview`, `SelectTool`, `MoveVerticesTool`, `DeleteElementsTool`, `CreateVertexTool`,
+  `SplitEdgeTool`, `ExtrudeFacesTool`, `DefaultPanelRegistry`, `ToolPalette`, `ViewportShell`
+- 모든 public entry는 각 소유 package의 local `index.ts`에서 게시되며 공용 root barrel은 변경하지 않았다.
 
 ### Tests / validation
--
+- Gate 0: branch `wt/main-leaf`, baseline `baseline/core-v1^{commit}`와 HEAD/merge-base가 모두
+  `8bd9407294e1f5823a751504ca2c0aee14a39159`, baseline 대비 commit 0에서 시작함을 확인했다.
+- `npm ci`: PASS, 86 packages
+- Agent A targeted command: `npx vitest run tests/input tests/camera tests/transforms tests/picking tests/surface/snapping`
+  — PASS, 5 files / 23 tests
+- Agent B targeted command: `npx vitest run tests/io/import tests/io/export tests/project`
+  — PASS, 6 files / 17 tests
+- Agent C targeted tests: PASS, 8 files / 22 tests
+- Combined targeted command: `npx vitest run tests/input tests/camera tests/surface/snapping tests/picking tests/transforms tests/io/import tests/io/export tests/project tests/renderer/overlays tests/tools/basic tests/tools/vertex tests/tools/edge tests/tools/face tests/ui`
+  — PASS, 19 files / 62 tests
+- `npm run typecheck`: PASS
+- `npm run ci`: PASS, 23 files / 84 tests; strict typecheck, production Vite build와 baseline
+  artifact verification 포함, artifact 6,923 bytes 및 verifier failures 0
+- Ownership audit: 신규 67개 파일 전부 01 Ownership 안이며 shared tracked file 변경 없음
+- Boundary audit: raw `PointerEvent`는 `src/input/**` 밖에서 0건, application/Optional/02~08
+  concrete dependency 0건, `src/extensions/**` 없이 전체 typecheck/test/build PASS
 
 ### Integration notes
--
+- 09는 DOM element를 `createNormalizedInputSurfaceFactory().create(...).connect(PointerInputSink)`로
+  연결하고 capture/release 결과와 normalized cancel을 Tool Runtime에 전달한다.
+- camera/viewport snapshot은 Renderer와 Picking에 함께 주입하고, `ScreenPickingService` 결과는 Selection,
+  `SurfaceQuery`는 snapping 및 concrete tools의 `ToolContext`에 연결한다.
+- concrete tools에는 `PickingService`를 생성자 주입하고 Tool Runtime에는 local tool entry만 등록한다.
+  tool mutation patch는 각 tool이 연 단일 `HistoryTransaction`에 기록되며 cancel은 rollback/preview cleanup한다.
+- project composition은 하나의 `IndexedDbProjectStorage`를 `ProjectRepository`, image/reference service에
+  주입한다. DB version은 1이고 stores는 `projects`, `images`, `references`다.
+- project load 후 `ProjectDocument.imageAssets`를 image service `initialRefs`로 전달한다. save는 extension
+  state/image ref 수집 후 `ImageAssetService.flush(refs)`가 성공한 다음 `ProjectRepository.save`를 호출한다.
+- reference geometry는 project/local space로 저장하고 `ReferenceAssetRef.worldTransform`은 project document가
+  보존하며, 09의 Surface Factory가 load 시 world-space surface를 재구성한다.
+- `ViewportShell`과 `ToolPalette`는 callback/registry injection만 사용하므로 application state와 GPU handle은
+  09 composition이 소유한다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- iPad Safari/Apple Pencil 실기기의 pointer capture, coalesced events, safe-area/orientation,
+  ResizeObserver 동작은 이번 환경에서 검증하지 못했다.
+- 실제 Safari IndexedDB, ImageBitmap/canvas codec 경로는 미검증이며 storage/codec fake로 lifecycle과
+  atomic failure를 검증했다.
+- glTF leaf는 embedded buffer의 단일 TRIANGLES primitive만 지원한다. external buffers, multiple primitives,
+  node transform/hierarchy는 데이터 누락 대신 명시적으로 reject한다.
+- 대규모 reference/image/project의 iPad memory와 autosave latency는 ADR hard limit을 적용했지만 실기기에서
+  측정하지 못했다.
