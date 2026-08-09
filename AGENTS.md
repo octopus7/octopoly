@@ -69,6 +69,8 @@ URL은 `https://octopoly.pages.dev/`이다. 초기 제품은 정적 Pages SPA이
 - main에서 직접 구현하거나 main에 직접 merge하지 않는다.
 - 다른 worktree를 현재 worktree에 merge하지 않는다.
 - 완료 후 주 에이전트가 RESULT를 먼저 갱신하고 소유 범위 변경을 자신의 branch에 commit한다.
+- 사용자는 검증 완료된 단위 workstream의 commit과 해당 workstream branch push를 사전 승인했다. acceptance와
+  RESULT가 완료되면 현재 branch만 같은 이름의 origin branch로 push할 수 있으며 force-push하지 않는다.
 - 최종 응답에는 branch, `git rev-parse HEAD`의 commit SHA, 검증 결과를 보고한다. commit은 자신의 SHA를
   포함할 수 없으므로 RESULT 파일 안에 그 최종 commit의 SHA를 기록하려고 추가 commit을 만들지 않는다.
 
@@ -81,6 +83,8 @@ URL은 `https://octopoly.pages.dev/`이다. 초기 제품은 정적 Pages SPA이
 - push/deploy는 작업 MD와 사용자 지시가 명시한 경우에만 수행한다. 00은 `OctoPoly` 빈 shell의 최초
   Cloudflare Pages 배포가 acceptance에 포함되므로 검증된 main commit/tag push를 수행한다. 15는 09 또는
   14에서 확정한 제품 baseline의 Pages release/operations hardening만 수행한다.
+- 사용자는 검증 완료된 단위 workstream의 commit/push를 사전 승인했다. MAIN 작업은 해당 작업 문서의
+  acceptance, RESULT, tag/deploy 순서를 지킨 뒤 추가 승인 없이 push할 수 있다.
 
 ### Integration
 
@@ -200,7 +204,10 @@ URL은 `https://octopoly.pages.dev/`이다. 초기 제품은 정적 Pages SPA이
 - Integration에 필요한 연결 작업과 contract 변경 요청을 적는다.
 - contract 변경 요청이 없으면 `NONE`이라고 적는다.
 - 미완성 기능, 기기 미검증, 성능 위험은 `Known limitations`에 적는다.
-- WORKTREE 작업은 RESULT 갱신을 포함한 branch commit까지 완료해야 하며 merge/push는 수행하지 않는다.
+- 한 commit에는 완료된 현재 단위 workstream과 그 RESULT만 포함하고 관련 없는 변경이나 다른 workstream을
+  섞지 않는다. 미완성 상태는 사용자가 checkpoint commit을 요청한 경우가 아니면 완료 commit으로 만들지 않는다.
+- WORKTREE 작업은 RESULT 갱신을 포함한 branch commit과 같은 이름의 origin branch push까지 완료하되 main
+  merge, main push, tag 생성과 force-push는 수행하지 않는다.
 
 ## 11. 금지 사항
 
