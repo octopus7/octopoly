@@ -2,8 +2,8 @@
 
 iPad Safari와 Apple Pencil을 우선 지원하는 low-poly / retopology 웹 모델링 도구의 병렬 개발 계획 저장소입니다.
 
-> 현재는 **계획 문서 단계**입니다. 애플리케이션 구현을 시작하기 전에 main에 공용 contract와 프로젝트
-> scaffold, 빌드 설정, 테스트 실행 경로를 준비하고 이를 baseline commit으로 고정해야 합니다.
+> 현재는 **Core Bootstrap 기준선 구성 단계**입니다. main에 공용 contract와 정적 OctoPoly shell,
+> 빌드·테스트·Pages 검증 경로를 마련한 뒤 `baseline/core-v1`으로 고정합니다.
 
 ## 문서 읽기 순서
 

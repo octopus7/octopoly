@@ -23,7 +23,49 @@
 - public snapshot과 record는 호출자가 수정할 수 없는 immutable value로 취급한다.
 - 모든 `dispose()`는 여러 번 호출해도 안전해야 한다.
 
-수치 허용오차와 최대 mesh/texture/GPU budget은 00의 capability 결과로 상수화하고 ADR에 기록한다.
+최대 mesh/texture/GPU budget은 00의 capability 결과로 상수화하고 ADR에 기록한다. 수치 허용오차와
+ID/version 증가 규칙은 아래 공용 정책을 사용한다.
+
+## Numeric Tolerance and Integer Policy
+
+```ts
+interface NumericTolerancePolicy {
+  readonly absoluteDistance: number;
+  readonly relativeDistance: number;
+  readonly angleRadians: number;
+  readonly normalizedVector: number;
+  readonly barycentric: number;
+  readonly areaScaleFactor: number;
+}
+
+const NUMERIC_TOLERANCE_POLICY: Readonly<NumericTolerancePolicy> = Object.freeze({
+  absoluteDistance: 1e-9,
+  relativeDistance: 1e-9,
+  angleRadians: 1e-6,
+  normalizedVector: 1e-9,
+  barycentric: 1e-7,
+  areaScaleFactor: 1e-12,
+});
+
+function assertNonNegativeSafeInteger(value: number, label: string): void;
+function incrementNonNegativeSafeInteger(value: number, label: string): number;
+```
+
+모든 numeric mesh element/triangle ID와 snapshot/document/asset revision 및 version은 non-negative safe
+integer다. 생성,
+restore 또는 mutation은 입력 ID/version을 `assertNonNegativeSafeInteger`와 같은 규칙으로 먼저 검증한다.
+증가가 필요한 구현은 `incrementNonNegativeSafeInteger`를 사용하거나 동일한 선검증을 수행하며
+`Number.MAX_SAFE_INTEGER`에서 증가를 시도하면 상태 변경 전에 programmer error로 실패한다.
+
+- `absoluteDistance`: `1e-9` project units
+- `relativeDistance`: `1e-9`
+- `angleRadians`: `1e-6` radians
+- `normalizedVector`: `1e-9`
+- `barycentric`: `1e-7`
+- `areaScaleFactor`: `1e-12`
+
+정책 객체는 runtime에서 동결되어야 하며 workstream-local epsilon이나 shadow tolerance policy를 만들지
+않는다. 실제 비교식, scene-scale 적용, degeneracy 판정은 ADR-0004가 이 이름과 값을 사용해 고정한다.
 
 ## Fundamental Types
 

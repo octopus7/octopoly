@@ -364,51 +364,69 @@ Agent B의 계약 산출물을 Agent C가 소비해야 하는 검증은 canonica
   만든다. 이미 시작한 workstream이 있으면 기존 tag를 rewrite하지 않고 후속 통합 변경으로 처리한다.
 
 ## RESULT
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 ### Baseline commit
 - Ref: `baseline/core-v1`
-- Resolved SHA: 생성 후 최종 보고에서 검증
+- Resolved SHA: 최종 production 검증 후 기록
 - Branch: `main`
 - 01~08 branch point announced: NO
 
 ### Implemented
--
+- Node/npm/TypeScript/Vite/Vitest 기반의 재현 가능한 정적 SPA scaffold
+- 기능 모듈 없이 제품명과 WebGL2 필수 capability 상태만 표시하는 `OctoPoly` shell
+- `src/contracts/**` canonical public contract와 barrel, shape/runtime invariant tests
+- Cloudflare Pages용 `dist` build, `_headers`, artifact/production verifier
+- GitHub Actions clean-install CI
 
 ### Decisions / ADRs
--
+- ADR-0001~0007을 2026-08-10 Accepted로 고정했다.
+- WebGL2를 Core 필수 backend로, WebGPU를 optional 정보로만 취급한다.
+- Pages project `octopoly`의 기존 Git integration을 재사용하고 정적 artifact만 배포한다.
 
 ### Files created or modified
--
+- Toolchain/CI: `package.json`, `package-lock.json`, `.node-version`, `tsconfig.json`, Vite/Vitest config,
+  `.github/workflows/ci.yml`
+- App/Pages: `index.html`, `src/main.ts`, `src/app/**`, `public/_headers`, `scripts/**`
+- Contracts/tests: `src/contracts/**`, `tests/bootstrap/**`, `tests/contracts/**`
+- Decisions/evidence: `docs/adr/**`, `docs/validation/pages/**`, contract 문서와 이 RESULT
 
 ### Public API
--
+- Canonical import: `@octopoly/contracts`
+- Public barrel: `src/contracts/index.ts`
+- Documented/source declarations: 116/116 일치
 
 ### Canonical commands
-- Install:
-- Typecheck:
-- Test:
-- Build:
-- CI-equivalent:
+- Install: `npm ci`
+- Typecheck: `npm run typecheck`
+- Test: `npm run test`
+- Build: `npm run build`
+- CI-equivalent: `npm run ci`
 
 ### Cloudflare Pages deployment
 - Product name: `OctoPoly`
 - Existing Pages project: `octopoly`
 - Production URL: `https://octopoly.pages.dev/`
-- Deployed commit SHA: final push 후 최종 보고에서 검증
+- Deployed commit SHA: candidate/final push 후 production에서 검증 예정
 - Functions / Workers used: NO
 
 ### Tests / validation
--
+- `npm ci`: PASS, 86 packages, audit vulnerabilities 0
+- `npm run ci`: PASS, 4 files / 22 tests, strict typecheck와 production build 포함
+- Artifact: gzip JS+CSS 2,525 bytes, parsed JS 3,680 bytes, forbidden dynamic artifact 없음
+- Local browser: root/deep link 모두 `OctoPoly`, `WebGL2 ready`, root-absolute hashed assets, 수평 overflow 없음
 
 ### Acceptance gate evidence
--
+- 정적 artifact와 로컬 브라우저 gate는 통과했다.
+- candidate와 final Pages commit identity/body/header 검증은 push 후 수행한다.
 
 ### Integration notes
--
+- 01~08은 `baseline/core-v1^{commit}`에서만 분기한다.
+- 개별 workstream은 `@octopoly/contracts`를 사용하고 contract 변경 요청은 09로 이관한다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 iPad Safari 실기기 검증은 이번 환경에서 수행하지 못했으며 후속 device gate로 남긴다.
+- production Pages 검증과 immutable tag 생성 전이므로 아직 COMPLETE가 아니다.
