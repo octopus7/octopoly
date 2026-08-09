@@ -217,25 +217,98 @@ tests/extensions/texture-paint/integration/**
 latency, memory와 thermal 결과는 실제 측정했을 때만 Acceptance 통과로 기록한다.
 
 ## RESULT
-Status: NOT_STARTED
+Status: READY_WITH_CONTRACT_REQUEST
 
 ### Implemented
--
+- `uv0` corner attribute가 complete/finite인 canonical retopo triangle만 허용하는 paint eligibility와 stable
+  `missing-image | missing-uv | unmapped-target` disabled 경로
+- exact `MeshTriangleHit` face/corner/vertex/meshVersion 검증, shared barycentric tolerance 기반 UV 보간,
+  top-left texture pixel projection과 single-hit/no-adjacency seam 정책
+- pressure clamp, radius/opacity mapping, deterministic coalesced ordering, arc-length spacing, hardness,
+  premultiplied RGBA paint/erase를 제공하는 순수 `BrushEngine`
+- 미리 준비된 `ImageEditSession`, dirty tile write, stroke당 history transaction 하나, cancel/rollback 및
+  synchronous image revision undo/redo를 조정하는 image controller와 `PaintSession`
+- revision별 `ImageBitmap`을 premultiplied RGBA8 CPU buffer로 decode해 기존 destination pixel에 source-over/
+  erase한 final replacement tile을 쓰고, coverage 밖 pixel을 보존하는 image pixel boundary
+- normalized pointer -> shared picking/triangulation -> UV projection -> brush stamp -> image tile update를 연결하는
+  `TexturePaintTool`; mesh version/project document 교체 또는 miss/seam에서 active stroke/segment cancel
+- panel, project extension state, active image/brush round trip, WebGL2 texture preview provider와 scoped shading/tool
+  lease를 등록·정리하는 `TexturePaintExtension`
+- preview shader의 generic corner `uv0` attribute, camera `uViewProjection`, revisioned image uniform과
+  top-left CPU pixel 정책과 일치하는 V flip, compile/unsupported fallback; Core/UV Editor/GPU handle 구현 의존 없음
+- imported image cleanup 실패를 숨기지 않는 pending cleanup/retry/flush·state-save gate와 history change가
+  completed prepared edit lock을 apply/revert 직전에 해제하는 local wrapper
 
 ### Files created or modified
--
+- Public entry / brush: `src/extensions/texture-paint/index.ts`, `brush/**`
+- Projection / target: `src/extensions/texture-paint/projection/**`, `target/**`
+- Image / session / lifecycle: `src/extensions/texture-paint/image/**`(pixel decoder 포함), `session/**`,
+  `extension/**`
+- Tests: `tests/extensions/texture-paint/brush/**`, `projection/**`, `target/**`, `image/**`, `session/**`,
+  `extension/**`, `integration/**`
+- Status record: 이 `RESULT` 섹션
 
 ### Public API
--
+- Entry: `src/extensions/texture-paint/index.ts`
+- Brush: `BrushEngine`, brush settings/sample/stamp types, pressure/coverage/interpolation and premultiplied
+  paint/erase operators
+- Target: `UV0_ATTRIBUTE_KEY`, `PaintTargetAdapter`, `PaintEligibilityService`, `BarycentricUvProjector`
+- Image/history: `TextureImagePixelDecoder`, `BrowserTextureImagePixelDecoder`, `TexturePaintImageController`,
+  `PaintSession`
+- Extension: `TexturePaintExtension`, `TexturePaintPanel`, `TexturePreviewShadingProvider`, `TexturePaintTool`,
+  `TexturePaintStateProvider`, `TexturePaintBrushController`
 
 ### Tests / validation
--
+- Start gate: branch `wt/texture-paint`, HEAD와 `baseline/optional-sdk-v1^{commit}` 모두
+  `175ecff7613c15d5afd39327e957885c6eed4e50`, merge-base 동일, 시작 시 clean 확인
+- `npm ci`: PASS — 86 packages
+- baseline `npm run typecheck`: PASS; `npm run test -- tests/optional-sdk`: PASS — 6 files / 29 tests
+- `npm run test -- tests/extensions/texture-paint`: PASS — 9 files / 50 tests
+- `npm run ci`: PASS — strict typecheck, 96 files / 482 tests, production build, artifact failures 0
+- Production artifact: 225,913 bytes; compressed JS+CSS 61,175 bytes; parsed JS 221,238 bytes; Core baseline과
+  같은 entry artifact이며 Optional source import 없음
+- `npm run verify:core`: PASS — 146 Core source files, `src/extensions` excluded, Core typecheck/test/build/artifact
+  gate failures 0
+- 실제 `src/extensions`와 `tests/extensions`를 제외한 임시 복제본: typecheck PASS, 87 files / 432 tests PASS,
+  production build PASS; 임시 경로 정리 완료
+- Dependency scan: raw `PointerEvent`, UV Editor, concrete Core renderer/surface/mesh, GPU handle import 없음
 
 ### Integration notes
--
+- 14 Optional Integration은 optional composition root에서 이 entry를 import하고 `ExtensionRuntime`으로
+  활성화한다. Core entry/barrel에는 추가하지 않는다.
+- 10 UV Editor는 dependency가 아니다. imported/project `uv0`만으로 paint할 수 있고 UV가 없거나 불완전하면
+  extension activation은 성공한 채 pointer down이 unhandled/no-capture로 끝난다.
+- project save는 state registry가 수집한 active image ref를 `ImageAssetService.flush` 후 atomic commit하는 기존
+  Optional SDK 순서를 사용한다.
+- texture preview는 scoped provider lease를 사용하므로 compile/image failure 또는 extension dispose 시 직전
+  provider/Core solid-wireframe 선택을 복원한다.
+- 14는 아래 `prepareEdit` semantic request를 Core image service에 먼저 반영한 뒤 pending-prepare 중
+  undo/redo race fixture를 다시 실행해야 한다. completed prepared session의 일반 undo/redo 경로는 local
+  history wrapper로 검증됐다.
 
 ### Requested contract changes
-- NONE
+- 요청 signature/data shape: signature는 그대로
+  `ImageAssetService.prepareEdit(ref: ImageAssetRef): Promise<ImageEditSession>`를 유지한다. 다만 구현은 async
+  decode/load/reservation await 각각 이후, 특히 edit lock/session 획득 직전에 `current(ref.id)`를 요청한
+  `id/revision/width/height/colorSpace` 전체 ref와 다시 비교해야 한다. mismatch이면 current revision 변경,
+  edit lock/session 획득·유지, event publish, transient/orphan revision 생성 없이 reject해야 한다.
+- 이유: 현재 Core 의미는 최초 current check 뒤 async load를 await하고 재검증 없이 edit lock을 얻는다. 그 사이
+  synchronous history undo가 revision을 바꾸면 stale base를 가진 locked session이 반환될 수 있다. public
+  `cancel/dispose`는 stale base를 복원할 수 있고 no-write `commit`은 실패하면서 lock을 유지하므로 11 local
+  code만으로 안전하게 닫을 수 없다.
+- 현재 가능한 우회: 이미 반환되어 idle 상태인 prepared session은 texture-paint history wrapper가 apply/revert
+  직전에 cancel해 일반 undo/redo를 안전하게 수행한다. operation token과 decode-before-prepare로 stale window를
+  최소화하지만, `prepareEdit` 내부 await 이후의 race는 우회할 수 없다.
+- 영향을 받는 작업: Core `ImageAssetService` 구현/검증, 11 Texture Paint, 14 Optional Integration의
+  image/history 조합 gate.
+- 호환성/마이그레이션 영향: public signature와 serialized data는 바뀌지 않는 non-breaking semantic hardening이다.
+  stale request가 이전처럼 session을 반환하는 대신 side-effect 없이 reject되므로 caller는 기존 failure 경로를
+  사용한다.
 
 ### Known limitations
--
+- 실제 iPad Safari/Apple Pencil의 pointer latency, memory, thermal과 장시간 stroke는 이번 환경에서 측정하지
+  못했으며 release readiness 증거로 사용할 수 없다.
+- 위 `prepareEdit` async stale-ref semantic이 Core에 반영되기 전에는 pending preparation과 같은 시점의
+  synchronous image undo/redo를 안전하다고 판정할 수 없다.
+- 자동화는 contract fake의 image revision/dirty notification과 shader descriptor/fallback을 검증했다. 실제
+  Core image store의 픽셀 시각 결과와 WebGL2 GPU shader 출력은 14 조립 및 physical iPad 검증에서 확인해야 한다.
