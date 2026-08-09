@@ -201,25 +201,70 @@ tests/extensions/uv/integration/**
 실기기 검증은 실행 환경, 기기, 측정 결과를 RESULT에 따로 기록한다.
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- extension-owned `uv0`/`uv0.seam` corner attribute keys와 complete/missing/partial/non-finite validation
+- invalid/degenerate topology에서 부분 결과를 만들지 않는 deterministic planar/box projection
+- UV discontinuity 기반 island 탐색, split/weld 후보와 midpoint weld value 계산
+- selected corner move/rotate/scale/normalize 순수 연산과 runtime-immutable public 결과
+- `setAttribute` 또는 UV+seam `batch`만 실행하고 한 사용자 동작을 한 history entry로 묶는
+  `UvMutationController`; validation/execute/record 실패는 기존 attribute 상태로 rollback
+- extension-owned corner/island selection, SVG 2D UV viewport, element-local normalized input,
+  Pencil/Mouse drag edit와 touch pan/zoom 분리
+- Planar/Box/Normalize 및 corner/island selection controls, partial UV의 명시적 regenerate 경로
+- panel/state/tool registration, scoped Core tool 복원, partial activation cleanup, disabled UI fallback과
+  idempotent dispose를 제공하는 `UvEditorExtension`
+- layout/selection과 unknown/future state fields 및 image refs를 보존하는 `UvEditorStateProvider`
 
 ### Files created or modified
--
+- `src/extensions/uv/data/**`
+- `src/extensions/uv/projection/**`
+- `src/extensions/uv/islands/**`
+- `src/extensions/uv/operations/**`
+- `src/extensions/uv/editor/**`
+- `src/extensions/uv/extension/**`
+- `src/extensions/uv/index.ts`
+- `tests/extensions/uv/**`
+- 이 문서의 `RESULT` 섹션
 
 ### Public API
--
+- Attributes/data: `UV0_ATTRIBUTE`, `UV0_SEAM_ATTRIBUTE`, `validateUvAttribute`
+- Projection/islands: `UvProjectionService`, `createUvProjectionService`, `UvIslandService`,
+  `UvIsland`, `UvEdgeCandidate`
+- Operations: `UvTransformService`, `UvMutationController`, `UvMutationOutcome`
+- Editor: `UvEditorSelection`, `UvViewportController`, `UvEditorPanel`, `inspectUvStatus`와 editor 상태/options types
+- Extension: `UvEditorStateProvider`, `UvEditorExtension`, `createUvEditorExtension`,
+  `UV_EDITOR_EXTENSION_ID`, `UV_EDITOR_PANEL_ID`, `UV_EDITOR_TOOL_ID`, `UV_EDITOR_STATE_ID`
+- Optional-only public entrypoint: `src/extensions/uv/index.ts`; Core/public shared barrel은 변경하지 않음
 
 ### Tests / validation
--
+- Start gate: branch `wt/uv-editor`, HEAD/merge-base/`baseline/optional-sdk-v1^{commit}` =
+  `175ecff7613c15d5afd39327e957885c6eed4e50`; Optional SDK/contracts/testkit/Core-only verifier 존재 확인
+- `npm ci`: PASS — 86 packages
+- `npm run test -- tests/optional-sdk`: PASS — 6 files / 29 tests (구현 전 baseline SDK 확인)
+- `npm run test -- tests/extensions/uv`: PASS — 11 files / 52 tests
+- UV attribute round trip: planar projection -> generic `setAttribute` -> one history entry -> serialized attribute
+  restore -> undo/redo exact restore PASS, concrete Core import 없음
+- `npm run ci`: PASS — strict typecheck, 98 files / 484 tests, production build와 artifact gate
+- `npm run verify:core`: PASS — 146 Core source files, Core Optional import 없음, Core typecheck/test/build/artifact gate
+- extension 제거 검증: `src/extensions`와 `tests/extensions`를 검증 중 임시 이동한 실제 Core-only
+  `npm run ci` PASS — 87 files / 432 tests와 production build/artifact gate; 검증 후 디렉터리 복원 확인
+- 정적 경계 확인: Optional UV raw `PointerEvent` dependency 없음; Core implementation roots에 `uv0` 또는
+  `uv0.seam` semantics 추가 없음
 
 ### Integration notes
--
+- 14 Optional Integration은 optional composition root에서만 `src/extensions/uv`를 import하고
+  `createUvEditorExtension()`을 `ExtensionRuntime`에 활성화한다.
+- Host panel surface가 mount되면 SVG viewport와 controls가 canonical `NormalizedInputSurfaceFactory` 및
+  `ModelingExtensionServices`만 소비한다. UI가 없으면 activation은 unsupported 결과로 종료된다.
+- Core-only build/runtime은 이 extension의 존재, attribute key 또는 panel/tool/state ID를 전제로 하지 않는다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 iPad Safari/Apple Pencil 실기기 입력, orientation/background 복귀, 장시간 memory/thermal 동작은
+  이번 환경에서 검증하지 못했다.
+- dense production mesh에서 SVG corner/face redraw와 island 재계산의 latency/memory budget은 실기기에서
+  측정하지 못했다.
