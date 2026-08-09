@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "status": "NOT_RUN",
+  "commit": "",
+  "devices": [
+    {
+      "role": "minimum-line",
+      "model": "",
+      "osBuild": "iPadOS 17.4 build required",
+      "safariBuild": "",
+      "pencil": "",
+      "batteryAndCharging": "",
+      "ambientAndCase": ""
+    },
+    {
+      "role": "representative-current",
+      "model": "",
+      "osBuild": "",
+      "safariBuild": "",
+      "pencil": "",
+      "batteryAndCharging": "",
+      "ambientAndCase": ""
+    }
+  ],
+  "checks": [
+    { "id": "pointer-sequence", "status": "NOT_RUN", "evidence": [] },
+    { "id": "capture-cancel", "status": "NOT_RUN", "evidence": [] },
+    { "id": "pencil-touch-separation", "status": "NOT_RUN", "evidence": [] },
+    { "id": "resize-orientation", "status": "NOT_RUN", "evidence": [] },
+    { "id": "context-restore", "status": "NOT_RUN", "evidence": [] },
+    { "id": "project-round-trip", "status": "NOT_RUN", "evidence": [] }
+  ],
+  "measurementRuns": 0,
+  "metrics": {
+    "coldShellP95Seconds": null,
+    "firstUsableFrameP95Seconds": null,
+    "minimumObservedFps": null,
+    "cpuFrameTimeP95Ms": null,
+    "gpuFrameTimeP95Ms": null,
+    "mainThreadLongTaskMaxMs": null,
+    "pointerLatencyP95Ms": null,
+    "coalescedBatchP95Ms": null,
+    "strokeRollbackMaxMs": null,
+    "jsHeapPeakMiB": null,
+    "gpuResourcesPeakMiB": null,
+    "retainedAssetsPeakMiB": null
+  },
+  "thermal": {
+    "durationMinutes": 0,
+    "maximumDegradationPercent": null,
+    "minimumFps": null,
+    "memoryPressure": null,
+    "unexpectedContextLoss": null,
+    "evidence": []
+  }
+}

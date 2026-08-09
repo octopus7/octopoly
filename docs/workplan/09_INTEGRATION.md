@@ -315,41 +315,99 @@ Reference model import
 - WebGPU backend와 WGSL provider가 없어도 required WebGL2 vertical slice 통과
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
-Release readiness: NOT_ASSESSED
+Release readiness: BLOCKED
 
 ### Baseline refs
 - Core input: `baseline/core-v1`
 - Optional SDK output: `baseline/optional-sdk-v1`
-- Output resolved SHA: 생성 후 최종 보고에서 검증
+- Core input resolved SHA: `8bd9407294e1f5823a751504ca2c0aee14a39159`
+- Output resolved SHA: final integration commit에 annotated tag를 생성한 뒤 최종 보고에서 검증
 
 ### Integrated
--
+- 권장 순서대로 02 Mesh Kernel, 03 Surface Engine, 07 Renderer, 04 Selection Engine, 05 History Engine,
+  06 Tool Runtime, 08 Retopo Engine, 01 Main Leaf의 지정 commit을 `--no-ff` merge했다.
+- `CoreWorkspace` composition이 canonical Mesh/Surface/Selection/History/Tool/Retopo/Renderer/Input/Project
+  provider를 연결하고, provider가 0개인 Optional host/runtime을 Core entry에서 안전하게 구성·정리한다.
+- normalized Pencil 입력, surface ray hit, staged stable-ID mutation feedback, one-stroke history grouping,
+  undo/redo, save/reload, reference world-space bake, image flush, OBJ/GLB export를 실제 composition root에 연결했다.
+- production Core workspace에 WebGL2 상태, modeling viewport, tool/save/load, OBJ reference import와 OBJ/GLB export
+  control을 게시했다. `src/extensions/**`, WebGPU, WGSL과 10~13 concrete implementation은 포함하지 않았다.
+- Optional SDK에 runtime/state/testkit와 WebGL2 GLSL provider harness, image revision/context restore fixture,
+  Core-only isolation verifier를 게시했다.
 
 ### Conflicts resolved
--
+- Git merge conflict는 8개 merge 모두 없었다.
+- Retopo pending first rail은 frozen 08 engine 내부를 수정하지 않고 adapter의 engine factory로 document 교체,
+  reject, cancel, deactivate 시 engine instance를 교체해 stale rail을 제거했다.
+- 브라우저 orientation 전환에서 canvas intrinsic height가 grid를 확장하던 문제를 `minmax(0, 1fr)`와
+  viewport/canvas min-size reset으로 해결했다.
 
 ### Contract changes accepted
--
+- NONE — 01~08 Requested contract changes가 모두 `NONE`이었고 frozen contract 소스/문서는 변경하지 않았다.
 
 ### Contract changes rejected
--
+- NONE — 요청된 contract change가 없었다.
+- 문서 prose의 Tool unregister/dispose 문구와 canonical `Tool` 타입에 `dispose()`가 없는 의미 불일치는
+  추측 변경하지 않고 Remaining core issues로 기록했다.
 
 ### Files created or modified
--
+- Merge inputs: 각 01~08 RESULT에 기록된 source/test와 해당 workplan RESULT
+- Composition/UI: `src/app/composition/**`, `src/app/bootstrap.ts`, `src/app/bootstrap.css`, `src/main.ts`
+- Optional SDK: `src/optional-sdk/**`
+- Integration/SDK/device tests: `tests/integration/**`, `tests/e2e/**`, `tests/device/**`, `tests/optional-sdk/**`
+- Gates/evidence: `scripts/verify-core.mjs`, `scripts/verify-ipad.mjs`, `docs/validation/ipad/**`
+- Shared command publication: `package.json`
+- Status record: 이 `RESULT` 섹션
 
 ### Public API / exports
--
+- Core composition: `CoreWorkspace`, `createProductionCoreWorkspace`, `createCoreRendererBundle`,
+  `CoreExtensionHost`, `RetopoStrokeTool`, `WorkspaceInputController`
+- App mount: `mountCoreWorkspace`
+- Optional SDK entry: `createExtensionRuntime`, `ExtensionRuntimeImpl`, `createExtensionStateRegistry`,
+  `ExtensionStateRegistryImpl`, `createContractTestExtensionHost`와 contract-only host/input/modeling/image/registry fakes
+- Verification commands: `npm run verify:core`, `npm run verify:ipad`, `npm run verify:ipad:physical`
 
 ### Build / test
--
+- Baseline/start gate: main과 `baseline/core-v1^{commit}` =
+  `8bd9407294e1f5823a751504ca2c0aee14a39159`; 01~08 입력은 모두 후손, clean tip, origin SHA 일치,
+  `COMPLETE`, validation evidence 존재, contract request `NONE`.
+- Merge별 module test/typecheck PASS: 02 `12 files / 61 tests`, 03 `8 / 53`, 07 `8 / 45`,
+  04 `8 / 36`, 05 `7 / 33`, 06 `7 / 41`, 08 `5 / 38`, 01 `19 / 62`; 각 merge 뒤 typecheck PASS.
+- `npm ci`: PASS — 86 packages.
+- `npm run ci`: PASS — strict typecheck, `87 files / 432 tests`, production build, artifact verifier failures 0.
+- Artifact: compressed JS+CSS 61,175 bytes, parsed JS 221,238 bytes.
+- `npm run verify:core`: PASS — 146 Core source files, concrete Optional root 없음, Core Optional import 없음,
+  WGSL 없음, temp Core-only typecheck/test/build/artifact gate PASS.
+- `npm run verify:ipad`: automated fixture PASS, physical device `NOT_RUN`, release readiness `BLOCKED`.
+- `npm run verify:ipad:physical`: 예상대로 exit 1 — physical evidence가 없는 상태를 release-ready로 허용하지 않음.
 
 ### iPad validation
--
+- iPadOS 17.4/Safari/Apple Pencil deterministic fixture는 down/move/coalesced/up, pressure/tilt,
+  capture/lost-capture/cancel, Pencil-touch 분리, resize/orientation와 context restore를 검증했다.
+- production preview browser smoke는 1024×1366 portrait와 1366×1024 landscape에서 WebGL2 ready,
+  max texture 16,384px, 14 accessible controls, `touch-action: none`, tool activation, canvas resize,
+  X/Y overflow 0, console warning/error 0을 확인했다.
+- 실제 최소 지원/대표 iPad의 Safari/Apple Pencil, background/foreground, driver context recovery,
+  five-run performance/memory와 30-minute thermal 측정은 `NOT_RUN`이다.
 
 ### Integration notes
--
+- 입력 SHA: 01 `ad02fc78e8db23989f86107d8aa827be07dc3b53`,
+  02 `9e294defe66bed96bd00829976bc7412b5990c38`, 03 `ff8492d8b359c1ad9482877cdbce80e059eba313`,
+  04 `726946689602c5b1df46e16ff5bb1aa5a87fb8fd`, 05 `ec8f76ef2d1ea5a8f0da2eab4acb7eb9b9da6439`,
+  06 `1fb97aa69656409005db49de9ed9fdd2ca51aa21`, 07 `ccf90912bf2f166019dffa7c8dfe82fed15ef866`,
+  08 `7169bc130b200a1010428ff6b69696355ee17663`.
+- Optional workstream 10~13은 이 RESULT/commit/tag에 구현하지 않았다. Optional 개발은
+  `baseline/optional-sdk-v1^{commit}`의 resolved SHA에서만 시작한다.
+- main push가 Pages Git integration을 자동 trigger할 수 있지만 preview/production/rollback/tag 운영은
+  15 범위이므로 이번 작업에서 수행하지 않는다.
 
 ### Remaining core issues
--
+- Release readiness는 physical iPad Safari/Apple Pencil 및 ADR hard-limit performance/thermal evidence 부재로
+  `BLOCKED`다. `docs/validation/ipad/physical-device-checklist.md`와 evidence validator를 사용해야 한다.
+- `INTERFACE_CONTRACTS.md` prose는 ToolRegistry가 tool unregister/dispose 시 tool을 dispose한다고 쓰지만
+  canonical `Tool` 타입에는 `dispose()`가 없다. 09는 frozen contract를 변경하지 않았으며 후속 contract 정합성
+  결정이 필요하다.
+- 대형 dense mesh의 atomic patch clone peak heap/latency, 2M/5M reference의 실제 Safari JS object overhead,
+  WebGL line-width 시각 품질과 실제 Pencil pointer-to-frame latency는 자동화 evidence가 아니다.

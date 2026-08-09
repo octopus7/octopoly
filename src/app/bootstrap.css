@@ -1,0 +1,91 @@
+.core-workspace {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  padding:
+    max(0.75rem, env(safe-area-inset-top))
+    max(0.75rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom))
+    max(0.75rem, env(safe-area-inset-left));
+  gap: 0.75rem;
+}
+
+.core-workspace__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.core-workspace__title {
+  margin: 0;
+  font-size: clamp(1.4rem, 4vw, 2.1rem);
+  letter-spacing: -0.04em;
+}
+
+.core-workspace__status,
+.core-workspace__active-tool {
+  margin: 0;
+  color: #b8c4d0;
+  font-size: 0.875rem;
+}
+
+.core-workspace__status--ready {
+  color: #6ee7ad;
+}
+
+.core-workspace__status--unsupported,
+.core-workspace__status--failed {
+  color: #ffbd75;
+}
+
+.core-workspace__toolbar {
+  display: flex;
+  overflow-x: auto;
+  gap: 0.45rem;
+  padding-block: 0.15rem;
+  scrollbar-width: thin;
+}
+
+.core-workspace__toolbar button {
+  min-height: 2.75rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid #3a4653;
+  border-radius: 0.55rem;
+  background: #1b222a;
+  color: #eef3f7;
+  white-space: nowrap;
+}
+
+.core-workspace__toolbar button:focus-visible,
+.core-workspace__canvas:focus-visible {
+  outline: 0.18rem solid #79b8ff;
+  outline-offset: 0.12rem;
+}
+
+.core-workspace__viewport {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid #303b47;
+  border-radius: 0.75rem;
+  background: #0e1116;
+}
+
+.core-workspace__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  touch-action: none;
+}
+
+@media (max-width: 42rem) {
+  .core-workspace__header {
+    display: grid;
+    gap: 0.25rem;
+  }
+}
