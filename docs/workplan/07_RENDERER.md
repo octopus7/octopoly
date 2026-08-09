@@ -173,25 +173,72 @@ PBR/MatCap/quality render는 Optional이다.
 - [ ] WebGPU implementation이나 Optional 10~13 없이 `typecheck`, `tests/renderer/**`, build가 통과한다.
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- WebGL2-only `RendererService` lifecycle with explicit ready/unsupported/failed states, RAF coalescing,
+  resize/orientation handling, DPR clamp, framebuffer texture-limit clamp, context loss/restore, and idempotent disposal
+- ADR-0005 target capabilities: 512 MiB application texture budget and 256 MiB application GPU budget
+- Core render phases: reference base -> usable generic shading provider or solid fallback -> wire/selection/preview overlay
+- `RenderExtensionRegistry` registration, candidate-order fallback, scoped LIFO leases, failure snapshots, and provider ownership
+- GLSL ES 300 provider validation/execution with canonical triangulation, deterministic position/normal and
+  vertex/corner/face generic attribute expansion, uniform/image isolation, and Core fallback
+- `(id, revision)` image texture cache with dirty/remove invalidation, stale async resolve rejection, context rebuild,
+  texture budget enforcement, and resolver/GPU cleanup
+- Immutable reference mesh solid pass with versioned upload, degenerate filtering, and CPU-descriptor restore
+- Retopo solid/wire/vertex/selection passes using only injected `MeshTriangulationService`; solid and overlay phases share
+  one CPU/GPU cache so a provider can replace only the solid path
+- Exhaustive typed `ToolPreview` points/polyline/triangles pass with atomic revision replacement/removal and one DPR
+  conversion for CSS point/line sizes
 
 ### Files created or modified
--
+- `src/renderer/core/**`
+- `src/renderer/reference/**`
+- `src/renderer/retopo/**`
+- `src/renderer/preview/**`
+- `src/renderer/index.ts`
+- `tests/renderer/core/**`
+- `tests/renderer/reference/**`
+- `tests/renderer/retopo/**`
+- `tests/renderer/preview/**`
+- `tests/renderer/renderer-service.integration.test.ts`
+- `docs/workplan/07_RENDERER.md` (RESULT only)
 
 ### Public API
--
+- `createWebGL2Renderer(triangulation: MeshTriangulationService): RendererService`
+- `WebGL2RendererService`
+- `WebGL2RenderExtensionRegistry`
+- `ReferenceRenderPass`, `RetopoRenderPass`, `PreviewRenderPass`
+- Renderer-local `RenderPass` phase boundary for base/fallback/overlay composition
 
 ### Tests / validation
--
+- `npm run typecheck`: PASS
+- `npx vitest run tests/renderer`: PASS, 8 files / 45 tests
+- `npm run ci`: PASS, 12 files / 67 tests; strict typecheck, full Vitest suite, Vite production build, and baseline
+  artifact verification included
+- Integration fixture: one `RenderSceneSnapshot` renders reference, retopo face/edge/vertex, selection, and all preview
+  primitive kinds in the required phase order
+- Provider integration fixture: usable canonical generic provider replaces only Core solid while retopo overlay remains;
+  unsupported/failed candidates retain Core solid/wireframe rendering
+- Context loss fixture: scheduled work is cancelled, GPU handles are invalidated, state/capabilities change consistently,
+  and restore rebuilds retained CPU descriptors before rendering resumes
+- Resource fixtures: partial allocation failure cleanup, stale image resolve rejection, exact revision invalidation,
+  shared retopo phase disposal, provider/program/texture/buffer/VAO disposal, and repeated `dispose()` safety pass
 
 ### Integration notes
--
+- 09 should construct the service through `createWebGL2Renderer` with the canonical `MeshTriangulationService` and pass
+  the canvas plus optional `ImageAssetResolver` to `initialize`.
+- Optional shading composition can instantiate the exported registry and inject it into `WebGL2RendererService`; provider
+  registration alone does not activate a mode, and selection remains `activateScoped` candidate-list based.
+- Required Core rendering has no WebGPU, PBR, MatCap, or Optional 10~13 dependency.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- Physical iPad Safari/iPadOS 17.4 context-loss, orientation, memory-pressure, and long thermal-run validation was not
+  available in this environment; tests use deterministic WebGL2 fakes.
+- WebGL native line-width clamping varies by iPad GPU/driver. CSS-to-device-pixel conversion is verified, but final
+  polyline visual width requires physical-device inspection.
+- Representative maximum reference/retopo fixtures, real GPU allocation totals, frame time, and pointer-to-frame latency
+  remain device/performance gates for 09 Integration; reported capability budgets are not a substitute for measurement.
