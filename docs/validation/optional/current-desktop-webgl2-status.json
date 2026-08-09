@@ -1,13 +1,38 @@
 {
   "schemaVersion": 1,
-  "status": "NOT_RUN",
-  "commit": "",
-  "browser": "",
+  "status": "PASS",
+  "commit": "485008a061a8f1781ec14ccd68c0fc7b34b961b8",
+  "browser": "Chromium 151.0.0.0 (in-app, Windows)",
   "checks": [
-    { "id": "webgl2-context", "status": "NOT_RUN", "evidence": [] },
-    { "id": "provider-compile-link", "status": "NOT_RUN", "evidence": [] },
-    { "id": "image-upload-revision", "status": "NOT_RUN", "evidence": [] },
-    { "id": "candidate-fallback-restore", "status": "NOT_RUN", "evidence": [] },
-    { "id": "context-loss-restore", "status": "NOT_RUN", "evidence": [] }
+    {
+      "id": "webgl2-context",
+      "status": "PASS",
+      "evidence": ["WebGL2 context created; MAX_TEXTURE_SIZE=16384"]
+    },
+    {
+      "id": "provider-compile-link",
+      "status": "PASS",
+      "evidence": [
+        "Compiled and linked texture-paint.preview",
+        "Compiled and linked octopoly.lookdev.realtime",
+        "Compiled and linked octopoly.lookdev.quality",
+        "Compiled and linked octopoly.matcap.shading"
+      ]
+    },
+    {
+      "id": "image-upload-revision",
+      "status": "PASS",
+      "evidence": ["Image revision advanced 1 to 2 and dirty content was re-uploaded"]
+    },
+    {
+      "id": "candidate-fallback-restore",
+      "status": "PASS",
+      "evidence": ["Quality to Realtime selection, MatCap image-failure fallback to Core, and prior-mode restoration passed"]
+    },
+    {
+      "id": "context-loss-restore",
+      "status": "PASS",
+      "evidence": ["GPU cache invalidation, context restoration, and resource re-resolution passed"]
+    }
   ]
 }

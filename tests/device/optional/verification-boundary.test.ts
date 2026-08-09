@@ -17,7 +17,7 @@ describe("Full Optional physical evidence boundary", () => {
       releaseReadiness: string;
     };
     expect(report.automated.status).toBe("PASS");
-    expect(report.desktopWebGL2.status).toBe("NOT_RUN");
+    expect(report.desktopWebGL2.status).toBe("PASS");
     expect(report.desktopWebGL2.note).toMatch(/not iPad Safari or Apple Pencil/i);
     expect(report.physicalIPadPencil.status).toBe("NOT_RUN");
     expect(report.physicalIPadPencil.note).toMatch(/Only completed physical iPad Safari/i);

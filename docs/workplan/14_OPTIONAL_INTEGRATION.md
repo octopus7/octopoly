@@ -563,74 +563,99 @@ full bundle with image-backed providers
 
 ## RESULT
 
-Status: NOT_STARTED
+Status: BLOCKED
 
 ### Baseline refs
 - Core/Optional SDK input: `baseline/optional-sdk-v1`
-- Input resolved SHA:
+- Input resolved SHA: `175ecff7613c15d5afd39327e957885c6eed4e50`
 - Full output: `baseline/full-v1`
-- Output resolved SHA: 생성 후 최종 보고에서 검증
+- Output resolved SHA: NOT CREATED — physical iPad Safari / Apple Pencil hard gate is not verified
 
 ### Integrated branch tips
 | Workstream | Branch | Tip SHA | Result status | Merge commit |
 |---|---|---|---|---|
-| 10 UV Editor | `wt/uv-editor` |  |  |  |
-| 11 Texture Paint | `wt/texture-paint` |  |  |  |
-| 12 Lookdev | `wt/lookdev-render` |  |  |  |
-| 13 MatCap | `wt/matcap` 또는 combined |  |  |  |
+| 10 UV Editor | `wt/uv-editor` | `6f0383f0bf013d9300e07db94e3a6c1e46777f48` | COMPLETE | `0c296a11f528fc6f501e741af38af078902e9895` |
+| 11 Texture Paint | `wt/texture-paint` | `773dbde364eda6ee3284c67b9170e2fae2c72b65` | READY_WITH_CONTRACT_REQUEST | `4e487024c3df3b3c2795959c21758ed6a13e2792` |
+| 12 Lookdev | `wt/lookdev-render` | `e6dbde37f1992c12051b661286a04714f10bf9eb` | COMPLETE | `c2c71ead713334453a084c61ffbf7cdc9537510e` |
+| 13 MatCap | dedicated `wt/matcap` | `b5822ac9ae610092ec6f894ecc50a520319ce3e7` | COMPLETE | `b8bd0eae35413c86c227a2a03f311b5f676ff5fe` |
 
 ### RESULT / ancestry gate evidence
--
+- Starting `main`, `HEAD`, and `origin/main` matched `cf71caff179df331b277e8088e1cdc5cb3fa835d` with a clean worktree before integration.
+- Local and origin tips matched for all four input branches; each input tip descended from the resolved Optional SDK baseline.
+- All 10–13 RESULT gates were read before merge. Workstream 11's sole contract request was preliminarily accepted before merge.
+- Lookdev and MatCap shared exactly the baseline merge-base, confirming the dedicated MatCap mode rather than a combined branch.
 
 ### Merge order and conflicts
--
+- Merged with `--no-ff` in the required order: UV Editor, Texture Paint, Lookdev, then dedicated MatCap.
+- No merge conflicts occurred. Focused extension tests, typecheck, and Core import scans passed between merges.
 
 ### Contract changes accepted
--
+- Accepted workstream 11's Core-only compatible semantic hardening without a signature change: `ImageAssetService.prepareEdit(ref)` now revalidates the full `ImageAssetRef` after all asynchronous load/reservation work and immediately before acquiring the edit lock.
+- A stale request rejects without changing current image state, lock state, emitted events, or revision allocation. Reconciliation commit: `572d757f9362fcda795fd99c5e3a6e5f6aa93760`.
 
 ### Contract changes rejected
--
-
-### Contract changes deferred
--
-
-### Conditional ownership used
 - NONE
 
+### Contract changes deferred
+- NONE
+
+### Conditional ownership used
+- `src/project/image-assets.ts`, `tests/project/assets.test.ts`, and `docs/workplan/INTERFACE_CONTRACTS.md` for the accepted workstream 11 semantic hardening.
+- `scripts/verify-core.mjs` for the workstream 12 integration note requiring Core-only validation to exclude Optional source and test roots.
+
 ### Optional entrypoint / loader / lifecycle
--
+- `src/optional/index.ts` is loader-only and imports no concrete extension. Static per-feature manifest boundaries and `src/optional/full.ts` provide explicit composition choices.
+- The loader canonicalizes UV → Texture Paint → Lookdev → MatCap, activates serially through one `ExtensionRuntime`, scopes host resources by owner, rolls back partial failures, and performs reverse disposal before shared-host shutdown.
+- Duplicate activation/registration, cancellation, repeated disposal, state visibility, image-edit cancellation, and resource-leak paths are covered.
 
 ### Provider mode / fallback / restore
--
+- Activation-phase shading leases remain dormant. Post-activation candidates and explicit selection promote the canonical current lease.
+- Latest user choice wins across Texture Preview, Lookdev, and MatCap; non-current release is inert and top-lease release restores the previous available mode.
+- Missing candidates, compile failure, MatCap image failure, and Core fallback/restore paths pass deterministic and desktop WebGL2 verification.
 
 ### Texture / image / GPU path
--
+- Full-reference stale edit rejection, revision invalidation, dirty re-upload, image-event deduplication/flush, and failed edit cleanup pass.
+- Desktop WebGL2 verified revision 1 → 2 re-upload and GPU cache invalidation, context restoration, and resource re-resolution.
 
 ### Files created or modified
--
+- Merged owned extension implementations/tests under `src/extensions/**` and `tests/extensions/**` from workstreams 10–13.
+- Added `src/optional/**`, `tests/optional/**`, `tests/integration/optional/**`, `tests/e2e/optional/**`, and `tests/device/optional/**`.
+- Added `scripts/verify-optional.mjs` and `docs/validation/optional/**`; reconciled `scripts/verify-core.mjs`, `package.json`, the image asset service/test, and frozen contract prose within 14's conditional ownership.
+- Parallel sidecar paths `docs/workplan/OCTOPOLY_TASK_TIMELINE.md`, `docs/workplan/assets/**`, `docs/OCTOPOLY_IPAD_COMMERCIAL_VIABILITY.md`, `docs/OCTOPOLY_FOLLOW_UP_FEATURE_ANALYSIS.md`, and `docs/OCTOPOLY_DESKTOP_MOUSE_INPUT_ANALYSIS.md` were not owned or staged by this workstream.
 
 ### Public API / exports
--
+- `defineOptionalManifest`, `OPTIONAL_FEATURE_ORDER`, `createOptionalComposition`, and `OptionalComposition` lifecycle/query APIs.
+- Static UV, Texture Paint, Lookdev, and MatCap manifests plus `FULL_OPTIONAL_MANIFEST` and `createFullOptionalComposition`.
+- No concrete Optional extension is imported by Core or the loader-only entrypoint.
 
 ### Combination build / test matrix
--
+- All 16 independent feature subsets typechecked and produced Vite bundles; each artifact contained selected concrete markers and excluded unselected concrete modules.
+- Canonical activation order, Paint-only fallback, UV/Paint cooperation, all-full activation, isolation, rollback, reverse shutdown, repeated disposal, and zero owner leaks passed.
 
 ### Core-only regression
--
+- `npm run verify:core`: PASS with `src/extensions` and `src/optional` excluded.
+- `npm run verify:optional`: PASS for an isolated repository copy with both Optional source roots physically absent; isolated typecheck, Core tests including the 09 vertical slice, production build, and artifact hard limits passed.
+- `npm run ci`: PASS, 132 files / 647 tests, typecheck, production build, and artifact limits (226,055 bytes total; 61,189 compressed JS/CSS; 221,412 parsed JS).
 
 ### Full Optional e2e
--
+- Automated Optional validation passed, including 4 Agent B files / 12 lifecycle tests and 5 Agent C files / 26 semantic, e2e, and device-boundary tests.
+- Actual desktop WebGL2 smoke passed on candidate commit `485008a061a8f1781ec14ccd68c0fc7b34b961b8` using in-app Chromium 151 on Windows. All four render providers compiled/linked and no warning/error console messages were observed.
 
 ### iPad / performance evidence
--
+- Desktop WebGL2: PASS; WebGL2 context created with `MAX_TEXTURE_SIZE=16384`, provider compile/link, image revision upload, candidate fallback/restore, and context loss/restore passed.
+- Automated iPad boundary checks: PASS, but they are not substituted for physical evidence.
+- Physical iPad Safari and Apple Pencil pressure/tilt/coalesced-sample, touch/Pencil separation, long-session memory, GPU, and thermal checks: NOT RUN because no physical device evidence is available.
+- `npm run verify:optional:physical` therefore fails closed by design and blocks release/tagging.
 
 ### Integration notes
--
+- Candidate code/harness integration commit: `485008a061a8f1781ec14ccd68c0fc7b34b961b8`.
+- Workstream 15 was not performed. Pages release/operations remains outside this task.
 
 ### Remaining release issues
--
+- Run and record the prescribed physical iPad Safari / Apple Pencil matrix, including performance, memory, GPU recovery, and thermal hard limits, against the final integration commit.
+- Until that evidence passes, Status remains BLOCKED and `baseline/full-v1` must not exist.
 
 ### Final disposition
-- Final integration commit created: NO
-- `baseline/full-v1` created: NO
-- Push performed: NO
+- Final integration commit created: YES — candidate implementation/harness commit above; this RESULT/evidence record is committed separately.
+- `baseline/full-v1` created: NO — required physical hard gate is unverified.
+- Push performed: PENDING AT RECORD TIME — this RESULT commit is to be non-force pushed to `origin/main`, with the resolved SHA reported in the final response.
