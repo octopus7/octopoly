@@ -220,25 +220,80 @@ docs/workplan/03_SURFACE_ENGINE.md (RESULT only during implementation)
 - contract change request가 있으면 영향 workstream을 포함한 형식화된 요청; 없으면 `NONE`
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- 입력 `TriangleMeshSnapshot`을 검증하고 column-major affine `Mat4`를 적용해 renderer/query가 공유하는
+  immutable world-space geometry를 생성한다.
+- finite/version/index/normal/transform validation, local/world bounds, scene-scale degeneracy 분류,
+  stable input-order triangle ID, inverse-transpose vertex normal과 idempotent prepared storage lifecycle을
+  구현했다.
+- Morton-ordered balanced flat BVH를 typed buffer로 구축하고 preorder escape index를 사용하는 stackless
+  ray/nearest traversal을 구현했다. query별 전체 candidate 배열을 만들지 않으며 visitor가 게시한 현재 best
+  distance로 후속 bounds를 pruning한다.
+- double-sided robust ray intersection, triangle closest-point, barycentric canonicalization, interpolated 또는
+  geometric world normal, inclusive max-distance tolerance, distance/triangle-ID tie-break와 miss semantics를
+  구현했다.
+- factory create 실패 정리와 `ReferenceSurface`의 query -> spatial -> prepared storage 순서 idempotent dispose를
+  조립했다. dispose 뒤 query는 programmer error로 실패한다.
 
 ### Files created or modified
--
+- Source: `src/surface/index.ts`, `src/surface/reference/factory.ts`,
+  `src/surface/reference/surface.ts`,
+  `src/surface/reference/geometry/prepared-reference-geometry.ts`, `src/surface/spatial/aabb.ts`,
+  `src/surface/spatial/bvh.ts`, `src/surface/query/candidate-source.ts`,
+  `src/surface/query/triangle-math.ts`, `src/surface/query/surface-query.ts`
+- Tests: `tests/surface/factory.test.ts`, `tests/surface/public-api.test.ts`,
+  `tests/surface/reference/geometry/prepare.test.ts`, `tests/surface/spatial/aabb.test.ts`,
+  `tests/surface/spatial/bvh.test.ts`, `tests/surface/spatial/budget.test.ts`,
+  `tests/surface/query/triangle-math.test.ts`, `tests/surface/query/surface-query.test.ts`
+- Status: `docs/workplan/03_SURFACE_ENGINE.md`의 `RESULT`만 갱신
 
 ### Public API
--
+- Local entry: `src/surface/index.ts`
+- `ReferenceSurfaceFactoryImpl implements ReferenceSurfaceFactory`
+- `createReferenceSurfaceFactory(): ReferenceSurfaceFactory`
+- 반환 provider: immutable `id`, baked world-space `geometry`, canonical `SurfaceQuery`, idempotent `dispose()`
+- BVH, prepared storage, triangle candidate와 query concrete class는 local public entry에서 export하지 않는다.
 
 ### Tests / validation
--
+- Baseline: `npm ci` PASS (86 packages), 시작 전 `npm run typecheck` PASS, 기존 4 files / 22 tests PASS
+- Query targeted: 2 files / 21 tests PASS
+- Surface targeted: `npx vitest run tests/surface` PASS, 8 files / 53 tests
+- Canonical: `npm run ci` PASS, strict typecheck, 12 files / 75 tests, production Vite build와 baseline artifact
+  verifier 포함; forbidden dynamic artifact와 budget failure 없음
+- 수치 fixture: front/back, edge/vertex, parallel, behind/on-origin, miss, max-distance boundary, face/edge/vertex
+  nearest, shuffled tie, NaN/Infinity, normalized ray, small/unit/large scene-scale degeneracy PASS
+- geometry/lifecycle fixture: empty/single/multi triangle, invalid index list/range, mismatched normals, source mutation,
+  translation/rotation/non-uniform scale, inverse-transpose normal, singular transform, repeated dispose PASS
+- Benchmark environment: Windows x64, AMD64 Family 25 Model 97, Node 22.18.0, npm 11.18.0, V8 12.4
+- ADR target fixture 2,000,000 overlapping triangles PASS: BVH build 1,549.78 ms, 524,287 nodes,
+  max depth 18, retained spatial buffers 37.63 MiB, estimated spatial build peak 159.70 MiB,
+  two pruned miss traversals 0.52 ms, pathological 2,000,000-candidate traversal 67.46 ms
+- ADR hard-limit fixture 5,000,000 overlapping triangles PASS: BVH build 3,577.72 ms, 2,097,151 nodes,
+  max depth 20, retained spatial buffers 139.07 MiB, estimated spatial build peak 444.25 MiB,
+  two pruned miss traversals 0.39 ms, pathological 5,000,000-candidate traversal 316.96 ms
 
 ### Integration notes
--
+- 09는 imported project/local-space `TriangleMeshSnapshot`과 asset `worldTransform`을
+  `createReferenceSurfaceFactory().create(assetId, geometry, worldTransform)`에 전달한다.
+- 반환 `ReferenceSurface.geometry`를 Renderer reference snapshot으로 사용하고 같은 surface의 `query`를
+  08 composition의 `ToolContext.surface`와 snapping에 전달한다.
+- query는 world-space, double-sided, stable input-order triangle ID, finite non-negative max-distance와
+  miss=`null` semantics를 제공한다. invalid create input은 exception이며 partial surface를 반환하지 않는다.
+- reference replacement/document 교체 시 이전 `ReferenceSurface.dispose()`를 먼저 호출한 뒤 새 surface를
+  factory로 생성한다. factory 자체는 resource를 보유하지 않고 surface가 geometry/query/spatial lifecycle을
+  소유한다.
+- public module graph는 Mesh Kernel, Renderer, Retopo, DOM 또는 GPU concrete implementation을 import하지 않는다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 iPad Safari/iPadOS 17.4+의 JS heap, query latency, memory pressure와 20/30분 thermal gate는 이 환경에서
+  검증하지 못했다.
+- benchmark의 memory 값은 spatial typed buffers와 명시적 build scratch의 계산치다. source/baked geometry의
+  JS object/array overhead, Vitest/runtime heap과 실제 peak RSS는 포함하지 않으므로 전체 reference asset
+  memory budget 통과 증거로 간주하지 않는다.
+- 2M/5M benchmark는 deterministic overlapping-triangle worst-overlap fixture다. build/depth/full traversal은
+  검증하지만 실제 스캔 mesh의 triangle distribution과 대표 hit-query latency를 대체하지 않는다.
