@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.json",
+  "include": [
+    "../../../src/contracts/**/*.ts",
+    "../../../src/selection/state/**/*.ts",
+    "../../../src/selection/prune/**/*.ts",
+    "./**/*.ts",
+    "../prune/**/*.ts"
+  ]
+}
