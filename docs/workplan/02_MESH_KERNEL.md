@@ -259,25 +259,65 @@ docs/workplan/02_MESH_KERNEL.md (RESULT only during implementation)
 - 실행한 검증 명령과 미검증 항목
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- ID-keyed sparse vertex/edge/corner/face maps, normalized endpoint lookup, bidirectional adjacency indexes,
+  deterministic ordering, domain allocators and retired-ID tracking
+- cloned `MeshDraft` transaction boundary, topology/allocator/attribute invariant validation, immutable query/snapshot and
+  generic attribute storage without name-specific semantics
+- 모든 canonical `MeshCommand`: create/set/delete, split/collapse/dissolve/weld, create/bridge/extrude/rotate,
+  `setAttribute`, iterative atomic `batch`
+- state-stamp/version guarded reversible patch, stable-ID apply/revert, actual state-difference result sets, validated
+  serialization/factory restoration and idempotent document disposal
+- ADR-0005의 250,000 retopo vertex / 500,000 triangulated face hard limit 및 4,096 batch leaf-command 상한
 
 ### Files created or modified
--
+- `src/mesh/internal/**`, `src/mesh/query/**`, `src/mesh/attributes/**`
+- `src/mesh/mutations/elements/**`, `src/mesh/mutations/faces/**`
+- `src/mesh/kernel.ts`, `src/mesh/patch/**`, `src/mesh/index.ts`
+- `tests/mesh/internal/**`, `tests/mesh/query/**`, `tests/mesh/attributes/**`
+- `tests/mesh/mutations/**`, `tests/mesh/patch/**`, `tests/mesh/kernel.test.ts`, `tests/mesh/public-api.test.ts`
+- `docs/workplan/02_MESH_KERNEL.md` (`RESULT` only)
 
 ### Public API
--
+- `MeshKernel implements MeshDocument`
+- `MeshKernelFactory implements MeshFactory`
+- Local provider import: `src/mesh/index.ts`; canonical input/output types remain `@octopoly/contracts`
+- Factory injection: `new MeshKernelFactory()` -> `createEmpty()` or validated `restore(serializedMesh)`
 
 ### Tests / validation
--
+- Gate 1 targeted invariant/query/attribute tests: PASS
+- Agent B element mutation tests: 15/15 PASS
+- Agent C face/quad/extrusion mutation tests: 9/9 PASS
+- Service-level canonical command matrix: all 13 command kinds validate/execute/revert/apply/restore round-trip PASS
+- Seeded property test: 12 deterministic position/attribute sequences round-trip PASS
+- ADR-0005 hard-limit fixture: 250,000 isolated vertices restore + deterministic snapshot PASS within the canonical
+  5-second per-test timeout
+- `npm run test -- tests/mesh`: PASS — 12 files / 61 tests
+- `npm run ci`: PASS — 16 files / 83 tests, canonical typecheck, production build, baseline artifact verification
+- Static scope scan: DOM/screen/GPU/UI/Selection/History concrete imports, UV/seam special cases and TODO markers 없음
 
 ### Integration notes
--
+- 09는 `MeshKernelFactory`를 concrete `MeshFactory`로 생성해 project restore/create 경계에 주입한다.
+- 모든 execute는 정확히 한 version을 증가시키며 반환 patch는 이미 forward 적용된 상태다. 유효한 history
+  순서의 revert/apply만 허용하고 stale/duplicate/disposed patch는 상태 변경 전에 programmer error로 거부한다.
+- `deleteElements`는 vertex/edge/corner 종속 face를 cascade 삭제한다. valid하지만 incident face가 없는 isolated
+  edge의 직접 삭제는 명시적으로 unsupported다.
+- split/collapse는 incident face 1~2인 edge, dissolve는 정확히 두 반대 winding face, weld는 manifold vertex
+  neighborhood에서 지원한다.
+- bridge/extrude edge는 ordered coherent manifold boundary chain, rotate는 반대 winding의 triangle pair,
+  face extrusion은 manifold selected-region boundary를 요구한다. precondition 실패는 원자적으로 draft를 폐기한다.
+- 04/05/08/01은 canonical `MeshQuery`/`MeshMutationService`/`MeshFactory`만 소비하며 내부 topology를 import하지
+  않는다. Representative fixtures는 `tests/mesh/mutations/**`와 `tests/mesh/patch/**`에 있다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 iPad Safari와 Apple Pencil 실기기 검증은 수행하지 않았다.
+- 250,000 isolated-vertex hard-limit load를 검증했지만 250,000-vertex/500,000-triangle dense topology mutation의
+  시간·peak heap은 측정하지 않았다. 현재 atomic draft와 patch는 before/after state clone을 보유하므로 대형 dense
+  mesh에서 메모리/latency를 09 device/performance gate에서 측정해야 한다.
+- topology-changing command는 위 Integration notes의 manifold/winding precondition 밖 neighborhood를 명시적으로
+  거부한다. non-manifold topology의 표현/query/createFace 자체는 지원한다.
