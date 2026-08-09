@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "status": "NOT_RUN",
+  "commit": "",
+  "browser": "",
+  "checks": [
+    { "id": "webgl2-context", "status": "NOT_RUN", "evidence": [] },
+    { "id": "provider-compile-link", "status": "NOT_RUN", "evidence": [] },
+    { "id": "image-upload-revision", "status": "NOT_RUN", "evidence": [] },
+    { "id": "candidate-fallback-restore", "status": "NOT_RUN", "evidence": [] },
+    { "id": "context-loss-restore", "status": "NOT_RUN", "evidence": [] }
+  ]
+}

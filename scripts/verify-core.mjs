@@ -11,6 +11,14 @@ const failures = [];
 const commands = [];
 const forbiddenRoots = [
   path.join(root, "src", "extensions"),
+  path.join(root, "src", "optional"),
+];
+const forbiddenTestRoots = [
+  path.join(root, "tests", "extensions"),
+  path.join(root, "tests", "optional"),
+  path.join(root, "tests", "integration", "optional"),
+  path.join(root, "tests", "e2e", "optional"),
+  path.join(root, "tests", "device", "optional"),
 ];
 
 function relative(file) {
@@ -88,7 +96,9 @@ try {
     const coreFiles = [
       ...sourceFiles,
       ...(await walk(path.join(root, "tests"))).filter(
-        (file) => /\.tsx?$/.test(file) && !isUnder(file, path.join(root, "tests", "optional-sdk")),
+        (file) => /\.tsx?$/.test(file)
+          && !isUnder(file, path.join(root, "tests", "optional-sdk"))
+          && !forbiddenTestRoots.some((directory) => isUnder(file, directory)),
       ),
       path.join(root, "vite.config.ts"),
       path.join(root, "vitest.config.ts"),
@@ -111,6 +121,16 @@ try {
       "run",
       "--exclude",
       "tests/optional-sdk/**",
+      "--exclude",
+      "tests/extensions/**",
+      "--exclude",
+      "tests/optional/**",
+      "--exclude",
+      "tests/integration/optional/**",
+      "--exclude",
+      "tests/e2e/optional/**",
+      "--exclude",
+      "tests/device/optional/**",
     ]);
 
     const artifactRoot = path.join(temporaryRoot, "dist");

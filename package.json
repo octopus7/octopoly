@@ -17,6 +17,9 @@
     "verify:core": "node scripts/verify-core.mjs",
     "verify:ipad": "node scripts/verify-ipad.mjs",
     "verify:ipad:physical": "node scripts/verify-ipad.mjs --require-physical",
+    "verify:optional": "node scripts/verify-optional.mjs",
+    "verify:optional:desktop": "node scripts/verify-optional.mjs --require-desktop",
+    "verify:optional:physical": "node scripts/verify-optional.mjs --require-physical",
     "preview": "vite preview"
   },
   "devDependencies": {

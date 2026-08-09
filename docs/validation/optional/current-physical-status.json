@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "status": "NOT_RUN",
+  "commit": "",
+  "devices": [],
+  "checks": [
+    { "id": "core-full-cold-start", "status": "NOT_RUN", "evidence": [] },
+    { "id": "resize-orientation", "status": "NOT_RUN", "evidence": [] },
+    { "id": "pencil-coalesced-pressure-tilt", "status": "NOT_RUN", "evidence": [] },
+    { "id": "capture-cancel", "status": "NOT_RUN", "evidence": [] },
+    { "id": "pencil-touch-separation", "status": "NOT_RUN", "evidence": [] },
+    { "id": "uv-navigation-edit", "status": "NOT_RUN", "evidence": [] },
+    { "id": "paint-latency-history", "status": "NOT_RUN", "evidence": [] },
+    { "id": "provider-switch-fallback-restore", "status": "NOT_RUN", "evidence": [] },
+    { "id": "context-background-memory-recovery", "status": "NOT_RUN", "evidence": [] },
+    { "id": "project-round-trip", "status": "NOT_RUN", "evidence": [] }
+  ],
+  "measurementRuns": 0,
+  "metrics": {
+    "coldShellP95Seconds": null,
+    "firstUsableFrameP95Seconds": null,
+    "minimumObservedFps": null,
+    "cpuFrameTimeP95Ms": null,
+    "gpuFrameTimeP95Ms": null,
+    "mainThreadLongTaskMaxMs": null,
+    "pointerLatencyP95Ms": null,
+    "coalescedBatchP95Ms": null,
+    "strokeRollbackMaxMs": null,
+    "jsHeapPeakMiB": null,
+    "gpuResourcesPeakMiB": null,
+    "retainedAssetsPeakMiB": null
+  },
+  "thermal": {
+    "durationMinutes": 0,
+    "maximumDegradationPercent": null,
+    "minimumFps": null,
+    "memoryPressure": null,
+    "unexpectedContextLoss": null,
+    "evidence": []
+  }
+}
