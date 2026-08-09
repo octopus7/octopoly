@@ -164,25 +164,68 @@ Pencil stroke
 - [ ] `typecheck`, `tests/retopo/**`, baseline의 canonical test command가 통과한다.
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- canonical `RetopoStrokeInput`을 보존하는 deterministic pen stroke lifecycle, noise suppression, smoothing 기반
+  resampling과 duplicate/coalesced timestamp ordering
+- supplied world-space `SurfaceHit`과 `MeshQuery`만 사용하는 surface chain, scene-scale snap, stable tie ordering,
+  mesh adjacency continuity
+- 두 연속 stroke chain의 quad strip inference, canonical winding, bridge candidate, degenerate/non-manifold rejection
+- unresolved surface/edge anchor를 `createVertex`/`splitEdge`로 순차 요청하고 `MeshMutationResult.created.vertices`의
+  stable ID를 받은 뒤에만 `createFace`를 생성하는 staged request sequence
+- 첫 rail 보존, 두 번째 rail preview/inference, `none/preview/commit/complete/rejected` 전이와 4,096 staged-step
+  hard limit을 구현한 `RetopoEngine`/`RetopoStrokeSession`
+- deterministic replay, frame-batch 분할, surface miss, zero-length/degenerate, staged cancel/rollback, budget overflow
+  fixture
 
 ### Files created or modified
--
+- Source: `src/retopo/index.ts`, `src/retopo/stroke/**`, `src/retopo/surface-chain/**`,
+  `src/retopo/quad/**`, `src/retopo/requests/**`
+- Tests/fixtures: `tests/retopo/retopo-engine.integration.test.ts`, `tests/retopo/stroke/**`,
+  `tests/retopo/surface-chain/**`, `tests/retopo/quad/**`, `tests/retopo/requests/**`,
+  `tests/retopo/fixtures/**`
+- Result: `docs/workplan/08_RETOPO_ENGINE.md`의 이 `RESULT` 섹션
 
 ### Public API
--
+- Engine: `DeterministicRetopoEngine`, `createRetopoEngine`, `RETOPO_STAGED_STEP_HARD_LIMIT`
+- Stroke: `RetopoStrokeProcessor`, `processRetopoStroke`, `DEFAULT_STROKE_PROCESSING_OPTIONS`
+- Chain: `buildSurfaceChain`, `RetopoSurfaceChain`, chain point/anchor/segment/result types
+- Quad: `inferQuadStrip`, `QuadCandidate`, `QuadInferenceResult`
+- Requests: `buildQuadPreview`, `createQuadRequestSequence`, `QuadRequestSequence`
+- Canonical contract implementation: `RetopoEngine.begin()` -> `RetopoStrokeSession.update/continue/cancel/dispose`
 
 ### Tests / validation
--
+- `npm ci`: PASS — 86 packages installed from the frozen lockfile
+- baseline preflight `npm run typecheck`: PASS
+- baseline preflight `npm run test -- tests/contracts`: PASS — 2 files / 12 tests
+- `npm run typecheck`: PASS
+- `npm run test -- tests/retopo`: PASS — 5 files / 38 tests
+- `npm run ci`: PASS — 9 files / 60 tests, typecheck, production build와 baseline artifact verifier 포함
+- prohibited concrete import scan: PASS — `src/retopo/**`, `tests/retopo/**`에서 concrete
+  Mesh/Surface/History/Renderer/Picking import 0건
+- deterministic integration replay는 동일 sample/hit fixture를 단일 batch와 분할 batch로 재생해 serialized
+  `RetopoStep`, `MeshCommand`, preview와 최종 fake mesh가 byte-identical임을 확인했다.
+- staged cancel/budget fixture는 fake `MeshPatch`를 역순 revert해 version 0, vertex/face 0개로 복구되고 history
+  commit이 필요 없는 adapter 경로를 확인했다.
 
 ### Integration notes
--
+- 09 adapter는 첫 stroke 완료를 pending rail로 취급하고 두 번째 stroke의 `commit` step부터 하나의
+  `HistoryTransaction`에 모든 applied patch를 기록해야 한다.
+- 각 `commit`은 `MeshMutationService.execute` 후 반환된 `MeshMutationResult`를 같은 session의 `continue`에
+  전달한다. `complete`에서 transaction을 commit하고 `rejected`, pointer cancel, tool 전환 또는 budget
+  overflow에서는 rollback과 preview clear를 수행한다.
+- pending 첫 rail은 engine instance 내부에 있으므로 tool deactivate/document replacement 시 09가 해당 tool의
+  engine instance를 폐기하고 새 instance로 시작한다.
+- Source/tests는 `RetopoStrokeInput`, `MeshQuery`, canonical result/command와 contract fake만 사용한다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 iPad Safari/Apple Pencil에서 pointer latency, 4 ms coalesced-batch target, 4,096-step rollback 시간과 thermal
+  budget은 이번 환경에서 측정하지 못했다.
+- 두 rail의 resampled point 수가 다르면 deterministic `chain-length-mismatch`로 reject한다. cross-chain
+  resampling은 후속 algorithm 개선 범위다.
+- 같은 원본 edge에 여러 unresolved split anchor가 있으면 frozen contract만으로 첫 split 이후 edge ID/`t`를
+  안전하게 재매핑할 수 없어 명시적으로 reject한다.
