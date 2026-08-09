@@ -168,11 +168,14 @@ export class IndexedDbImageAssetService implements ImageAssetService {
 
   async prepareEdit(ref: ImageAssetRef): Promise<ImageEditSession> {
     this.#assertUsable();
+    const initialState = this.#states.get(ref.id);
+    if (!initialState || !sameRef(initialState.current, ref)) throw new Error("Image reference is stale or missing");
+    if (initialState.editing) throw new Error("Image asset already has an active edit session");
+    await this.#load(ref);
+    this.#assertUsable();
     const state = this.#states.get(ref.id);
     if (!state || !sameRef(state.current, ref)) throw new Error("Image reference is stale or missing");
     if (state.editing) throw new Error("Image asset already has an active edit session");
-    await this.#load(ref);
-    this.#assertUsable();
     state.editing = true;
     return new SynchronousImageEditSession(this, state, ref);
   }

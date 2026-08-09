@@ -804,7 +804,10 @@ world-space surface를 재구성한다. Project migration은 이전 schema를 �
 Optional extension data를 알 수 없다고 삭제하지 않는다.
 
 `prepareEdit`는 decode와 memory reservation을 끝낸 뒤 session을 반환하므로 gesture 중 `write/commit/cancel`은
-동기식이다. `write`는 bounds와 byte length를 먼저 검증하고 transient revision을 forward 적용한 뒤 resolver
+동기식이다. 모든 비동기 load/reservation을 마치고 edit lock/session을 획득하기 직전에 현재 asset을 다시 읽어
+요청한 `ImageAssetRef`의 ID, revision, width, height와 color space 전체가 일치하는지 검증한다. asset이
+없거나 stale이거나 이미 editing 중이면 current ref, edit lock, event와 transient/orphan revision을 변경하지
+않고 거부한다. `write`는 bounds와 byte length를 먼저 검증하고 transient revision을 forward 적용한 뒤 resolver
 subscriber에 dirty rect와 함께 알린다. `commit`은 current revision을 seal하고 이미 적용된
 `ImageRevisionChange`를 반환한다.
 그 change의 `apply/revert`는 retained revision 사이를 동기적으로 전환하고 다시 알린다. `cancel`은 base

@@ -84,6 +84,52 @@ describe("asset services", () => {
     await expect(durable.resolve(base)).resolves.toMatchObject({ width: 1, height: 1 });
   });
 
+  it("rejects an in-flight prepareEdit when history changes the full current ref without side effects", async () => {
+    const storage = new MemoryProjectStorage();
+    const codec = new FakeImageCodec({ width: 1, height: 1, rgba8Premultiplied: new Uint8ClampedArray([1, 2, 3, 4]) });
+    const service = new IndexedDbImageAssetService(storage, { codec, createId: () => "image" });
+    const published = vi.fn();
+    service.subscribe(published);
+    const base = await service.import(new Blob());
+    const edit = await service.prepareEdit(base);
+    const after = edit.write({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      rgba8Premultiplied: new Uint8ClampedArray([9, 9, 9, 9]),
+    });
+    const { change } = edit.commit("paint");
+
+    const eventsBeforeMetadataMismatch = published.mock.calls.length;
+    await expect(service.prepareEdit({ ...after, width: after.width + 1 })).rejects.toThrow(/stale or missing/u);
+    expect(service.current(base.id)).toEqual(after);
+    expect(published).toHaveBeenCalledTimes(eventsBeforeMetadataMismatch);
+
+    const pending = service.prepareEdit(after);
+    change.revert();
+    const eventCountAfterHistoryTransition = published.mock.calls.length;
+
+    await expect(pending).rejects.toThrow(/stale or missing/u);
+    expect(service.current(base.id)).toEqual(base);
+    expect(published).toHaveBeenCalledTimes(eventCountAfterHistoryTransition);
+
+    const retry = await service.prepareEdit(base);
+    const transient = retry.write({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+      rgba8Premultiplied: new Uint8ClampedArray([5, 6, 7, 8]),
+    });
+    expect(transient.revision).toBe(2);
+    retry.cancel();
+    expect(service.current(base.id)).toEqual(base);
+    change.apply();
+    expect(service.current(base.id)).toEqual(after);
+    change.dispose?.();
+  });
+
   it("removes durable images atomically and enforces decoded-memory budgets", async () => {
     const storage = new MemoryProjectStorage();
     const codec = new FakeImageCodec({ width: 1, height: 1, rgba8Premultiplied: new Uint8ClampedArray(4) });
