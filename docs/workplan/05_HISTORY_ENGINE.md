@@ -142,25 +142,55 @@ Tool cancel 또는 pointer cancel에서는 같은 transaction의 모든 applied 
 - [ ] `typecheck`, `tests/history/**`, baseline의 canonical test command가 통과한다.
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- canonical `ReversibleChange`를 순방향 apply/역순 revert하는 composite history entry와 service-scoped
+  idempotent change disposal lifecycle
+- 이미 적용된 change를 재적용하지 않고 transaction 하나를 undo entry 하나로 만드는 transaction state machine
+- deterministic undo/redo stack, redo branch truncation, clear, empty/no-op semantics와 immutable snapshot 알림
+- active transaction rollback/clear, closed transaction 재사용 거부, nested transaction 및 active undo/redo invariant
+- Pencil stroke와 transform drag의 다중 change grouping 및 cancel rollback round trip
 
 ### Files created or modified
--
+- `src/history/change-lifecycle.ts`
+- `src/history/composite-entry.ts`
+- `src/history/history-stack.ts`
+- `src/history/history-transaction.ts`
+- `src/history/history-service.ts`
+- `src/history/index.ts`
+- `tests/history/change-lifecycle.test.ts`
+- `tests/history/composite-entry.test.ts`
+- `tests/history/history-stack.test.ts`
+- `tests/history/history-transaction.test.ts`
+- `tests/history/history-service.test.ts`
+- `tests/history/history-grouping.test.ts`
+- `tests/history/history-engine.integration.test.ts`
+- `docs/workplan/05_HISTORY_ENGINE.md` (`RESULT` only)
 
 ### Public API
--
+- `createHistoryService(): HistoryService`
+- `HistoryServiceImpl implements HistoryService`
+- Public entrypoint: `src/history/index.ts`
 
 ### Tests / validation
--
+- `npm ci`: PASS — 86 packages installed
+- `npm run typecheck`: PASS
+- `npx vitest run tests/history`: PASS — 7 files / 33 tests
+- `npm run ci`: PASS — strict typecheck, 11 files / 55 tests, production build와 baseline artifact verification
+- fake `ReversibleChange`와 canonical fake `MeshPatch`로 record-without-reapply, `3 -> 2 -> 1` undo,
+  `1 -> 2 -> 3` redo, cancel rollback, redo truncation/disposal 및 subscriber final snapshot을 검증했다.
 
 ### Integration notes
--
+- 09 Integration은 `src/history/index.ts`의 `createHistoryService()`를 composition root에서 생성한다.
+- Tool/Retopo composition은 gesture 시작 시 `begin(label)`, 각 이미 적용된 mutation patch에
+  `recordApplied(patch)`, 완료 시 `commit()`, pointer/tool cancel 시 `rollback()`을 호출해야 한다.
+- History는 mesh concrete implementation을 import하지 않으며 canonical `ReversibleChange`만 소비한다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 Mesh Kernel/Tool Runtime/Retopo Engine과의 end-to-end 연결 및 pointer cancel 재생은 09 Integration 범위다.
+- 순수 CPU history module에는 기기별 동작이 없지만 실제 iPad Safari gesture 경로는 이번 workstream에서
+  검증하지 않았다.
