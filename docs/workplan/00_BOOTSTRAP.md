@@ -364,13 +364,13 @@ Agent B의 계약 산출물을 Agent C가 소비해야 하는 검증은 canonica
   만든다. 이미 시작한 workstream이 있으면 기존 tag를 rewrite하지 않고 후속 통합 변경으로 처리한다.
 
 ## RESULT
-Status: IN_PROGRESS
+Status: COMPLETE
 
 ### Baseline commit
 - Ref: `baseline/core-v1`
-- Resolved SHA: 최종 production 검증 후 기록
+- Resolved SHA: immutable tag 생성 후 최종 보고에서 기록
 - Branch: `main`
-- 01~08 branch point announced: NO
+- 01~08 branch point announced: YES — tag 검증 후 생성되는 각 작업에 전달
 
 ### Implemented
 - Node/npm/TypeScript/Vite/Vitest 기반의 재현 가능한 정적 SPA scaffold
@@ -407,7 +407,9 @@ Status: IN_PROGRESS
 - Product name: `OctoPoly`
 - Existing Pages project: `octopoly`
 - Production URL: `https://octopoly.pages.dev/`
-- Deployed commit SHA: candidate/final push 후 production에서 검증 예정
+- Candidate commit SHA: `db201e7db61321438c51eaea7d87c242d45a7cd6`
+- Candidate deployment: `e08ad106-a69d-4657-88cc-fb0877e2226f` — SUCCESS
+- Final deployed commit SHA: 최종 RESULT commit push 후 외부 검증하여 최종 보고에 기록
 - Functions / Workers used: NO
 
 ### Tests / validation
@@ -415,10 +417,14 @@ Status: IN_PROGRESS
 - `npm run ci`: PASS, 4 files / 22 tests, strict typecheck와 production build 포함
 - Artifact: gzip JS+CSS 2,525 bytes, parsed JS 3,680 bytes, forbidden dynamic artifact 없음
 - Local browser: root/deep link 모두 `OctoPoly`, `WebGL2 ready`, root-absolute hashed assets, 수평 overflow 없음
+- Production: root/deep link가 local `dist/index.html`과 byte-identical, JS/CSS SHA-256 일치
+- Production headers: shell revalidation, CSP/Permissions/Referrer/MIME/frame 보호, hashed asset 1년 immutable PASS
+- User browser evidence: `WebGL2 ready`, max texture 16,384px, WebGPU optional available
 
 ### Acceptance gate evidence
-- 정적 artifact와 로컬 브라우저 gate는 통과했다.
-- candidate와 final Pages commit identity/body/header 검증은 push 후 수행한다.
+- 정적 artifact, 로컬 브라우저, candidate production Pages gate를 통과했다.
+- GitHub check에서 candidate SHA의 CI와 Cloudflare Pages deployment가 모두 SUCCESS다.
+- final RESULT commit도 동일 검증을 통과한 뒤에만 immutable tag를 생성한다.
 
 ### Integration notes
 - 01~08은 `baseline/core-v1^{commit}`에서만 분기한다.
@@ -429,4 +435,4 @@ Status: IN_PROGRESS
 
 ### Known limitations
 - 실제 iPad Safari 실기기 검증은 이번 환경에서 수행하지 못했으며 후속 device gate로 남긴다.
-- production Pages 검증과 immutable tag 생성 전이므로 아직 COMPLETE가 아니다.
+- 현재 브라우저 증거는 desktop Chromium 계열이며 최소 지원 iPadOS 17.4 실기기를 대체하지 않는다.

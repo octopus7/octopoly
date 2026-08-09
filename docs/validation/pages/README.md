@@ -35,3 +35,5 @@ node scripts/verify-pages.mjs https://octopoly.pages.dev/ dist /__octopoly_boots
 The JSON output from both verification scripts is copied into the dated deployment record without editing measured
 values. The deployment detail screenshot or exported text must identify the same commit SHA; matching public bytes alone
 does not prove commit identity.
+
+Bootstrap production evidence: [`2026-08-10-bootstrap-production.md`](2026-08-10-bootstrap-production.md)

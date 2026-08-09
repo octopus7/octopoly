@@ -2,8 +2,8 @@
 
 iPad Safari와 Apple Pencil을 우선 지원하는 low-poly / retopology 웹 모델링 도구의 병렬 개발 계획 저장소입니다.
 
-> 현재는 **Core Bootstrap 기준선 구성 단계**입니다. main에 공용 contract와 정적 OctoPoly shell,
-> 빌드·테스트·Pages 검증 경로를 마련한 뒤 `baseline/core-v1`으로 고정합니다.
+> **Core Bootstrap 기준선**은 공용 contract, 정적 OctoPoly shell, 빌드·테스트·Pages 검증 경로를
+> 포함하며 immutable `baseline/core-v1` tag에서 시작합니다.
 
 ## 문서 읽기 순서
 
