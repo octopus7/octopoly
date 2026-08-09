@@ -226,25 +226,65 @@ build와 WebGL2 browser smoke를 실행한다. iPad 결과에는 기기/OS, view
 thermal 관찰을 기록한다.
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- `ShadingProvider` contract만 소비하는 독립 WebGL2 MatCap provider와 5종 built-in preset(Clay, Neutral Gray,
+  Metallic, Soft, High Contrast)을 구현했다.
+- built-in texture는 외부 bitmap dependency 없이 immutable metadata와 code-native SVG `Blob`으로 생성하며,
+  custom image는 `ImageAssetService` import/resolve 경계를 사용한다.
+- `MatcapImageManager`가 dimensions, color space, decode 결과, max texture size, texture/GPU budget을 검증하고
+  invalid/decode/resource failure에서 이전 valid preset/custom revision을 유지한다.
+- `MatcapController`, `MatcapPanel`, `MatcapStateProvider`, `MatcapExtension`이 scoped shading lease, panel fallback
+  표시, schema v1→v2 migration, custom revision persistence, partial activation rollback과 reverse cleanup을 제공한다.
+- extension dispose는 state/panel/controller를 정리하고 provider를 registry에서 unregister한 뒤 image manager를
+  정리한다. persistent `ImageAssetRef`는 삭제하지 않으며 이전 PBR/Core selection을 복원한다.
 
 ### Files created or modified
--
+- Source: `src/extensions/matcap/{presets,image,webgl2,controller,extension}/**`,
+  `src/extensions/matcap/index.ts`
+- Tests/harness: `tests/extensions/matcap/{presets,image,webgl2,controller,extension,integration}/**`
+- Status record: 이 `RESULT` 섹션
+- Core Renderer, Lookdev/PBR, public contract, shared barrel/bootstrap/package/build 설정은 수정하지 않았다.
 
 ### Public API
--
+- `MatcapExtension`, `MatcapPanel`, `MatcapController`, `MatcapStateProvider`
+- `WebGL2MatcapShadingProvider`, `MATCAP_SHADING_PROVIDER_ID`
+- `MatcapPresetId`, `MatcapPreset`, `MatcapPresetCatalog`, `MATCAP_PRESET_IDS`,
+  `MATCAP_DEFAULT_PRESET_ID`, `createMatcapPresetBlob`
+- `MatcapImageManager`, `MatcapImageSelectionResult`, `MatcapImageFailureCode`, `MatcapImageIssue`
+- `MatcapDisabledReason`, controller snapshot/selection/result types와 stable extension/panel/state IDs
 
 ### Tests / validation
--
+- Start gate: `baseline/optional-sdk-v1^{commit}` =
+  `175ecff7613c15d5afd39327e957885c6eed4e50`; `wt/matcap`이 정확히 그 commit에서 시작했다.
+- `npm run test -- --run tests/extensions/matcap`: PASS — 7 files / 43 tests.
+- `npm run ci`: PASS — strict typecheck, 94 files / 475 tests, production build, artifact failures 0.
+- Provider harness: PASS — GLSL ES 3.00 compile/link execution path, image resolve, link failure와 Core fallback,
+  image revision/context restore 경계를 검증했다.
+- Core-only scan: `npm run verify:core -- --scan-only` PASS — 146 Core source files, Core→Optional import 0,
+  WGSL 0.
+- MatCap 제거 조건의 임시 Core-only validation: PASS — Optional source/tests를 제외한 strict typecheck,
+  81 files / 403 tests, Vite build와 artifact gate failures 0. 임시 config/artifact는 검증 후 삭제했다.
+- Bundle artifact는 Core-only build와 동일했다: compressed JS+CSS 61,175 bytes, parsed JS 221,238 bytes,
+  index SHA-256 `7558ded6e3c6fe69bb0d44a9c71eaf6415d35f6d6333ab6c52065370c805ba26`.
 
 ### Integration notes
--
+- 14 Optional Integration은 optional composition root에서 `MatcapExtension`만 import/activate하면 된다.
+- provider 등록만으로 active mode가 바뀌지 않는다. panel/controller가
+  `activateScoped([MATCAP_SHADING_PROVIDER_ID])` lease를 소유하며 dispose 시 이전 PBR/Paint/Core selection이
+  복원된다.
+- custom image state는 schema v2 contribution과 정확한 `(id, revision)` ref로 저장된다. unknown extension
+  contribution 보존과 bundle image ref dedupe는 Optional SDK state registry 조합 테스트로 검증했다.
+- 12 Lookdev/PBR implementation이나 branch 산출물을 import하지 않았고 branch point에도 12가 존재하지 않는다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 iPad Safari의 frame time, peak memory와 thermal은 이번 환경에서 측정하지 않았으며 통과로 기록하지
+  않는다.
+- 실제 browser driver smoke용 `browser-smoke.html/.ts`를 추가했으나, 이 환경에서는 local Vite listen이
+  `EACCES`로 거부되고 in-app browser의 data URL navigation도 보안 정책으로 차단되어 실행하지 못했다.
+  canonical Renderer WebGL2 harness의 compile/link/fallback 검증은 통과했지만 실제 Safari/Chromium GPU driver
+  smoke는 14의 browser/device gate에서 다시 실행해야 한다.
