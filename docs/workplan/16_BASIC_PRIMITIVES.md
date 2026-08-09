@@ -1,0 +1,581 @@
+# 16 Basic Primitives and Reference-Free Start
+
+## Required
+
+YES — 사용자가 reference asset 없이 빈 workspace에서 첫 mesh를 만들 수 없는 현재 제품 blocker를 닫는
+post-14 Core 기능이다.
+
+이 workstream의 완료 조건은 단순히 primitive 버튼을 노출하는 것이 아니다. 빈 scene에서 Plane 또는 Cube를
+생성하고, 선택·카메라 framing·최소 reference-free Move/Extrude·undo/redo·save/reload·export까지 실제 UI
+흐름으로 완료할 수 있어야 한다.
+
+## Policy Compatibility Gate
+
+이 문서는 `00~15` 이후의 독립적인 후속 기능 workstream이다. 루트 `AGENTS.md`의 frozen contract, Optional
+격리, iPad-first, worktree, 검증 및 RESULT 규칙을 그대로 따른다.
+
+- 14의 개발 통합 commit은 사용할 수 있지만, 실제 iPad Safari/Apple Pencil hard gate 미검증으로 생성되지
+  않은 `baseline/full-v1`은 시작 조건으로 요구하지 않는다.
+- 14의 `Status: BLOCKED`는 release tag를 막는 기기 증거 상태다. 아래 입력 commit이 존재하고 최신 main이 그
+  후손이면 16의 개발 시작을 막지 않는다.
+- 16은 10~13 Optional 내부 구현을 수정하지 않으며 Core가 Optional source를 import하게 만들지 않는다.
+- `docs/workplan/INTERFACE_CONTRACTS.md`와 `src/contracts/**`는 frozen 상태를 유지한다. 기존 canonical API로
+  구현할 수 없는 구체적인 누락이 발견되면 shadow type이나 의미 왜곡으로 우회하지 않고 작업을 중단한다.
+- 이 문서의 Integration Ownership은 16 기능 branch 안의 제한된 composition/UI 연결을 허용할 뿐, 다른
+  worktree merge, main 직접 수정, Pages 배포 또는 release tag 생성 권한을 부여하지 않는다.
+- 새로운 래스터 asset은 필요하지 않다. 기본 도형, 아이콘, empty-state 장식은 HTML/CSS/canvas 또는 SVG 같은
+  code-native 방식으로 구현하며 ImageGen을 억지로 사용하지 않는다.
+
+## Execution
+
+```text
+Mode: WORKTREE
+Branch: wt/basic-primitives
+Worktree: ../wt-basic-primitives
+Order: AFTER 14 DEVELOPMENT INTEGRATION COMMIT IS AVAILABLE ON MAIN
+Minimum input commit: e54edeed9094d71679b4b081729a34354e820e4a
+Input baseline: the minimum input commit OR the latest clean main descendant resolved at implementation start
+Output: FINAL BASIC PRIMITIVES FEATURE COMMIT + RESULT ON wt/basic-primitives
+Push: origin/wt/basic-primitives AFTER ACCEPTANCE; NEVER FORCE-PUSH
+Immutable release tag: NONE
+```
+
+### Baseline resolution gate
+
+구현을 시작할 때 다음 순서로 입력 SHA를 확정한다.
+
+1. `e54edeed9094d71679b4b081729a34354e820e4a`가 local Git object로 존재하는지 확인한다.
+2. 최신 `origin/main^{commit}`을 candidate로 해석한다. local `main`을 사용할 때는 `origin/main`과 동일하거나
+   사용자가 명시적으로 선택한 clean descendant여야 한다.
+3. `git merge-base --is-ancestor e54edeed9094d71679b4b081729a34354e820e4a <candidate>`가 성공해야 한다.
+4. `wt/basic-primitives` branch/worktree를 정확히 그 candidate commit에서 생성하고 시작 SHA를 RESULT에
+   기록한다.
+5. `baseline/full-v1`의 존재 여부는 확인 자료로만 기록할 수 있으며, 부재를 blocker로 취급하지 않는다.
+
+candidate가 최소 입력 commit의 후손이 아니거나, 지정 worktree를 clean하게 만들 수 없거나, 같은 경로에
+분리할 수 없는 사용자 변경이 있으면 구현을 시작하지 않는다.
+
+## Goal
+
+다음 사용자 흐름을 Core에 추가한다.
+
+```text
+New Scene empty state
+-> Add Plane (1단계 MVP) 또는 Add Cube (2단계)
+-> 생성 topology 자동 선택
+-> Frame Selection
+-> reference가 없어도 최소 Move / Extrude
+-> grouped Undo / Redo
+-> project save / reload
+-> OBJ / GLB export
+```
+
+기본 도형은 별도 GPU primitive가 아니라 기존 editable retopo mesh에 추가되는 일반 topology다. 동일한 mesh,
+history, selection, renderer, project 및 export 경로를 끝까지 재사용한다.
+
+## Non-Goals
+
+- Sphere, Cylinder, Cone, Torus 또는 segments/pole/cap 설정. Sphere/Cylinder는 별도 후속 workstream으로 미룬다.
+- object/document model, object별 transform, 이름/visibility, parenting, collection, outliner, duplicate/instance
+- Rotate/Scale 도구, 축/평면 gizmo 전체 suite, snapping grid, 수치 입력 및 transform orientation UI
+- 자유 위치/크기를 pointer drag로 정하는 interactive primitive placement tool
+- destructive `New`, project 목록, Open, Save As, dirty prompt, autosave recovery 같은 전체 project lifecycle
+- Create Vertex 또는 Retopo Stroke를 reference 없이 동작하도록 일반화하는 작업
+- reference가 있을 때의 surface snapping, Retopo inference 또는 기존 tool 알고리즘 재설계
+- mesh/history/selection/renderer/project frozen public contract 변경
+- Optional 10~13 내부 기능 변경, Optional loader 재설계 또는 Core에서 Optional import 추가
+- 마우스 orbit/pan/wheel camera navigation과 Guided Retopo. 두 기능은 각각 별도 후속 workstream이다.
+- Cloudflare Pages 배포, production 운영, `baseline/full-v1`, `deploy/*` 또는 다른 immutable tag 생성
+
+`New Scene`은 이 문서에서 초기 또는 빈 document의 사용자-visible empty state를 뜻한다. 기존 작업을 버리는
+destructive reset command와 미저장 확인은 project lifecycle workstream으로 남긴다.
+
+## Existing Contracts and API Reuse
+
+| 기능 | 재사용할 기존 경계 | 16의 원칙 |
+|---|---|---|
+| topology 생성 | `MeshMutationService.execute`, `createVertex`, `createFace`, `MeshMutationResult.created` | ID를 예측하지 않고 실제 결과에서 수집 |
+| 원자성 | 이미 forward 적용된 `MeshPatch`, `HistoryTransaction.recordApplied/commit/rollback` | 한 primitive 전체를 history entry 하나로 기록 |
+| 선택 | `SelectionService.update("replace", ...)`, `prune` | 성공한 생성 결과만 선택하고 실패 시 이전 선택 유지 |
+| framing | local `OrbitCameraController`, canonical `CameraSnapshot`/`ViewportSnapshot` | local controller 기능만 확장하고 camera contract는 변경하지 않음 |
+| drag target | `PickingService.rayFromScreen`, 기존 reference `SurfaceQuery` | reference hit 우선, miss일 때만 local construction-plane fallback |
+| rendering | `CoreWorkspace.sceneSnapshot()`, retopo mesh version 기반 renderer update | primitive 전용 render pass/GPU resource를 만들지 않음 |
+| persistence | `MeshDocument.serialize`, `MeshFactory.restore`, `ProjectDocument` | primitive 전용 schema나 repository를 만들지 않음 |
+| export | 기존 `exportObj`, `exportGlb` | 동일 editable mesh export 경로 사용 |
+
+새 cross-module service, event, record 또는 shadow contract를 만들지 않는다. 필요한 helper나 recipe type은 16이
+소유한 package-local implementation detail로 유지하고 입출력에는 canonical `Vec3`, element ID, snapshot 및
+service type을 사용한다.
+
+## New Scene Empty State
+
+초기 empty mesh를 오류나 로딩 상태가 아닌 명시적인 `New Scene` 상태로 표시한다.
+
+- retopo mesh에 live vertex/face가 없을 때 empty-state CTA를 표시한다.
+- reference도 없으면 `Import Reference`, `Add Plane`, `Add Cube`를 같은 시작 선택지로 제공한다.
+- reference는 있지만 retopo mesh가 비어 있으면 reference viewport를 가리지 않는 compact CTA로 전환한다.
+- viewport와 camera는 empty state에서도 mount된 상태를 유지하며, CTA는 canvas/WebGL lifecycle을 대체하지
+  않는다.
+- primitive 생성 성공 또는 project load로 editable mesh가 생기면 CTA를 닫는다.
+- Undo로 다시 empty mesh가 되면 CTA가 돌아오고, Redo 시 다시 닫힌다.
+- 버튼은 keyboard focus, accessible name, disabled/busy 상태와 최소 44 CSS pixel hit target을 갖는다.
+- 장식이 필요하면 CSS 또는 저장소-native SVG를 사용한다. bitmap asset과 ImageGen은 사용하지 않는다.
+
+## Stage 1 — Add Plane MVP
+
+### Geometry recipe
+
+기본 크기는 1 project unit이며 원점 중심 XY plane, `+Z` outward winding으로 고정한다.
+
+```text
+v0 = (-0.5, -0.5, 0)
+v1 = ( 0.5, -0.5, 0)
+v2 = ( 0.5,  0.5, 0)
+v3 = (-0.5,  0.5, 0)
+face = [v0, v1, v2, v3]
+```
+
+성공 결과:
+
+- vertex 4, edge 4, corner 4, quad face 1
+- 생성 face 하나를 `replace` selection으로 선택
+- 한 번의 `Frame Selection`으로 viewport 중앙에 안전한 padding을 두고 표시
+- reference asset이 없어도 즉시 렌더링
+- Undo 한 번으로 생성 전 mesh, Redo 한 번으로 동일 stable ID와 topology 복원
+
+### Command semantics
+
+primitive 생성은 pointer lifecycle을 소유하는 `Tool`이 아니라 즉시 실행 command로 구현한다.
+
+```text
+begin("Add plane")
+-> createVertex × 4를 순차 실행
+-> 각 MeshMutationResult.created.vertices에서 실제 ID를 수집
+-> 수집한 ID로 createFace × 1 실행
+-> 이미 적용된 모든 patch를 같은 transaction에 recordApplied
+-> topology/count/bounds 검증
+-> commit 한 번
+-> 생성 face replace-selection
+-> Frame Selection
+-> render 요청
+```
+
+- `batch`에 아직 존재하지 않는 vertex ID를 미리 넣거나 allocator 순서를 추측하지 않는다.
+- 각 `createVertex` 결과에는 정확히 하나의 새 vertex가, `createFace` 결과에는 정확히 하나의 새 face가 있어야
+  한다. 결과 shape가 다르면 성공으로 계속하지 않는다.
+- mutation 또는 검증이 중간에 실패하면 transaction을 역순 rollback한다. 부분 vertex/edge/corner/face,
+  history entry 또는 바뀐 selection을 남기지 않는다.
+- selection과 camera는 mesh patch/history에 위장해 넣지 않는다. 생성 transaction이 성공한 뒤 결정적인
+  post-action으로 적용하며, 생성 실패 시 이전 selection과 camera를 유지한다.
+
+## Stage 2 — Add Cube
+
+Stage 1 Plane의 unit/integration/UI acceptance가 먼저 통과한 뒤 같은 command/transaction 경로에 Cube recipe를
+추가한다. Cube를 위해 별도 mutation service나 renderer path를 만들지 않는다.
+
+기본 크기는 1 project unit, 원점 중심이며 다음 topology를 사용한다.
+
+```text
+vertices: 8
+edges: 12
+corners: 24
+quad faces: 6
+```
+
+모든 face는 outward winding이어야 한다. recipe test는 각 face normal이 cube center에서 face center로 향하는
+벡터와 양의 dot product를 갖는지 검증한다.
+
+- vertex 8개를 순차 생성하고 실제 `created.vertices` ID를 수집한다.
+- 6개 face를 recipe 순서대로 생성하고 실제 `created.faces` ID를 수집한다.
+- 전체 14개 mutation patch를 history transaction 하나에 기록한다.
+- 생성된 6개 face를 모두 `replace` selection으로 선택하고 전체 cube bounds를 frame한다.
+- 중간 face 하나라도 실패하면 8개 vertex와 앞서 생성된 face까지 모두 rollback한다.
+- Cube도 단일 mesh 안의 disconnected component일 뿐 별도 object가 아니다.
+
+## Frame Selection
+
+primitive 직후 자동 호출하고 toolbar/action에서도 재사용할 수 있는 local composition 기능으로 구현한다.
+
+1. selected vertex는 그 position을 직접 사용한다.
+2. selected edge는 두 endpoint를 포함한다.
+3. selected face는 ordered corner가 참조하는 모든 vertex를 포함한다.
+4. 중복 vertex를 제거한 뒤 finite AABB, center와 bounding radius를 계산한다.
+5. 현재 view direction과 up orientation을 유지하면서 viewport aspect/FOV에 맞는 거리로 camera target과
+   position을 이동한다.
+6. 최소 반경과 15% 이상의 screen padding을 적용해 단일 vertex나 매우 얇은 Plane에서도 non-finite 또는
+   near-plane clipping을 만들지 않는다.
+7. 선택이 비었거나 live element가 없으면 명시적인 no-op이며 camera를 바꾸지 않는다.
+
+`CameraSnapshot` 또는 frozen camera contract를 변경하지 않는다. local `OrbitCameraController`와
+`CoreWorkspace` entry만 최소 확장하고 camera change publish와 render request를 기존 경로로 보낸다.
+
+## Reference-Free Move / Extrude Decision
+
+### Scope decision
+
+최소 construction-plane fallback과 `Frame Selection`을 16에 **포함한다**. 이유는 Plane/Cube를 생성해도 현재
+Move와 Extrude가 reference surface hit에만 의존하면 reference 없는 사용자가 생성된 mesh를 실질적으로
+편집할 수 없기 때문이다. 버튼만 추가하고 편집 경로를 다음 작업으로 미루면 이 workstream의 사용자 흐름이
+닫히지 않는다.
+
+다만 full transform/gizmo suite는 포함하지 않는다.
+
+### Fallback policy
+
+- reference `SurfaceQuery`가 유효한 hit를 반환하면 기존 surface-snapped target을 그대로 우선한다.
+- reference miss 또는 reference 부재일 때만 pointer-down 시점에 local construction plane을 생성하고 gesture
+  종료까지 고정한다. gesture 중간에 target mode를 바꿔 위치가 튀지 않게 한다.
+- Move는 picked anchor를 지나는 camera-facing plane과 pointer ray의 교점을 사용해 selected vertices를
+  view-plane에서 이동한다.
+- Extrude는 selected face들의 finite area-weighted normal을 구하고, 그 normal을 포함하는 best-conditioned
+  drag plane을 gesture 시작 시 고정한다. pointer target 변화는 face normal 성분으로 투영해 normal-direction
+  offset으로 사용한다.
+- camera ray와 plane이 평행에 가깝거나 normal이 degenerate하거나 finite intersection을 얻지 못하면 mutation을
+  실행하지 않고 사용자에게 recoverable 상태를 표시한다.
+- pointer cancel, lost capture, tool deactivate 또는 zero displacement는 transaction/history entry를 남기지
+  않는다.
+- raw `PointerEvent`를 tools/composition에 노출하지 않고 기존 normalized `PointerSample`과
+  `PickingService.rayFromScreen`을 사용한다.
+
+이 최소 fallback은 Move의 view-plane 이동과 Extrude의 face-normal 이동만 제공한다. axis lock, XY/XZ/YZ
+plane picker, transform gizmo, numeric input, Rotate/Scale은 후속 범위다. `CreateVertexTool`과
+`RetopoStrokeTool`의 reference surface 요구도 그대로 남는다.
+
+## Integration Ownership
+
+16 구현 branch에서만 아래 경로를 수정할 수 있다.
+
+```text
+src/app/composition/primitive-creation.*
+src/app/composition/primitive-recipes.*
+src/app/composition/core-workspace.ts
+src/app/bootstrap.ts
+src/app/bootstrap.css
+src/camera/index.ts
+src/tools/basic/construction-plane.*
+src/tools/basic/move-tool.ts
+src/tools/face/extrude-face-tool.ts
+
+tests/app/composition/primitive-creation.test.*
+tests/app/composition/primitive-recipes.test.*
+tests/camera/camera.test.ts
+tests/tools/basic/basic-tools.test.ts
+tests/tools/basic/construction-plane.test.*
+tests/tools/face/extrude-face-tool.test.ts
+tests/bootstrap/basic-primitives-empty-state.test.*
+tests/integration/core-workspace.integration.test.ts
+tests/e2e/core-workspace-vertical.test.ts
+tests/e2e/basic-primitives-browser.*
+docs/validation/basic-primitives/**
+
+docs/workplan/16_BASIC_PRIMITIVES.md (RESULT만)
+```
+
+기존 파일 구조가 다르면 구현 전에 동등한 정확한 경로를 선언하고 소유 목록을 RESULT에 기록한다. 다음은
+명시적으로 Ownership 밖이다.
+
+```text
+src/contracts/**
+docs/workplan/INTERFACE_CONTRACTS.md
+src/mesh/**
+src/history/**
+src/selection/**
+src/renderer/core/**
+src/renderer/retopo/**
+src/project/**
+src/io/**
+src/extensions/**
+src/optional/**
+src/optional-sdk/**
+package.json 및 lockfile
+tsconfig* / Vite / Vitest / CI 설정
+```
+
+Ownership 밖 수정이 필요하면 구현을 멈추고 구체적인 파일, 이유, 대안과 영향을 보고한다.
+
+## Agent Allocation
+
+주 에이전트는 구현 시작 전에 아래 파일 소유를 그대로 선언한다. Plane Stage 1 gate 전에는 Cube Stage 2를
+완료 처리하지 않으며, 동일 파일을 둘 이상의 agent가 수정하지 않는다.
+
+### Agent A — Primitive Recipes and Atomic Command
+
+소유 파일:
+
+```text
+src/app/composition/primitive-creation.*
+src/app/composition/primitive-recipes.*
+tests/app/composition/primitive-creation.test.*
+tests/app/composition/primitive-recipes.test.*
+```
+
+책임:
+
+- Plane recipe와 순차 ID 수집, one-transaction command, validation 및 rollback
+- Stage 1 gate 뒤 Cube recipe, outward winding과 전체 rollback
+- canonical mesh/history/selection type만 소비하고 allocator ID를 예측하지 않음
+- primitive 전용 project schema, renderer path 또는 shared contract를 만들지 않음
+
+### Agent B — Framing and Construction-Plane Editing
+
+소유 파일:
+
+```text
+src/camera/index.ts
+src/tools/basic/construction-plane.*
+src/tools/basic/move-tool.ts
+src/tools/face/extrude-face-tool.ts
+tests/camera/camera.test.ts
+tests/tools/basic/basic-tools.test.ts
+tests/tools/basic/construction-plane.test.*
+tests/tools/face/extrude-face-tool.test.ts
+```
+
+책임:
+
+- finite bounds framing과 viewport aspect/FOV padding
+- reference-first, construction-plane-second Move target
+- finite area-weighted face normal과 normal-direction Extrude fallback
+- parallel/degenerate/no-op/cancel/lost-capture 경계 검증
+- 기존 reference-snapped tool 동작 회귀 방지
+
+### Agent C — Empty-State UI and Browser Validation
+
+소유 파일:
+
+```text
+src/app/bootstrap.ts
+src/app/bootstrap.css
+tests/bootstrap/basic-primitives-empty-state.test.*
+tests/e2e/basic-primitives-browser.*
+docs/validation/basic-primitives/**
+```
+
+책임:
+
+- New Scene empty state와 Import/Add Plane/Add Cube/Frame Selection UI
+- busy/error/keyboard/accessibility/44 CSS pixel hit target 상태
+- 실제 browser에서 WebGL2 canvas와 버튼 클릭부터 render/framing/export까지 smoke evidence
+- bitmap 없이 HTML/CSS/SVG code-native UI 유지
+
+### Main Agent Reserved
+
+소유 파일:
+
+```text
+src/app/composition/core-workspace.ts
+tests/integration/core-workspace.integration.test.ts
+tests/e2e/core-workspace-vertical.test.ts
+docs/workplan/16_BASIC_PRIMITIVES.md (RESULT만)
+```
+
+책임:
+
+- baseline/worktree/ownership gate 판정
+- Agent A의 command와 Agent B의 framing/fallback을 CoreWorkspace에 연결
+- Agent C가 사용할 local workspace entry와 event/update 경로 동결
+- Stage 1 Plane acceptance 후 Stage 2 Cube 시작 승인
+- Core-only/Full Optional 회귀, 최종 실제 UI vertical slice, RESULT와 branch commit/push
+
+## Work Sequence and Gates
+
+1. **Gate 0 — Baseline:** 최소 입력 SHA, 최신 main descendant, clean worktree, canonical commands와 frozen
+   contracts를 확인한다.
+2. **Gate 1 — Ownership/API freeze:** Main Agent가 위 경로와 package-local 함수 signature를 선언한다.
+   `src/contracts/**`, shared config 및 Optional 경로 변경이 없음을 확인한다.
+3. **Gate 2 — Parallel foundations:**
+   - Agent A는 Plane recipe/atomic command를 구현한다.
+   - Agent B는 framing math와 reference-free construction-plane helpers를 병렬 구현한다.
+   - Agent C는 frozen callback/API를 기준으로 empty-state DOM/CSS와 browser fixture를 준비한다.
+4. **Gate 3 — Plane vertical slice:** Main Agent가 `Add Plane -> selection -> frame -> render -> Move/Extrude ->
+   undo/redo -> save/reload -> export`를 연결한다. Stage 1의 unit/integration/UI tests가 모두 통과해야 한다.
+5. **Gate 4 — Cube Stage 2:** Gate 3 뒤 Agent A가 Cube recipe를 같은 command path에 추가하고 Agent C가 UI와
+   browser fixture를 확장한다. 별도 object 또는 renderer path를 추가하지 않는다.
+6. **Gate 5 — Failure closure:** vertex/face 중간 실패, invalid winding, degenerate plane, pointer cancel,
+   empty selection, save/load/export failure가 부분 mesh/history/selection 또는 stale preview를 남기지 않는지
+   검증한다.
+7. **Gate 6 — Regression:** canonical typecheck/test/build, Core-only physical Optional removal, Full Optional
+   matrix와 기존 reference import/retopo vertical slice를 실행한다.
+8. **Gate 7 — Actual UI:** real browser에서 New Scene CTA부터 Plane/Cube 렌더, framing, 편집, undo/redo,
+   save/load/export를 버튼 존재 확인이 아닌 실제 상태 변화로 검증한다.
+9. **Gate 8 — RESULT:** evidence와 미검증 실기기 항목을 기록하고 final feature commit을 만든 뒤 같은 이름의
+   origin branch로 non-force push한다. main merge와 tag는 수행하지 않는다.
+
+## Tests and Validation
+
+### Unit — Recipe / Command / Atomicity
+
+- Plane recipe가 4 vertices/1 quad와 `+Z` winding을 만든다.
+- Cube recipe가 8 vertices/6 quads를 만들고 결과 snapshot이 12 edges/24 corners를 가지며 모든 face가
+  outward winding이다.
+- 생성 ID는 매 `MeshMutationResult.created`에서만 수집되고 non-contiguous ID fixture에서도 정확하다.
+- 모든 patch가 같은 transaction에 등록되며 Plane/Cube 각각 history entry가 정확히 하나다.
+- N번째 vertex 또는 face 생성 실패 시 앞선 모든 patch가 역순 rollback되고 mesh version/topology/stable ID
+  상태가 생성 전 snapshot으로 돌아간다.
+- 실패 시 selection/camera/history label이 바뀌지 않는다.
+- Undo/Redo가 같은 stable ID, topology, attributes와 version lifecycle을 복원한다.
+
+### Unit — Frame / Construction Plane
+
+- vertex/edge/face/mixed selection에서 중복 없는 finite bounds를 계산한다.
+- portrait/landscape와 극단 aspect에서 선택 전체가 padding 안에 들어오며 camera target/position이 finite다.
+- empty selection은 no-op이고 단일 vertex/flat Plane은 near-plane 오류를 만들지 않는다.
+- reference hit가 있으면 기존 surface target이 fallback보다 우선한다.
+- reference miss에서는 Move의 camera-facing plane이 gesture 시작 anchor에 고정된다.
+- Extrude는 finite averaged normal 방향 offset만 만들고 winding/degenerate face에서 안전하게 거부한다.
+- parallel ray, zero delta, cancel, lost capture와 deactivate는 mutation/history/preview를 남기지 않는다.
+
+### Integration
+
+- empty `CoreWorkspace`에서 Add Plane/Cube command가 실제 Mesh Kernel, History, Selection과 연결된다.
+- primitive 성공 후 `sceneSnapshot().retopo.version`과 selection이 갱신되고 Renderer가 같은 mesh를 그린다.
+- Undo 후 empty state가 돌아오고 Redo 후 같은 topology가 다시 렌더링된다.
+- reference가 없는 Plane/Cube에서 Move와 Extrude가 성공한다.
+- reference가 있는 기존 Move/Extrude는 surface-snapped 결과를 유지한다.
+- 생성 mesh를 save한 뒤 새 workspace에 reload하면 topology/IDs가 유지된다.
+- OBJ/GLB export와 재import round trip이 허용오차 안에서 동일 geometry를 만든다.
+- document replacement, context loss/restore 및 extension model-change 알림이 회귀하지 않는다.
+
+### E2E / Actual Browser UI
+
+최소 다음 두 흐름을 실제 WebGL2 browser에서 실행한다.
+
+```text
+New Scene -> Add Plane -> selected + framed -> Move -> Extrude
+-> Undo -> Redo -> Save -> Reload -> Export OBJ/GLB
+
+New Scene -> Add Cube -> six faces selected + framed
+-> Undo -> empty state -> Redo -> rendered cube
+```
+
+각 흐름은 DOM 버튼 존재만 확인하지 않는다. mesh counts, selected IDs, camera 변화, rendered non-empty frame,
+history labels, saved document, reload 결과, export payload, console warning/error 0을 evidence로 기록한다.
+
+실제 iPad Safari/Apple Pencil 검증을 수행하지 못했다면 통과로 추정하지 않고 RESULT의 Known limitations에
+기록한다. 16은 release baseline을 만들지 않으므로 이 미검증만으로 구현 branch의 `COMPLETE`를 금지하지는
+않지만, 향후 release gate를 대체하지도 않는다.
+
+### Canonical Regression Commands
+
+실제 package scripts를 시작 시 다시 확인한 뒤 최소 다음을 실행한다.
+
+```text
+npm run typecheck
+npx vitest run tests/app/composition tests/camera tests/tools/basic tests/tools/face tests/bootstrap
+npx vitest run tests/integration/core-workspace.integration.test.ts tests/e2e/core-workspace-vertical.test.ts
+npm run verify:core
+npm run verify:optional
+npm run verify:ipad
+npm run ci
+```
+
+`verify:core`는 Optional source가 없는 Core 경로를, `verify:optional`은 Optional source roots를 물리적으로
+제거한 Core와 Full Optional 조합을 기존 정책대로 검증해야 한다. 명령 이름이 baseline에서 달라졌다면 임의로
+script를 추가하지 않고 동등한 existing command를 RESULT에 기록한다.
+
+## Acceptance Gates
+
+- [ ] 구현 branch가 확정된 latest main descendant에서 시작했고 `baseline/full-v1` 부재를 blocker로 쓰지 않았다.
+- [ ] Agent A/B/C/Main Agent의 실제 수정 파일이 겹치지 않고 Integration Ownership 안에 있다.
+- [ ] frozen public contract, shared config, mesh/history/selection/renderer/project concrete implementation을
+      불필요하게 변경하지 않았다.
+- [ ] New Scene empty state가 Import Reference, Add Plane, Add Cube의 실제 시작 경로를 제공한다.
+- [ ] Add Plane이 정확한 quad topology, one transaction, rollback, selection, framing과 rendering을 제공한다.
+- [ ] Plane vertical slice가 통과한 뒤 Add Cube Stage 2가 시작되었다.
+- [ ] Add Cube가 정확한 counts/outward winding, one transaction, rollback, selection과 framing을 제공한다.
+- [ ] ID를 예측하지 않고 sequential mutation result에서 수집했다.
+- [ ] reference hit 우선 정책과 reference-free Move/Extrude fallback이 모두 통과했다.
+- [ ] full gizmo/object/outliner/Rotate/Scale/Sphere/Cylinder가 범위에 섞이지 않았다.
+- [ ] Undo/Redo stable-ID round trip과 save/reload, OBJ/GLB export round trip이 통과했다.
+- [ ] 실제 UI E2E가 New Scene에서 생성·편집·저장·재로드·export까지 상태 변화로 검증되었다.
+- [ ] Core-only와 Full Optional 회귀, canonical typecheck/test/build/CI가 통과했다.
+- [ ] 실제 실행하지 않은 iPad/Pencil 항목과 performance 위험을 Known limitations에 기록했다.
+- [ ] RESULT를 갱신하고 clean feature commit을 `wt/basic-primitives`에 만들었으며 승인된 경우 같은 origin
+      branch로 non-force push했다.
+- [ ] main merge, Pages deploy 또는 immutable release tag를 수행하지 않았다.
+
+## Failure and Stop Rules
+
+- 최소 입력 SHA가 없거나 candidate main이 그 후손이 아니면 시작하지 않는다.
+- worktree가 dirty하거나 기존 사용자 변경과 Ownership 파일이 겹쳐 안전하게 분리할 수 없으면 중단한다.
+- 구현에 frozen contract, shared config, mesh/history/selection kernel 또는 Optional 내부 수정이 필요하면
+  우회하지 않고 필요한 signature/path/이유를 보고한다.
+- 순차 생성 중 실패 후 topology/version/ID allocator/history/selection이 원상 복구되지 않으면 다음 stage로
+  진행하지 않는다.
+- Plane Stage 1의 실제 vertical slice가 통과하지 않으면 Cube Stage 2를 완료 처리하지 않는다.
+- construction-plane fallback이 `SurfaceHit`에 가짜 reference ID를 넣거나 `SurfaceQuery` 의미를 바꿔야만
+  동작한다면 그 방식을 사용하지 않고 중단한다.
+- non-finite camera, blank frame, invalid/inside-out topology, unrecoverable pointer capture 또는 stale preview는
+  blocker다.
+- reference가 있을 때의 기존 surface-snapped Move/Extrude나 09 Core vertical slice가 회귀하면 완료하지 않는다.
+- Optional source physical-removal gate 또는 Full Optional regression이 실패하면 원인을 해결하거나
+  `BLOCKED`로 기록한다.
+- 실제 browser/WebGL2 UI 흐름을 실행하지 못하면 버튼 unit test만으로 `COMPLETE`를 선언하지 않는다.
+- 기존 immutable tag를 이동하거나 덮어쓰지 않는다. 새 immutable release tag가 필요하면 별도 사용자 승인과
+  release workplan을 먼저 만든다.
+
+## Final Commit and RESULT Rule
+
+1. Stage 1 Plane은 해당 stage의 unit/integration/UI acceptance가 모두 통과한 뒤에만 독립 기능 commit으로
+   남길 수 있다.
+2. Stage 2 Cube도 같은 기준을 충족한 뒤 독립 기능 commit으로 남길 수 있다.
+3. 전체 acceptance evidence를 수집한 뒤 아래 RESULT를 먼저 갱신한다. final commit SHA를 RESULT 내부에
+   자기 참조로 기록하려고 추가 commit을 만들지 않는다.
+4. 최종 commit에는 Integration Ownership 안의 16 변경과 이 RESULT만 포함한다. 기존 main/user sidecar
+   변경을 섞지 않는다.
+5. 완료된 branch는 `origin/wt/basic-primitives`로 non-force push할 수 있다. main merge/push는 수행하지 않는다.
+6. `baseline/full-v1`, `deploy/*` 또는 다른 immutable tag는 생성·이동하지 않는다. 별도 승인된 후속 release
+   plan만 tag를 소유한다.
+
+## RESULT
+
+Status: NOT_STARTED
+
+### Baseline refs
+- Minimum input commit: `e54edeed9094d71679b4b081729a34354e820e4a`
+- Resolved start commit: NOT_SET
+- Branch/worktree: `wt/basic-primitives` / `../wt-basic-primitives`
+- `baseline/full-v1` required: NO
+
+### Implemented
+- NOT_STARTED
+
+### Files created or modified
+- NOT_STARTED
+
+### Public API / local entrypoints
+- NOT_STARTED
+
+### Stage 1 — Plane evidence
+- NOT_STARTED
+
+### Stage 2 — Cube evidence
+- NOT_STARTED
+
+### Construction-plane / Frame Selection evidence
+- NOT_STARTED
+
+### Tests / validation
+- NOT_STARTED
+
+### Core-only / Optional regression
+- NOT_STARTED
+
+### Browser / device evidence
+- Desktop browser/WebGL2: NOT_RUN
+- Physical iPad Safari/Apple Pencil: NOT_RUN
+
+### Integration notes
+- NONE
+
+### Requested contract changes
+- NONE
+
+### Known limitations
+- NOT_EVALUATED
+
+### Final disposition
+- Final branch commit: NOT_CREATED
+- Push performed: NO
+- Main merge performed: NO
+- Immutable release tag created: NO

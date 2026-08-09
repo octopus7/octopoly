@@ -649,6 +649,7 @@ Status: BLOCKED
 
 ### Integration notes
 - Candidate code/harness integration commit: `485008a061a8f1781ec14ccd68c0fc7b34b961b8`.
+- RESULT/evidence commit: `e54edeed9094d71679b4b081729a34354e820e4a`.
 - Workstream 15 was not performed. Pages release/operations remains outside this task.
 
 ### Remaining release issues
@@ -656,6 +657,6 @@ Status: BLOCKED
 - Until that evidence passes, Status remains BLOCKED and `baseline/full-v1` must not exist.
 
 ### Final disposition
-- Final integration commit created: YES — candidate implementation/harness commit above; this RESULT/evidence record is committed separately.
+- Final integration commit created: YES — candidate implementation/harness commit above; the RESULT/evidence record is commit `e54edeed9094d71679b4b081729a34354e820e4a`.
 - `baseline/full-v1` created: NO — required physical hard gate is unverified.
-- Push performed: PENDING AT RECORD TIME — this RESULT commit is to be non-force pushed to `origin/main`, with the resolved SHA reported in the final response.
+- Push performed: YES — `origin/main` resolved to `e54edeed9094d71679b4b081729a34354e820e4a` after non-force push.

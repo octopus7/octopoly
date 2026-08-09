@@ -17,6 +17,10 @@ iPad Safari와 Apple Pencil을 우선 지원하는 low-poly / retopology 웹 모
 
 그다음 선택한 `docs/workplan/XX_*.md`를 해당 대화의 단일 작업 명세로 사용합니다.
 
+중단된 16~19 설계 검토를 재개하는 다음 대화는 먼저
+[`docs/workplan/NEXT_SESSION_HANDOFF.md`](docs/workplan/NEXT_SESSION_HANDOFF.md)를 읽고, 기록된 미해결
+정합성 문제를 닫기 전 구현 대화를 시작하지 않습니다.
+
 ## 문서 구조
 
 ```text
@@ -40,8 +44,17 @@ docs/workplan/
   13_MATCAP.md
   14_OPTIONAL_INTEGRATION.md
   15_CLOUDFLARE_PAGES.md
+  16_BASIC_PRIMITIVES.md
+  17_GUIDED_RETOPO.md
+  18_DESKTOP_MOUSE_CAMERA.md
   INTERFACE_CONTRACTS.md
+  OCTOPOLY_TASK_TIMELINE.md
+  NEXT_SESSION_HANDOFF.md
   START_PROMPTS.md
+docs/
+  OCTOPOLY_FOLLOW_UP_FEATURE_ANALYSIS.md
+  OCTOPOLY_DESKTOP_MOUSE_INPUT_ANALYSIS.md
+  OCTOPOLY_IPAD_COMMERCIAL_VIABILITY.md
 ```
 
 `src/**`, `tests/**` 및 프로젝트 설정 파일은 모두 저장소 루트를 기준으로 합니다.
@@ -78,6 +91,13 @@ main에서 다음 baseline을 준비합니다.
    `baseline/full-v1`을 생성합니다.
 9. Core-only는 09, Full Optional은 14의 immutable baseline을 입력으로 15에서 Pages preview, production,
    실제 rollback/roll-forward와 정적 배포 운영 정책을 검증합니다.
+10. 후속 제품 기능은 계획 문서를 포함한 동일한 `origin/main` SHA에서 16 Basic Primitives, 17 Guided
+    Retopo early core, 18 Desktop Mouse Camera를 별도 worktree로 병렬 진행합니다. 17의 앱 연결과 first-asset
+    E2E는 승인된 16 병합 뒤 표준 branch에서 마무리하고 coordinator가 검증 후 병합합니다.
+
+16~18은 `baseline/full-v1` release tag 부재와 별개로 시작할 수 있습니다. 이 작업들은 제품 사용성 공백을
+닫는 기능 개발이며, 14의 실제 iPad/Pencil release gate를 통과한 것으로 대신 기록하거나 release tag를
+생성하지 않습니다.
 
 현재 배포 기준은 Cloudflare Pages의 정적 SPA입니다. Pages Functions/Workers와 server-side secret은 초기
 범위에 없으며, 동적 기능이 필요해질 때 별도 Cloudflare Worker와 versioned API 경계로 추가합니다.

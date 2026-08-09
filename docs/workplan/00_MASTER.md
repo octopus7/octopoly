@@ -39,6 +39,9 @@ Reference import
 - `docs/workplan/10~13` — 09 이후 선택 가능한 Optional Extension
 - `docs/workplan/14_OPTIONAL_INTEGRATION.md` — 선택한 Optional 산출물의 main 조립과 release gate
 - `docs/workplan/15_CLOUDFLARE_PAGES.md` — 검증된 Core/Full Optional baseline의 Pages release와 운영 강화
+- `docs/workplan/16_BASIC_PRIMITIVES.md` — 빈 장면에서 시작할 수 있는 Plane/Cube 생성 흐름
+- `docs/workplan/17_GUIDED_RETOPO.md` — 초보자용 단계형 retopology 학습·가이드 흐름
+- `docs/workplan/18_DESKTOP_MOUSE_CAMERA.md` — 데스크톱 마우스·트랙패드 카메라 조작
 - `docs/workplan/START_PROMPTS.md` — 새 작업 대화에 복사할 프롬프트
 
 ## Mandatory Start Gate
@@ -77,6 +80,9 @@ baseline 이전에는 01~08의 branch/worktree나 기능 코드를 만들지 않
 | 13 | MatCap | NO | WORKTREE or SAME AS 12 | `wt/matcap` or `wt/lookdev-render` |
 | 14 | Optional Integration | CONDITIONAL | MAIN | `main` |
 | 15 | Cloudflare Pages Release / Operations | CONDITIONAL | MAIN | `main` |
+| 16 | Basic Primitives | YES | WORKTREE | `wt/basic-primitives` |
+| 17 | Guided Retopo | CONDITIONAL | WORKTREE | `wt/guided-retopo` |
+| 18 | Desktop Mouse Camera | NO | WORKTREE | `wt/desktop-mouse-camera` |
 
 ## Core Dependency Direction
 
@@ -116,6 +122,9 @@ Retopo inference/preview   -> 08 Retopo Engine
 Application composition    -> 09 Integration
 Optional composition       -> 14 Optional Integration
 Pages release/operations   -> 15 Cloudflare Pages
+Basic primitive creation  -> 16 Basic Primitives
+Guided learning/content   -> 17 Guided Retopo
+Mouse/wheel camera input  -> 18 Desktop Mouse Camera
 ```
 
 각 workstream의 Agent A/B/C는 해당 문서에 지정된 파일 범위만 소유한다. 역할 설명만 있고 파일 소유가
@@ -266,6 +275,46 @@ Core-only 회귀를 소유한다. 실제 대표 iPad Safari/Apple Pencil과 ADR 
 기존 `octopoly` 프로젝트를 그대로 재사용해 동일 candidate SHA의 preview와 production을 검증하고, 실제
 rollback/roll-forward가 통과한 production source commit에만 `deploy/pages-v1` tag를 만든다. 동적 기능은
 15 범위에도 포함하지 않으며 추후 별도 Worker/API 계획으로 분리한다.
+
+## Post-Integration Product Work — 16~18
+
+16~18은 release tag를 만드는 단계가 아니라 실제 사용성 공백을 닫는 후속 제품 기능이다. 14의 개발 통합
+commit이 `main`에 포함되어 있으면 시작할 수 있으며, 실제 iPad/Pencil 증거 부재로
+`baseline/full-v1`이 생성되지 않은 상태 자체는 시작 차단 조건이 아니다. 단, 이 작업들이 14의 release
+hard gate를 통과한 것으로 기록하거나 `baseline/full-v1`을 대신 만들어서는 안 된다.
+
+계획 문서를 포함한 최신 `origin/main`을 한 번 fetch한 뒤 그 commit을 `POST_PLAN_BASE_SHA`로 기록하고,
+16, 18 및 17의 early-core 준비 worktree는 정확히 그 SHA에서 만든다. 17의 app 연결과 실제 first-asset
+vertical slice를 수행하는 표준 worktree는 승인된 16 산출물이 main에 병합된 exact SHA에서 새로 만든다.
+브랜치마다 문서의 RESULT, commit SHA, 테스트 evidence를 남기며 직접 main에 merge하지 않는다.
+
+```text
+                         POST_PLAN_BASE_SHA
+                     ┌──────────┼──────────────┐
+                     ▼          ▼              ▼
+             16 Basic Primitives   17 Early Core   18 Mouse Camera
+                     │          │              │
+                     ▼          │              │
+                merge 16 ───────┘              │
+                     │                         │
+                     ▼                         │
+             17 Standard Integration           │
+                     └──────────┬──────────────┘
+                                ▼
+                    coordinator merge + combined E2E
+```
+
+- 16과 18의 전체 구현, 17의 lesson schema/state·diagnostic·preview early core는 서로 기다리지 않고 병렬
+  시작할 수 있다.
+- 17 early core는 자체 fixture만 사용하고 16 구현을 추측하지 않는다. 앱 연결과 실제 first-asset E2E는
+  승인된 16 시작 경로가 main에 병합된 뒤 표준 branch에서 수행한다.
+- 16과 18은 app-shell 접점이 겹칠 수 있으므로 각 브랜치는 additive adapter/registration 경계를 우선하고,
+  공용 composition 충돌은 coordinator merge에서 한 번만 해결한다.
+- 권장 merge 순서는 `16 -> 18 -> 17`이다. 각 merge 직후 해당 기능 회귀를 실행하고, 마지막에는
+  `빈 장면 primitive 생성 -> 마우스 카메라 확인 -> guided lesson -> 저장/재로드 -> export` 조합 smoke를
+  실행한다.
+- 15 Pages release는 이 기능들과 독립이다. 16~18을 production에 포함하려면 merge된 정확한 candidate SHA를
+  별도 release 입력으로 명시하고 15의 preview/production/rollback gate를 다시 적용한다.
 
 ## Definition of Ready for a Work Conversation
 

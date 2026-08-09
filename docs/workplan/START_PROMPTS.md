@@ -250,3 +250,64 @@ binding, secret이나 동적 API는 추가하지 마. 사용자 승인이 필요
 active production source commit에 `deploy/pages-v1` annotated tag를 만들어 push하고 RESULT와 resolved SHA를
 보고해.
 ```
+
+---
+
+# Post-Integration Product Conversations
+
+16과 18, 17의 early-core 준비는 계획 문서를 포함한 동일한 최신 `origin/main` commit을
+`POST_PLAN_BASE_SHA`로 기록하고 각각의 worktree를 정확히 그 SHA에서 만든다. 17의 표준 app 연결과
+first-asset E2E branch는 승인된 16 산출물이 main에 병합된 exact commit에서 새로 시작한다. 가능한 준비 작업은
+병렬 수행하지만 각 대화는 branch commit과 RESULT만 만들며 main merge/push는 coordinator가 별도로 수행한다.
+`baseline/full-v1` 부재는 시작 차단 조건이 아니고, 어느 작업도 해당 release tag를 만들 수 없다.
+
+## 16 — Basic Primitives
+
+```text
+docs/workplan/16_BASIC_PRIMITIVES.md를 이번 대화의 단일 작업 명세로 사용해 Basic Primitives만 수행해.
+먼저 /AGENTS.md, docs/workplan/00_MASTER.md, docs/workplan/INTERFACE_CONTRACTS.md,
+docs/OCTOPOLY_FOLLOW_UP_FEATURE_ANALYSIS.md, 16 문서를 순서대로 끝까지 읽어. 계획 문서를 포함한 최신
+origin/main을 commit SHA로 해석해 POST_PLAN_BASE_SHA로 기록하고 wt/basic-primitives가 정확히 그 SHA에서
+시작했는지 확인해. 문서의 파일 소유대로 가능한 작업을 최대 3개 서브에이전트로 병렬 수행해. Plane과 Cube
+생성은 command/history transaction을 통과해야 하며 ID를 수동 생성하거나 mesh/history/renderer 구현을
+복제하지 마. 빈 장면에서 생성, 선택, frame, undo/redo, 저장/재로드, export까지 검증하고 16 RESULT를
+갱신한 뒤 branch에 단위별 commit을 만들고 최종 commit SHA를 보고해. main merge/push, 17/18 구현,
+baseline/full-v1 tag 생성은 하지 마.
+```
+
+---
+
+## 17 — Guided Retopo
+
+```text
+docs/workplan/17_GUIDED_RETOPO.md를 이번 대화의 단일 작업 명세로 사용해 Guided Retopo만 수행해.
+먼저 /AGENTS.md, docs/workplan/00_MASTER.md, docs/workplan/INTERFACE_CONTRACTS.md,
+docs/OCTOPOLY_IPAD_COMMERCIAL_VIABILITY.md, docs/OCTOPOLY_FOLLOW_UP_FEATURE_ANALYSIS.md, 17 문서를 순서대로
+끝까지 읽어. 16 RESULT와 ancestry를 먼저 판정해. 16이 아직 승인·병합되지 않았다면 문서의 Early parallel
+core mode만 `wt/guided-retopo-core`에서 수행하고 app/project/sample launcher 경로는 건드리지 않은 채 순수
+단위 commit을 같은 이름의 origin branch로 non-force push해. RESULT는 `IN_PROGRESS`로 남기고 commit SHA와
+남은 standard gate를 보고해. 16이 main에 승인·병합돼 있다면 그 exact post-16 commit에서
+`wt/guided-retopo`를 만들고 Standard mode 전체를 수행해. 어느 mode든 lesson engine/state, topology
+diagnostic/preview, guided UI의 허용 범위를 파일 소유대로 최대 3개 서브에이전트로 병렬 수행하되 초보/Pro용
+topology 엔진을 따로 만들지 마. 실제 mesh를 몰래 수정하거나 단 하나의 정답 topology를 강제하지 말고,
+skip/resume/restart와 undo/redo 안전성을 보장해. 라이선스가 명확한 fixture로 첫 asset 학습 흐름과
+offline/accessibility를 mode가 허용하는 범위까지 검증하고 17 RESULT를 갱신한 뒤 branch에 단위별 commit을
+만들고 최종 commit SHA를 보고해. main merge/push, baseline/full-v1 tag 생성은 하지 마.
+```
+
+---
+
+## 18 — Desktop Mouse Camera
+
+```text
+docs/workplan/18_DESKTOP_MOUSE_CAMERA.md를 이번 대화의 단일 작업 명세로 사용해 데스크톱 마우스·트랙패드
+카메라 조작만 수행해. 먼저 /AGENTS.md, docs/workplan/00_MASTER.md,
+docs/workplan/INTERFACE_CONTRACTS.md, docs/OCTOPOLY_DESKTOP_MOUSE_INPUT_ANALYSIS.md, 18 문서를 순서대로
+끝까지 읽어. 계획 문서를 포함한 최신 origin/main을 commit SHA로 해석해 POST_PLAN_BASE_SHA로 기록하고
+wt/desktop-mouse-camera가 정확히 그 SHA에서 시작했는지 확인해. 중간 버튼 orbit, Shift+중간 버튼 pan,
+wheel/trackpad zoom, pointer capture/cancel cleanup을 문서의 파일 소유대로 최대 3개 서브에이전트로 병렬
+수행해. 왼쪽 버튼 modeling 입력을 빼앗거나 wheel을 가짜 PointerSample로 변환하지 말고, 실제 데스크톱
+브라우저에서 조합 키·capture·페이지 스크롤 억제·touch/Pencil 회귀를 검증해. 실제 물리 iPad mouse를
+검증하지 않았다면 통과했다고 쓰지 마. 18 RESULT를 갱신한 뒤 branch에 단위별 commit을 만들고 최종 commit
+SHA를 보고해. main merge/push, 16/17 구현, baseline/full-v1 tag 생성은 하지 마.
+```
