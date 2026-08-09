@@ -190,25 +190,68 @@ tests/extensions/lookdev/integration/**
 iPad 실기기 결과에는 기기/OS, scene 규모, frame time, peak GPU/JS memory와 thermal 관찰 시간을 기록한다.
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- immutable `LookdevMaterial`/texture slot normalization과 `LookdevMaterialStore`
+- WebGL2 `glsl-es-300` lightweight realtime PBR provider: direct/environment light, GGX-style specular,
+  ACES tone mapping, scalar/default texture fallback과 mobile shader/resource budget gate
+- float color-buffer/capability/resource budget이 허용할 때만 선택되는 single-pass quality provider와
+  quality -> realtime -> Core solid/wireframe candidate degradation
+- scoped provider controller, material/provider/fallback 상태 panel, schema v1 -> v2 material/preset state migration,
+  image revision 보존과 deterministic dedupe
+- provider/panel/state register-once, partial activation reverse rollback, unregister-before-dispose와 idempotent cleanup
 
 ### Files created or modified
--
+- `src/extensions/lookdev/material/**`
+- `src/extensions/lookdev/webgl2/realtime/**`
+- `src/extensions/lookdev/webgl2/quality/**`
+- `src/extensions/lookdev/extension/**`
+- `src/extensions/lookdev/index.ts`
+- `tests/extensions/lookdev/**`
+- 이 문서의 `RESULT` 섹션
 
 ### Public API
--
+- Material: `LookdevMaterial`, `LookdevMaterialInput`, `LookdevTextureSlots`, `LookdevMaterialStore`,
+  `createLookdevMaterial`, `DEFAULT_LOOKDEV_MATERIAL_ID`
+- Providers: `WebGL2PbrShadingProvider`, `WebGL2QualityShadingProvider`,
+  `LOOKDEV_REALTIME_PROVIDER_ID`, `LOOKDEV_QUALITY_PROVIDER_ID`와 capability/shader budget helpers
+- Extension: `LookdevExtension`, `LookdevPanel`, `LookdevController`, `LookdevStateProvider`,
+  `LookdevFallbackReason`, preset/state/panel/extension ID constants
+- Optional-only entrypoint: `src/extensions/lookdev/index.ts`; Core barrel에는 export를 추가하지 않음
 
 ### Tests / validation
--
+- Start gate: `baseline/optional-sdk-v1^{commit}`, `wt/lookdev-render` branch point와 확정 SHA가 모두
+  `175ecff7613c15d5afd39327e957885c6eed4e50`로 일치
+- `npm ci`: PASS — 86 packages
+- `npm run ci`: PASS — strict typecheck, 96 files / 463 tests, production build, artifact failures 0
+- Artifact: compressed JS+CSS 61,175 bytes, parsed JS 221,238 bytes; Core entry가 Optional을 import하지 않아
+  baseline artifact와 동일
+- `npm run verify:core -- --scan-only`: PASS — Core source 146 files, Optional import/WGSL failure 0
+- 실제 extension 제거 gate: `src/extensions`와 `tests/extensions`를 임시 분리한 뒤 canonical typecheck,
+  87 files / 432 tests, production build PASS; 검증 후 두 directory를 원위치 복원
+- Browser WebGL2 smoke: Chromium `WebGL 2.0`, GLSL ES 3.00, max texture 16,384px에서 realtime/quality
+  vertex+fragment compile 및 program link 모두 PASS, console warning/error 0
+- Fallback/lifecycle/state: quality compile/capability/budget failure -> realtime, realtime missing/uniform failure -> Core,
+  Paint/MatCap/Core nested lease 복원, partial rollback, image revision dedupe/flush와 unknown state round trip PASS
+- `git diff --check`: PASS
 
 ### Integration notes
--
+- 14 Optional Integration이 optional entrypoint에서 `LookdevExtension`을 선택적으로 activate해야 한다.
+- 현 `scripts/verify-core.mjs`의 execute mode는 `src/extensions/**`는 제외하지만 `tests/extensions/**`를
+  제외하지 않는다. 이번 작업은 실제 두 directory 제거로 Core-only gate를 별도 통과했으며, 14는 verifier가
+  Optional test root도 제외하도록 additive하게 갱신해야 한다.
+- Opacity uniform은 게시하지만 frozen `ShadingProvider`에 blend-state 소유권이 없으므로 실제 blending policy는
+  Core를 우회해 추가하지 않았다. Progressive/path-like render도 additive render-pass SDK 전까지 범위 밖이다.
+- 새 bitmap asset이 필요하지 않아 ImageGen은 사용하지 않았다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 iPad Safari/Apple Pencil에서 scene 규모별 frame time, peak GPU/JS memory와 30-minute thermal run은
+  이번 환경에서 `NOT_RUN`이며 통과로 기록하지 않는다.
+- Browser smoke는 desktop Chromium WebGL2 compile/link 증거이며 최소 지원 iPadOS 17.4 Safari driver 검증을
+  대체하지 않는다.
+- Frozen shading contract에 blend state/custom render pass/progressive accumulation lifecycle이 없으므로
+  opacity blending과 progressive/path-like quality render는 제공하지 않는다.
