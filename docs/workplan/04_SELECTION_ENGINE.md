@@ -249,25 +249,61 @@ docs/workplan/04_SELECTION_ENGINE.md (RESULT only during implementation)
 - contract change request가 있으면 형식화된 요청; 없으면 `NONE`
 
 ## RESULT
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Implemented
--
+- canonical `SelectionService`를 구현한 `SelectionStore`와 replace/add/subtract/toggle/clear semantics
+- immutable selection snapshot/set, effective-change-only version 증가, 단일 publication, 재진입-safe subscriber snapshot,
+  idempotent unsubscribe
+- `MeshQuery.vertex/edge/face` lookup만 사용하는 atomic stale-ID prune
+- valence-4 manifold vertex의 unique opposite continuation을 따르는 deterministic edge loop
+- incident quad의 opposite edge를 양방향으로 따르는 deterministic edge ring
+- select-all, one-layer grow/shrink, domain별 connected component와 vertex/edge/face conversion pure operators
+- 모든 operator 결과의 live-ID filtering과 ascending ID insertion order
 
 ### Files created or modified
--
+- State/prune: `src/selection/state/**`, `src/selection/prune/**`
+- Operators: `src/selection/operators/loop/**`, `ring/**`, `region/**`, `conversion/**`
+- Local public surface: `src/selection/index.ts`, `src/selection/operators/index.ts`
+- Tests/fakes: `tests/selection/**`
+- Status record: `docs/workplan/04_SELECTION_ENGINE.md`의 `RESULT`만 갱신
 
 ### Public API
--
+- `SelectionStore`
+- `selectAll(mesh)`
+- `selectEdgeLoop(mesh, seed)` / `selectEdgeRing(mesh, seed)`
+- `growSelection(mesh, selection)` / `shrinkSelection(mesh, selection)`
+- `connectedSelection(mesh, selection)`
+- `convertSelection(mesh, selection, target)`
+- Local entry: `src/selection/index.ts`; topology provider는 모든 API에서 canonical `MeshQuery`만 사용
 
 ### Tests / validation
--
+- Baseline/worktree: `baseline/core-v1^{commit}` = `8bd9407294e1f5823a751504ca2c0aee14a39159`,
+  `wt/selection-engine` 시작 commit과 일치, 작업 시작 시 0 commits ahead
+- `npm ci`: PASS, 86 packages 설치
+- Agent targeted tests: state/prune 2 files / 12 tests PASS; loop/ring 2 files / 12 tests PASS;
+  region/conversion 2 files / 10 tests PASS
+- `npm exec vitest run tests/selection`: PASS, 8 files / 36 tests
+- `npm exec vitest run tests/selection/dependency-boundary.test.ts`: PASS, 1 file / 1 test
+- `npm run typecheck`: PASS
+- `npm run ci`: PASS, repository 전체 12 files / 58 tests, production build와 baseline artifact verifier 포함
+- Boundary/pole/non-quad/non-manifold/closed revisit/stale fixture와 atomic prune failure 경로 PASS
+- Dependency audit: Mesh concrete, mutation, renderer, picking, raw input, tool runtime, history import 없음
 
 ### Integration notes
--
+- 09는 application composition에서 concrete `SelectionStore`를 `SelectionService` provider로 생성한다.
+- 01 `PickingService`의 `PickHit`을 적절한 `SelectionChange`로 변환한 뒤 `SelectionService.update`를 호출하는
+  wiring은 09가 담당한다. 이 workstream은 picking 또는 input을 구현하지 않았다.
+- 02 successful mutation 뒤 같은 canonical `MeshQuery`로 `SelectionService.prune(mesh)`를 한 번 호출하는
+  wiring은 09가 담당한다.
+- 07에는 immutable `SelectionSnapshot`만 전달하며 selection module은 GPU handle을 보관하지 않는다.
+- Loop는 boundary/pole/non-manifold vertex에서 continuation을 선택하지 않는다. Ring은 non-quad와 ambiguous
+  edge를 통과하지 않으며, 이미 도달한 non-manifold opposite edge는 포함한 뒤 다음 face 선택 없이 멈춘다.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
--
+- 실제 대규모 topology와 iPad Safari에서 operator latency/memory를 측정하지 않았다.
+- 의도적으로 topology cache를 소유하지 않으므로 select-all과 conversion은 `MeshQuery.snapshot()` 열거를,
+  traversal은 주입된 `MeshQuery` lookup/adjacency 성능을 따른다.
