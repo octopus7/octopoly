@@ -1,6 +1,6 @@
 # OctoPoly 전체 작업 소요 시간 및 타임라인
 
-기록 스냅샷: `2026-08-10 05:20:00 KST`
+기록 스냅샷: `2026-08-10 17:04:47 KST`
 
 ## 데이터 기준
 
@@ -13,6 +13,9 @@
 - `turn_aborted`도 정확한 시작·종료 메타데이터가 있으면 `[중단]`으로 표시한다. 이는 작업 완료를 의미하지 않는다.
 - 10~14는 상위 task의 실제 시작·종료 메타데이터만 표시한다. 정확한 시각이 없는 내부 단계를 임의로 세분하지 않는다.
 - 14는 통합, 회귀 검증, commit·push까지 끝났지만 실제 iPad/Pencil 증거가 없어 검증 상태가 `BLOCKED`다. 이는 구현 또는 push가 미완료라는 의미가 아니다.
+- 16~18은 동일한 exact `POST_PLAN_BASE_SHA`에서 생성한 독립 worktree/Hermes 세션의 시작 시각을 사용한다.
+  API 중단 뒤 같은 세션을 재개한 시간도 상위 작업의 벽시계 구간에 포함한다. 완료 시각은 RESULT commit과
+  원격 branch tip 검증이 끝난 checkpoint를 사용하고, 미완료 작업은 snapshot 시각에서 막대를 자른다.
 - Mermaid로 계층, 병렬 구간, 유휴 구간을 표현할 수 있어 별도 PNG는 생성하지 않았다.
 
 ## 대화 시작 이후 전체 구간
@@ -39,6 +42,10 @@
 | O12 | 12 Lookdev / PBR | 2026-08-10 03:06:08 | 2026-08-10 03:34:17 | 00:28:08 (1,688초) | 완료 | thread `019fe7b4-1296-7ed2-9757-0710f0ece551` |
 | O13 | 13 MatCap | 2026-08-10 03:06:10 | 2026-08-10 03:35:53 | 00:29:42 (1,782초) | 완료 | thread `019fe7b4-1f7b-7bb2-9e19-78cae3654c43` |
 | O14 | 14 Optional Integration | 2026-08-10 04:10:33 | 2026-08-10 04:54:25 | 00:43:52 (2,632초) | `BLOCKED` — 통합·회귀·push 완료, 실제 iPad/Pencil 증거 없음 | thread `019fe7ef-1068-7f42-82f4-ecf6f2e5793c` |
+| F16-A | 16 Basic Primitives — Plane/Cube | 2026-08-10 15:11:31 | 2026-08-10 16:10:09 | 00:58:38 (3,518초) | 완료 | Hermes `20260810_151133_a032f7`; RESULT `28cd1aa` |
+| F17-E | 17 Guided Retopo — Early Core | 2026-08-10 15:11:31 | 2026-08-10 16:49:59 | 01:38:28 (5,908초) | Early Core 완료 / 전체 `IN_PROGRESS` | Hermes `20260810_151133_cd9dc8`; RESULT `d142ca6` |
+| F18 | 18 Desktop Mouse Camera | 2026-08-10 15:11:31 | 2026-08-10 16:54:53 | 01:43:22 (6,202초) | 자동·브라우저 검증 완료 / 물리 입력 evidence 대기 | Hermes `20260810_151133_3048a9`; RESULT `9cc9c79` |
+| F16-B | 16 Built-in Animal Meshes + default-Cube handoff | 2026-08-10 16:17:43 | 2026-08-10 16:56:01 | 00:38:18 (2,298초) | 완료 | Hermes `20260810_151133_a032f7`; feature `4d441b6`; RESULT `165508b` |
 
 `C01`과 `C02`는 각각 하나의 assistant turn에서 여러 활동을 수행했다. 독립된 시작·종료 메타데이터가 없는
 내부 활동을 임의로 분할하지 않았다. `C02`의 종료는 사용자가 제공한 `05:20 30%` 현시점과 취침 전 handoff
@@ -59,6 +66,12 @@
 | 2026-08-10 03:12:07 | `2d52dad436e559d7454f20e835b5c273ac60108f` | 01~08 작업 타임라인 최초 작성 |
 | 2026-08-10 03:31:21 | `cf71caff179df331b277e8088e1cdc5cb3fa835d` | 전체 프로젝트 타임라인·사용량 시계축 확장 |
 | 2026-08-10 04:53:41 | `e54edeed9094d71679b4b081729a34354e820e4a` | 14 Optional Integration `BLOCKED` RESULT 및 evidence 기록 |
+| 2026-08-10 15:09:57 | `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f` | 16~25 practical tool planning anchor (`POST_PLAN_BASE_SHA`) |
+| 2026-08-10 16:10:09 | `28cd1aa24c5724eae98336433c89c00ec2b23c63` | 16 Plane/Cube RESULT 및 원격 workstream tip |
+| 2026-08-10 16:49:01 | `d142ca607593167ee0d86ad11cd3c4526a2ab661` | 17 Guided Retopo Early Core `IN_PROGRESS` RESULT |
+| 2026-08-10 16:52:35 | `9cc9c7990266ce0abfac17a034dab2b11d57324d` | 18 Desktop Mouse Camera RESULT |
+| 2026-08-10 16:52:52 | `4d441b6779d794186d0a9d22d1706bbd3df7d355` | 16 editable low-poly animal primitives feature checkpoint |
+| 2026-08-10 16:54:45 | `165508b5a489f9d39b6491531aa1356ceb6f2d0b` | 16 extended primitives RESULT 및 원격 workstream tip |
 
 Commit은 작업 구간이 아니라 완료 시점의 milestone이다. 작업 막대와 commit milestone이 겹쳐도 중복 작업시간으로 합산하지 않는다.
 
@@ -85,6 +98,28 @@ Commit은 작업 구간이 아니라 완료 시점의 milestone이다. 작업 �
 - 관측 병렬 배율: 약 `5.55×`
 
 각 행은 밀리초를 개별 절삭해 표시하므로 표시된 정수 초의 합과 원본 `durationMs` 합계를 마지막에 한 번 절삭한 값 사이에는 몇 초 차이가 날 수 있다. 하위 작업 소요는 상위 turn 안에 포함되므로 다시 합산하지 않는다.
+
+## 16~18 병렬 실행 및 호스트 자원 스냅샷
+
+- 동일 branch point: `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f`
+- 병렬 시작: `2026-08-10 15:11:31 KST`
+- 17 Early Core remote tip: `d142ca607593167ee0d86ad11cd3c4526a2ab661`
+- 18 remote tip: `9cc9c7990266ce0abfac17a034dab2b11d57324d`
+- 16 동물 확장 remote tip: `165508b5a489f9d39b6491531aa1356ceb6f2d0b`
+
+`2026-08-10 16:52:48 KST` 실측 호스트 상태:
+
+| 항목 | 값 | 해석 |
+|---|---:|---|
+| CPU | Intel N100, 4 cores / 4 threads | 동시 TypeScript/Vitest/Chrome 작업 시 쉽게 4 core를 모두 사용 |
+| load average | 5.25 / 6.66 / 5.30 (1/5/15분) | logical CPU 4개보다 높아 runnable/I/O wait 작업이 대기 중 |
+| RAM | 7.6 GiB total / 2.9 GiB used / 4.8 GiB available | 메모리 압박은 낮음 |
+| Swap | 2.0 GiB total / 1.2 MiB used | swap 압박 없음 |
+| 순간 최고 CPU | TypeScript `tsc --noEmit` 약 295% | 18 worktree typecheck가 약 3 cores 사용 |
+| Hermes gateway RSS | 약 1.10 GiB | 가장 큰 단일 상주 프로세스 |
+
+팬 회전의 주원인은 메모리가 아니라 16/18 Hermes 작업, TypeScript/Vitest 및 Headless Chrome/WebGL2 검증이
+동시에 4-core N100을 포화시키는 CPU 부하다.
 
 ## 01~08 세부 구간
 
@@ -158,6 +193,12 @@ gantt
     01~08 timeline 최초 문서            :milestone, m08, 2026-08-10 03:12:07, 0s
     전체 timeline 사용량 축 확장        :milestone, m09, 2026-08-10 03:31:21, 0s
     Optional Integration RESULT         :milestone, m10, 2026-08-10 04:53:41, 0s
+    Practical planning anchor           :milestone, m11, 2026-08-10 15:09:57, 0s
+    16 Plane Cube RESULT                :milestone, m12, 2026-08-10 16:10:09, 0s
+    17 Early Core RESULT                :milestone, m13, 2026-08-10 16:49:01, 0s
+    18 Mouse Camera RESULT              :milestone, m14, 2026-08-10 16:52:35, 0s
+    16 Animal feature checkpoint        :milestone, m15, 2026-08-10 16:52:52, 0s
+    16 Animal RESULT                    :milestone, m16, 2026-08-10 16:54:45, 0s
 
     section Bootstrap 및 배포
     00 수행 위치 답변                   :done, q01, 2026-08-10 00:14:41, 19s
@@ -237,16 +278,25 @@ gantt
     13 MatCap                           :crit, o13, 2026-08-10 03:06:10, 1782s
     14 Optional Integration BLOCKED     :crit, o14, 2026-08-10 04:10:33, 2632s
 
-    section 공유 절대 시간축
+    section 16~18 후속 병렬 구현
+    16 Plane Cube                       :crit, f16a, 2026-08-10 15:11:31, 3518s
+    17 Guided Early Core                :crit, f17e, 2026-08-10 15:11:31, 5908s
+    18 Desktop Mouse Camera             :crit, f18, 2026-08-10 15:11:31, 6202s
+    16 Animal Meshes                    :crit, f16b, 2026-08-10 16:17:43, 2298s
+
+    section Gantt 절대 시간축
     표시 범위 시작                     :milestone, rangeStart, 2026-08-09 22:00:00, 0s
-    표시 범위 종료                     :milestone, rangeEnd, 2026-08-10 05:30:00, 0s
+    표시 범위 종료                     :milestone, rangeEnd, 2026-08-10 17:00:00, 0s
 ```
 
 ## Codex 주간 사용량 (%)
 
-이 그래프는 작업 구간별 Codex 주간(week) 사용량 증가를 Gantt와 동일한 절대 시간축에서 쉽게 비교하기 위한 것이다. 이 값은 작업 진행률이 아니다.
+이 그래프는 원자료가 있는 초기 작업 구간의 Codex 주간(week) 사용량 증가를 당시 Gantt 절대 시간축과
+비교하기 위한 역사적 snapshot이다. 이 값은 작업 진행률이 아니다.
 
-Gantt와 선 그래프의 공유 표시 범위는 `2026-08-09 22:00:00`부터 `2026-08-10 05:30:00 KST`까지다. 첫 표본 전 10분과 마지막 표본 후 10분은 관측값이 없는 빈 공간이며, Mermaid Gantt의 `공유 절대 시간축` milestone은 실제 작업이 아니라 두 그림의 시작과 끝을 고정하는 표시 범위 anchor다.
+사용량 선 그래프는 원자료가 존재하는 역사적 관측 구간 `2026-08-09 22:00:00`부터
+`2026-08-10 05:30:00 KST`까지만 유지한다. 이후 16~18 구간에는 신뢰할 수 있는 추가 사용량 표본이 없어 값을
+추정하지 않았다. Mermaid Gantt는 후속 작업을 포함해 `2026-08-10 17:00:00 KST`까지 확장됐다.
 
 ![Codex 주간 사용량 선 그래프](assets/codex-weekly-usage.svg)
 
@@ -276,7 +326,9 @@ Gantt와 선 그래프의 공유 표시 범위는 `2026-08-09 22:00:00`부터 `2
 | 2026-08-10 04:50 | 29 |
 | 2026-08-10 05:20 | 30 |
 
-SVG의 x좌표는 공유 표시 범위 450분에 대한 경과 시간의 선형 비례값으로 계산했다. 따라서 관측 간격이 5분이면 짧게, 50분이면 길게 표시되며 자정은 강조 세로선과 날짜 라벨로 구분한다. 마지막 표본 이후 10분은 선을 연장하지 않은 빈 공간이다.
+SVG의 x좌표는 역사적 사용량 관측 범위 450분에 대한 경과 시간의 선형 비례값으로 계산했다. 따라서 관측
+간격이 5분이면 짧게, 50분이면 길게 표시되며 자정은 강조 세로선과 날짜 라벨로 구분한다. 마지막 표본 이후
+10분은 선을 연장하지 않은 빈 공간이다.
 
 ## 계산 방법과 한계
 
