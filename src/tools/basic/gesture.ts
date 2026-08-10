@@ -17,7 +17,10 @@ export const RELEASED = Object.freeze({ handled: true, releasePointer: true });
 export const UNHANDLED = Object.freeze({ handled: false });
 
 export function isModelingPointer(sample: PointerSample): boolean {
-  return sample.isPrimary && sample.pointerType !== "touch";
+  if (!sample.isPrimary || sample.pointerType === "touch") {
+    return false;
+  }
+  return sample.pointerType !== "mouse" || sample.buttons === 1;
 }
 
 export function pickAt(

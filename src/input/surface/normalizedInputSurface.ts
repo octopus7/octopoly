@@ -88,6 +88,7 @@ class ElementNormalizedInputSurface implements NormalizedInputSurface {
     element.addEventListener("pointerup", this.onPointer);
     element.addEventListener("pointercancel", this.onPointer);
     element.addEventListener("lostpointercapture", this.onLostPointerCapture);
+    window.addEventListener("blur", this.onWindowBlur);
     window.addEventListener("resize", this.onViewportChange);
     window.addEventListener("orientationchange", this.onViewportChange);
 
@@ -132,9 +133,9 @@ class ElementNormalizedInputSurface implements NormalizedInputSurface {
         if (this.connection !== connection) {
           return;
         }
-        this.cancelCapturedPointers(sink);
         this.sink = null;
         this.connection = null;
+        this.cancelCapturedPointers(sink);
       },
     };
     this.connection = connection;
@@ -145,18 +146,22 @@ class ElementNormalizedInputSurface implements NormalizedInputSurface {
     if (this.disposed) {
       return;
     }
-    this.connection?.dispose();
     this.disposed = true;
-    this.element.removeEventListener("pointerdown", this.onPointer);
-    this.element.removeEventListener("pointermove", this.onPointer);
-    this.element.removeEventListener("pointerup", this.onPointer);
-    this.element.removeEventListener("pointercancel", this.onPointer);
-    this.element.removeEventListener("lostpointercapture", this.onLostPointerCapture);
-    window.removeEventListener("resize", this.onViewportChange);
-    window.removeEventListener("orientationchange", this.onViewportChange);
-    this.resizeObserver?.disconnect();
-    this.viewportListeners.clear();
-    this.element.style.touchAction = this.previousTouchAction;
+    try {
+      this.connection?.dispose();
+    } finally {
+      this.element.removeEventListener("pointerdown", this.onPointer);
+      this.element.removeEventListener("pointermove", this.onPointer);
+      this.element.removeEventListener("pointerup", this.onPointer);
+      this.element.removeEventListener("pointercancel", this.onPointer);
+      this.element.removeEventListener("lostpointercapture", this.onLostPointerCapture);
+      window.removeEventListener("blur", this.onWindowBlur);
+      window.removeEventListener("resize", this.onViewportChange);
+      window.removeEventListener("orientationchange", this.onViewportChange);
+      this.resizeObserver?.disconnect();
+      this.viewportListeners.clear();
+      this.element.style.touchAction = this.previousTouchAction;
+    }
   }
 
   private readonly onPointer = (event: PointerEvent): void => {
@@ -213,11 +218,16 @@ class ElementNormalizedInputSurface implements NormalizedInputSurface {
       false,
       Math.max(this.lastTimestamp, rawTimestamp),
     );
-    this.dispatch(sample, sink, event);
-
-    if (phase === "up" || phase === "cancel") {
-      this.releasePointer(event.pointerId);
-      this.lastSamples.delete(event.pointerId);
+    try {
+      this.dispatch(sample, sink, event);
+    } finally {
+      if (phase === "up" || phase === "cancel") {
+        try {
+          this.releasePointer(event.pointerId);
+        } finally {
+          this.lastSamples.delete(event.pointerId);
+        }
+      }
     }
   };
 
@@ -234,6 +244,14 @@ class ElementNormalizedInputSurface implements NormalizedInputSurface {
     const timestamp = Math.max(this.lastTimestamp, event.timeStamp);
     this.lastTimestamp = timestamp;
     sink.dispatch(cancelSample(last, timestamp));
+  };
+
+  private readonly onWindowBlur = (): void => {
+    const sink = this.sink;
+    if (this.disposed || sink === null) {
+      return;
+    }
+    this.cancelCapturedPointers(sink);
   };
 
   private readonly onViewportChange = (): void => {
@@ -253,11 +271,35 @@ class ElementNormalizedInputSurface implements NormalizedInputSurface {
   private dispatch(sample: PointerSample, sink: PointerInputSink, source: PointerEvent): void {
     this.lastTimestamp = sample.timestamp;
     this.lastSamples.set(sample.pointerId, sample);
-    const result = sink.dispatch(sample);
+    let result: ToolInputResult;
+    try {
+      result = sink.dispatch(sample);
+    } catch (error: unknown) {
+      try {
+        this.cancelCapturedPointers(sink);
+      } catch {
+        // Preserve the original callback failure after best-effort capture cleanup.
+      } finally {
+        this.lastSamples.delete(sample.pointerId);
+      }
+      throw error;
+    }
     if (result.handled) {
       source.preventDefault();
     }
-    this.applyCaptureResult(sample.pointerId, result);
+    try {
+      this.applyCaptureResult(sample.pointerId, result);
+    } catch (error: unknown) {
+      try {
+        sink.dispatch(cancelSample(sample, sample.timestamp));
+      } catch {
+        // Preserve the capture API failure after best-effort sink rollback.
+      } finally {
+        this.capturedPointers.delete(sample.pointerId);
+        this.lastSamples.delete(sample.pointerId);
+      }
+      throw error;
+    }
   }
 
   private applyCaptureResult(pointerId: number, result: ToolInputResult): void {
@@ -283,15 +325,28 @@ class ElementNormalizedInputSurface implements NormalizedInputSurface {
   }
 
   private cancelCapturedPointers(sink: PointerInputSink): void {
+    let firstFailure: unknown;
     for (const pointerId of [...this.capturedPointers]) {
       const last = this.lastSamples.get(pointerId);
       const timestamp = Math.max(this.lastTimestamp, typeof performance === "undefined" ? 0 : performance.now());
-      if (last !== undefined) {
-        this.lastTimestamp = timestamp;
-        sink.dispatch(cancelSample(last, timestamp));
+      try {
+        if (last !== undefined) {
+          this.lastTimestamp = timestamp;
+          sink.dispatch(cancelSample(last, timestamp));
+        }
+      } catch (error) {
+        firstFailure ??= error;
+      } finally {
+        try {
+          this.releasePointer(pointerId);
+        } catch (error) {
+          firstFailure ??= error;
+        }
+        this.lastSamples.delete(pointerId);
       }
-      this.releasePointer(pointerId);
-      this.lastSamples.delete(pointerId);
+    }
+    if (firstFailure !== undefined) {
+      throw firstFailure;
     }
   }
 

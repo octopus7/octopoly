@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OctoPoly Desktop Mouse Camera Browser Harness</title>
+    <style>
+      html, body { margin: 0; min-height: 1800px; font-family: sans-serif; }
+      #viewport { display: block; width: 500px; height: 350px; margin: 20px; border: 1px solid #555; touch-action: none; }
+      #status { margin: 20px; }
+    </style>
+  </head>
+  <body>
+    <canvas id="viewport" width="500" height="350" aria-label="desktop mouse camera test viewport"></canvas>
+    <pre id="status">loading</pre>
+    <script type="module" src="/docs/validation/desktop-mouse/browser-harness.ts"></script>
+  </body>
+</html>

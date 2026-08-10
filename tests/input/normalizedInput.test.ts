@@ -269,4 +269,210 @@ describe("normalized input surface", () => {
     expect(Object.isFrozen(surface.viewport())).toBe(true);
     surface.dispose();
   });
+
+  it("normalizes window blur to one cancel per captured pointer and releases DOM capture", () => {
+    const element = document.createElement("div");
+    const captured = new Set<number>();
+    element.setPointerCapture = vi.fn((pointerId: number) => captured.add(pointerId));
+    element.releasePointerCapture = vi.fn((pointerId: number) => captured.delete(pointerId));
+    element.hasPointerCapture = vi.fn((pointerId: number) => captured.has(pointerId));
+    const samples: PointerSample[] = [];
+    const surface = createNormalizedInputSurfaceFactory().create(element);
+    surface.connect({
+      dispatch(value) {
+        samples.push(value);
+        return value.phase === "down" ? { handled: true, capturePointer: true } : { handled: true };
+      },
+    });
+    element.dispatchEvent(pointerEvent("pointerdown", { pointerId: 4, buttons: 1, timeStamp: 1 }));
+    element.dispatchEvent(pointerEvent("pointerdown", { pointerId: 5, buttons: 1, timeStamp: 2 }));
+
+    window.dispatchEvent(new Event("blur"));
+    window.dispatchEvent(new Event("blur"));
+
+    expect(samples.map(({ pointerId, phase }) => [pointerId, phase])).toEqual([
+      [4, "down"],
+      [5, "down"],
+      [4, "cancel"],
+      [5, "cancel"],
+    ]);
+    expect(element.releasePointerCapture).toHaveBeenCalledTimes(2);
+    expect(captured.size).toBe(0);
+    surface.dispose();
+  });
+
+  it("finishes disconnect cleanup and permits reconnection when a cancel callback throws", () => {
+    const element = document.createElement("div");
+    const captured = new Set<number>();
+    element.setPointerCapture = vi.fn((pointerId: number) => captured.add(pointerId));
+    element.releasePointerCapture = vi.fn((pointerId: number) => captured.delete(pointerId));
+    element.hasPointerCapture = vi.fn((pointerId: number) => captured.has(pointerId));
+    const cancelled: number[] = [];
+    const surface = createNormalizedInputSurfaceFactory().create(element);
+    const connection = surface.connect({
+      dispatch(value) {
+        if (value.phase === "cancel") {
+          cancelled.push(value.pointerId);
+          if (value.pointerId === 4) {
+            throw new Error("cancel failed");
+          }
+        }
+        return value.phase === "down" ? { handled: true, capturePointer: true } : { handled: true };
+      },
+    });
+    element.dispatchEvent(pointerEvent("pointerdown", { pointerId: 4, buttons: 1, timeStamp: 1 }));
+    element.dispatchEvent(pointerEvent("pointerdown", { pointerId: 5, buttons: 1, timeStamp: 2 }));
+
+    expect(() => connection.dispose()).toThrow("cancel failed");
+
+    expect(cancelled).toEqual([4, 5]);
+    expect(element.releasePointerCapture).toHaveBeenCalledTimes(2);
+    expect(captured.size).toBe(0);
+    const replacement = surface.connect({ dispatch: () => ({ handled: false }) });
+    replacement.dispose();
+    surface.dispose();
+  });
+
+  it("clears lost-capture bookkeeping before propagating the cancel callback failure", () => {
+    const element = document.createElement("div");
+    const captured = new Set<number>();
+    element.setPointerCapture = vi.fn((pointerId: number) => captured.add(pointerId));
+    element.releasePointerCapture = vi.fn((pointerId: number) => captured.delete(pointerId));
+    element.hasPointerCapture = vi.fn((pointerId: number) => captured.has(pointerId));
+    let lostCaptureListener: EventListener | undefined;
+    const addEventListener = element.addEventListener.bind(element);
+    vi.spyOn(element, "addEventListener").mockImplementation((type, listener, options) => {
+      addEventListener(type, listener, options);
+      if (type === "lostpointercapture") {
+        lostCaptureListener = listener as EventListener;
+      }
+    });
+    const surface = createNormalizedInputSurfaceFactory().create(element);
+    let cancels = 0;
+    surface.connect({
+      dispatch(value) {
+        if (value.phase === "cancel") {
+          cancels += 1;
+          throw new Error("lost cancel failed");
+        }
+        return { handled: true, capturePointer: true };
+      },
+    });
+    element.dispatchEvent(pointerEvent("pointerdown", { pointerId: 9, buttons: 1, timeStamp: 1 }));
+    const lost = pointerEvent("lostpointercapture", { pointerId: 9, timeStamp: 2 });
+
+    expect(() => lostCaptureListener?.(lost)).toThrow("lost cancel failed");
+    expect(() => lostCaptureListener?.(lost)).not.toThrow();
+    expect(cancels).toBe(1);
+    surface.dispose();
+  });
+
+  it("rolls back sink ownership when DOM pointer-capture acquisition fails", () => {
+    const element = document.createElement("div");
+    const failure = new Error("capture unavailable");
+    element.setPointerCapture = vi.fn(() => { throw failure; });
+    element.releasePointerCapture = vi.fn();
+    element.hasPointerCapture = vi.fn(() => false);
+    let downListener: EventListener | undefined;
+    const addEventListener = element.addEventListener.bind(element);
+    vi.spyOn(element, "addEventListener").mockImplementation((type, listener, options) => {
+      addEventListener(type, listener, options);
+      if (type === "pointerdown") downListener = listener as EventListener;
+    });
+    let owned = false;
+    let cancels = 0;
+    const surface = createNormalizedInputSurfaceFactory().create(element);
+    surface.connect({
+      dispatch(value) {
+        if (value.phase === "down") {
+          owned = true;
+          return { handled: true, capturePointer: true };
+        }
+        if (value.phase === "cancel") {
+          owned = false;
+          cancels += 1;
+          return { handled: true, releasePointer: true };
+        }
+        return { handled: false };
+      },
+    });
+
+    expect(() => downListener?.(pointerEvent("pointerdown", {
+      pointerId: 15,
+      pointerType: "mouse",
+      buttons: 4,
+    }))).toThrow(failure);
+    expect(owned).toBe(false);
+    expect(cancels).toBe(1);
+    surface.dispose();
+  });
+
+  it("releases every active capture when a non-terminal sink callback throws", () => {
+    const element = document.createElement("div");
+    const captured = new Set<number>();
+    element.setPointerCapture = vi.fn((pointerId: number) => captured.add(pointerId));
+    element.releasePointerCapture = vi.fn((pointerId: number) => captured.delete(pointerId));
+    element.hasPointerCapture = vi.fn((pointerId: number) => captured.has(pointerId));
+    let moveListener: EventListener | undefined;
+    const addEventListener = element.addEventListener.bind(element);
+    vi.spyOn(element, "addEventListener").mockImplementation((type, listener, options) => {
+      addEventListener(type, listener, options);
+      if (type === "pointermove") moveListener = listener as EventListener;
+    });
+    const cancels: number[] = [];
+    const surface = createNormalizedInputSurfaceFactory().create(element);
+    surface.connect({
+      dispatch(value) {
+        if (value.phase === "move") throw new Error("camera callback failed");
+        if (value.phase === "cancel") cancels.push(value.pointerId);
+        return value.phase === "down"
+          ? { handled: true, capturePointer: true }
+          : { handled: true };
+      },
+    });
+    element.dispatchEvent(pointerEvent("pointerdown", { pointerId: 13, buttons: 1, timeStamp: 1 }));
+    element.dispatchEvent(pointerEvent("pointerdown", { pointerId: 14, buttons: 1, timeStamp: 2 }));
+
+    expect(() => moveListener?.(pointerEvent("pointermove", {
+      pointerId: 13,
+      buttons: 1,
+      timeStamp: 3,
+    }))).toThrow("camera callback failed");
+    expect(cancels).toEqual([13, 14]);
+    expect(captured.size).toBe(0);
+    expect(element.releasePointerCapture).toHaveBeenCalledTimes(2);
+    surface.dispose();
+  });
+
+  it("releases terminal pointer capture even when the sink callback throws", () => {
+    const element = document.createElement("div");
+    const captured = new Set<number>();
+    element.setPointerCapture = vi.fn((pointerId: number) => captured.add(pointerId));
+    element.releasePointerCapture = vi.fn((pointerId: number) => captured.delete(pointerId));
+    element.hasPointerCapture = vi.fn((pointerId: number) => captured.has(pointerId));
+    let pointerListener: EventListener | undefined;
+    const addEventListener = element.addEventListener.bind(element);
+    vi.spyOn(element, "addEventListener").mockImplementation((type, listener, options) => {
+      addEventListener(type, listener, options);
+      if (type === "pointerup") {
+        pointerListener = listener as EventListener;
+      }
+    });
+    const surface = createNormalizedInputSurfaceFactory().create(element);
+    surface.connect({
+      dispatch(value) {
+        if (value.phase === "up") {
+          throw new Error("up failed");
+        }
+        return { handled: true, capturePointer: true };
+      },
+    });
+    element.dispatchEvent(pointerEvent("pointerdown", { pointerId: 12, buttons: 1, timeStamp: 1 }));
+
+    expect(() => pointerListener?.(pointerEvent("pointerup", { pointerId: 12, timeStamp: 2 }))).toThrow("up failed");
+    expect(element.releasePointerCapture).toHaveBeenCalledTimes(1);
+    expect(captured.size).toBe(0);
+    surface.dispose();
+    expect(element.releasePointerCapture).toHaveBeenCalledTimes(1);
+  });
 });
