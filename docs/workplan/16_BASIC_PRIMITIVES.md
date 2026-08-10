@@ -527,18 +527,21 @@ Status: COMPLETE
 - Resolved start `POST_PLAN_BASE_SHA`: `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f`
 - Branch/worktree: `wt/basic-primitives` / `/home/beelink/wt-basic-primitives`
 - Start-SHA ancestry check: PASS — resolved start is an ancestor of feature checkpoint `cce4123`
+- Scope-extension base: `28cd1aa24c5724eae98336433c89c00ec2b23c63`; verified ancestor of animal feature commit `4d441b6`
 - Worktree start state: clean, exact resolved start SHA
 - `baseline/full-v1` required: NO
 
 ### Implemented
-- Package-local Plane and Cube recipes using only canonical mutation results for stable IDs.
+- Package-local Plane, Cube, Duck, Frog, Pig, Cow, and Rabbit recipes using only canonical mutation results for stable IDs.
 - One history transaction per primitive, aggregate topology validation, selection after commit, undo/redo, and complete rollback on intermediate vertex/face failure.
 - Plane: centered unit XY quad with `+Z` winding.
 - Cube: centered unit cube with 8 vertices, 12 edges, 24 corners, 6 quads, and outward winding.
 - Finite selection bounds/framing with viewport aspect/FOV handling and at least 15% padding.
 - Reference-first Move/Extrude with reference-free frozen construction-plane fallback and recoverable degenerate/parallel/no-op behavior.
-- Additive New Scene UI for Import Reference, Add Plane, Add Cube, Frame Selection, save/reload, and OBJ/GLB export.
-- Real-browser Plane/Cube harness using the production CoreWorkspace, renderer, picking, tools, persistence, and exporters.
+- Deterministic editable low-poly animal silhouettes: Duck body/head/beak; Frog squat body/eyes/legs; Pig body/snout/ears/legs; Cow body/head/muzzle/horns/legs; Rabbit body/head/long ears/hind legs.
+- Additive New Scene UI for Import Reference, all seven Add actions, Frame Selection, save/reload, and OBJ/GLB export; every action is a native accessible button with a 44 CSS px minimum target.
+- Real-browser seven-scenario harness using the production CoreWorkspace, renderer, picking, tools, persistence, and exporters.
+- A 16-owned idempotent `ensureDefaultCubeForFirstMount` helper is ready for Workstream 19 Phase A shared-bootstrap wiring.
 
 ### Files created or modified
 - `src/app/composition/primitive-creation.ts`
@@ -561,14 +564,15 @@ Status: COMPLETE
 - `docs/validation/basic-primitives/browser-smoke.ts`
 - `docs/validation/basic-primitives/stage1-desktop-chrome.json`
 - `docs/validation/basic-primitives/desktop-chrome-plane-cube.json`
+- `docs/validation/basic-primitives/desktop-chrome-all-primitives.json`
 - `docs/workplan/16_BASIC_PRIMITIVES.md` (`RESULT` only)
 
 All implementation/evidence paths are inside Workstream 16 Integration Ownership. No contract, shared config, mesh/history/selection/renderer/project/IO implementation, Optional source, barrel, package, lockfile, or build configuration was changed.
 
 ### Public API / local entrypoints
-- `PLANE_RECIPE` and `CUBE_RECIPE`
+- `PLANE_RECIPE`, `CUBE_RECIPE`, `DUCK_RECIPE`, `FROG_RECIPE`, `PIG_RECIPE`, `COW_RECIPE`, and `RABBIT_RECIPE`
 - `createPrimitive(recipe, services)`
-- `createBasicPrimitivesEntry(dependencies)` with `addPlane`, `addCube`, `frameSelection`, and `state`
+- `createBasicPrimitivesEntry(dependencies)` with all seven Add methods, `ensureDefaultCubeForFirstMount`, `frameSelection`, and `state`
 - `mountBasicPrimitivesUi(viewport, callbacks, state)`
 - Construction-plane helpers for selected bounds/framing, ray-plane intersection, area-weighted face normals, and best-conditioned drag planes
 
@@ -589,6 +593,17 @@ These are package-local entrypoints; shared bootstrap/CoreWorkspace composition 
 - Actual undo returned all topology counts to zero; redo restored 8/12/24/6.
 - Actual reference-free Move/Extrude, save/reload and export passed; final edited mesh 12/20/40/10, stable-ID reload true, OBJ 798 bytes, GLB 1,028 bytes, warnings/errors 0.
 
+### Extended editable animal primitives evidence
+- Duck: 3 closed components, 24 vertices / 36 edges / 72 corners / 18 faces; body/head/beak silhouette.
+- Frog: 7 closed components, 56 / 84 / 168 / 42; squat body, two large eyes, four legs.
+- Pig: 8 closed components, 64 / 96 / 192 / 48; body, snout, two ears, four legs.
+- Cow: 9 closed components, 72 / 108 / 216 / 54; body, head, muzzle, two horns, four legs.
+- Rabbit: 6 closed components, 48 / 72 / 144 / 36; body, head, two long ears, two hind legs.
+- Recipe tests verify finite coordinates, global coordinate uniqueness, exact counts, in-range non-repeating face cycles, exactly two face uses per component edge, exact disconnected-component counts, and positive outward winding for every face.
+- Each entry method uses the unchanged generic `createPrimitive` path: one transaction, canonical mutation-result IDs, all created faces selected, finite framing, one history label, and complete Undo to empty.
+- Actual Chrome/WebGL2 for every animal passed Add -> Undo -> Redo -> Move -> Extrude -> Save -> Reload -> OBJ -> GLB with stable IDs, non-empty frames, finite framing, and zero warnings/errors.
+- Consolidated evidence: `docs/validation/basic-primitives/desktop-chrome-all-primitives.json`.
+
 ### Construction-plane / Frame Selection evidence
 - Unit tests cover selected vertex/edge/face/mixed bounds, duplicate removal, empty/live-element no-op, thin/point bounds, portrait/landscape framing, finite intersections, parallel rejection, area-weighted normals, and degenerate faces.
 - Existing reference surface hits remain first priority.
@@ -599,8 +614,10 @@ These are package-local entrypoints; shared bootstrap/CoreWorkspace composition 
 ### Tests / validation
 - Strict TDD Cube recipe RED: `CUBE_RECIPE` was missing; GREEN after exact recipe implementation.
 - Strict TDD Cube entry RED: `addCube is not a function`; GREEN after composition entry implementation.
-- Focused primitive/UI tests: PASS — 4 files, 21 tests.
-- `npm run ci`: PASS — typecheck; 137 Vitest files / 687 tests; production build; baseline artifact verification.
+- Strict TDD animal vertical slices: each missing recipe first failed as `undefined`; each missing entry method then failed as `is not a function`; each missing UI action then failed as an absent accessible button. Every slice was made GREEN before starting the next animal.
+- Strict TDD default-Cube helper RED: `ensureDefaultCubeForFirstMount is not a function`; GREEN after the idempotent package-local helper.
+- Focused primitive/UI tests: PASS — 4 files, 32 tests.
+- `npm run ci`: PASS — typecheck; 137 Vitest files / 698 tests; production build; baseline artifact verification.
 - Production artifact: 4 files, 229,686 bytes; compressed JS/CSS 62,148 bytes; no warnings/failures.
 - Harness-inclusive temporary TypeScript project: PASS; temporary config removed.
 - `git diff --check`: PASS.
@@ -614,7 +631,7 @@ These are package-local entrypoints; shared bootstrap/CoreWorkspace composition 
 
 ### Browser / device evidence
 - Desktop browser/WebGL2: PASS — Headless Chrome 145 on Linux x86_64, renderer `ready`, real production WebGL2 readback, warnings/errors/JavaScript errors 0.
-- Evidence: `docs/validation/basic-primitives/desktop-chrome-plane-cube.json`.
+- Evidence: `docs/validation/basic-primitives/desktop-chrome-plane-cube.json` and `docs/validation/basic-primitives/desktop-chrome-all-primitives.json`.
 - Physical iPad Safari: NOT_RUN / BLOCKED.
 - Apple Pencil: NOT_RUN / BLOCKED.
 - Desktop automation and the deterministic iPad fixture do not replace physical-device evidence.
@@ -622,6 +639,12 @@ These are package-local entrypoints; shared bootstrap/CoreWorkspace composition 
 ### Integration notes
 - Workstream 19 owns shared `core-workspace.ts`, bootstrap, camera-controller application, shared barrels, and product-level composition. Workstream 16 publishes a package-local `applyFrame(SelectionFrame)` callback and requests rendering without modifying those shared seams.
 - The browser harness records the real finite frame plan and renders through the production workspace; applying the new target/position to the shared camera controller remains a Workstream 19 integration action.
+- Workstream 19 Phase A accepted integration request — exact default behavior:
+  1. On the first mount of a genuinely new empty project, invoke the 16-owned `BasicPrimitivesEntry.ensureDefaultCubeForFirstMount(true)` exactly once.
+  2. It creates `CUBE_RECIPE` through the existing `createPrimitive` transaction path, selects all six created faces, computes/applies the frame callback, and requests rendering.
+  3. Saved, reloaded, or otherwise existing projects must invoke it with `false` or skip it; they must never receive an implicit Cube.
+  4. The helper consumes the first-mount check regardless of eligibility, so Undo-to-empty or later remount actions on the same entry cannot recreate the Cube.
+  5. No new cross-module contract is requested; this is a package-local 16 entry helper for 19-owned bootstrap assembly.
 - No main merge, Pages deployment, or release tag was performed.
 
 ### Requested contract changes
@@ -635,6 +658,7 @@ These are package-local entrypoints; shared bootstrap/CoreWorkspace composition 
 
 ### Final disposition
 - Verified feature checkpoint commit: `cce4123` (`[verified] feat: add basic plane and cube primitives`)
+- Verified scope-extension feature commit: `4d441b6779d794186d0a9d22d1706bbd3df7d355` (`[verified] feat: add editable low-poly animal primitives`)
 - Final local branch tip: this RESULT-only commit; exact SHA reported externally after commit creation.
 - Pushed `origin/wt/basic-primitives` tip: exact SHA verified and reported externally after non-force push.
 - Local/remote tip equality: verified externally after push.
