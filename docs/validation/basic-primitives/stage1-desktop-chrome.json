@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-08-10T15:47:37+09:00",
+  "url": "http://127.0.0.1:4173/docs/validation/basic-primitives/browser-smoke.html",
+  "runtime": "HeadlessChrome/145.0.0.0 Linux x86_64",
+  "result": {
+    "status": "PASS",
+    "phase": "export-glb-complete",
+    "browser": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.0.0 Safari/537.36",
+    "webgl2": true,
+    "mesh": {
+      "vertices": 8,
+      "edges": 12,
+      "corners": 20,
+      "faces": 5,
+      "version": 7
+    },
+    "selectedFaceIds": [0, 1, 2, 3, 4],
+    "frameFingerprint": "0.000000:0.000000:0.000000:0.000000:0.000000:1.887121:1.887121:0.150000",
+    "frameFinite": true,
+    "rendererEvidence": {
+      "state": "ready",
+      "width": 843,
+      "height": 640,
+      "readbackBytes": 2158080,
+      "nonZeroPixels": 539520,
+      "nonBackgroundPixels": 81296,
+      "distinctSampledColors": 12,
+      "pixelFingerprint": "bde67818"
+    },
+    "history": {
+      "canUndo": false,
+      "canRedo": false,
+      "undoLabel": null,
+      "redoLabel": null
+    },
+    "historyLabels": [
+      { "action": "add-plane", "undoLabel": "Add plane", "redoLabel": null },
+      { "action": "move", "undoLabel": "Move vertices", "redoLabel": null },
+      { "action": "extrude", "undoLabel": "Extrude faces", "redoLabel": null },
+      { "action": "undo", "undoLabel": "Move vertices", "redoLabel": "Extrude faces" },
+      { "action": "redo", "undoLabel": "Extrude faces", "redoLabel": null },
+      { "action": "save", "undoLabel": "Extrude faces", "redoLabel": null },
+      { "action": "reload", "undoLabel": null, "redoLabel": null },
+      { "action": "export-obj", "undoLabel": null, "redoLabel": null },
+      { "action": "export-glb", "undoLabel": null, "redoLabel": null }
+    ],
+    "stableIdsAfterReload": true,
+    "savedDocumentBytes": 2062,
+    "exportSizes": {
+      "obj": 511,
+      "glb": 856
+    },
+    "actions": [
+      "add-plane",
+      "move",
+      "extrude",
+      "undo",
+      "redo",
+      "save",
+      "reload",
+      "export-obj",
+      "export-glb"
+    ],
+    "warnings": [],
+    "errors": []
+  }
+}

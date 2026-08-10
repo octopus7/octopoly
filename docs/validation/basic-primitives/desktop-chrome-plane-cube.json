@@ -1,0 +1,99 @@
+{
+  "capturedAt": "2026-08-10T16:00:56+09:00",
+  "runtime": "HeadlessChrome/145.0.0.0 Linux x86_64",
+  "url": "http://127.0.0.1:4173/docs/validation/basic-primitives/browser-smoke.html",
+  "webgl2": true,
+  "console": {
+    "warnings": [],
+    "errors": [],
+    "javascriptErrors": []
+  },
+  "scenarios": {
+    "plane": {
+      "status": "PASS",
+      "actions": ["add-plane", "undo", "redo", "move", "extrude", "save", "reload", "export-obj", "export-glb"],
+      "afterCreate": {
+        "mesh": { "vertices": 4, "edges": 4, "corners": 4, "faces": 1, "version": 5 },
+        "selectedFaceIds": [0],
+        "undoLabel": "Add plane",
+        "frameFingerprint": "0.000000:0.000000:0.000000:0.000000:0.000000:1.887121:1.887121:0.150000",
+        "frameFinite": true,
+        "renderedNonBackgroundPixels": 12728
+      },
+      "afterUndo": {
+        "mesh": { "vertices": 0, "edges": 0, "corners": 0, "faces": 0, "version": 0 },
+        "redoLabel": "Add plane",
+        "renderedNonBackgroundPixels": 0
+      },
+      "afterRedo": {
+        "phase": "redo-complete",
+        "subsequentMoveHistoryLabel": "Move vertices"
+      },
+      "final": {
+        "mesh": { "vertices": 8, "edges": 12, "corners": 20, "faces": 5, "version": 7 },
+        "selectedFaceIds": [0, 1, 2, 3, 4],
+        "stableIdsAfterReload": true,
+        "savedDocumentBytes": 2062,
+        "objBytes": 511,
+        "glbBytes": 856,
+        "renderer": {
+          "state": "ready",
+          "width": 843,
+          "height": 640,
+          "readbackBytes": 2158080,
+          "nonBackgroundPixels": 81296,
+          "distinctSampledColors": 12,
+          "pixelFingerprint": "bde67818"
+        },
+        "warnings": [],
+        "errors": []
+      }
+    },
+    "cube": {
+      "status": "PASS",
+      "actions": ["add-cube", "undo", "redo", "move", "extrude", "save", "reload", "export-obj", "export-glb"],
+      "afterCreate": {
+        "mesh": { "vertices": 8, "edges": 12, "corners": 24, "faces": 6, "version": 14 },
+        "selectedFaceIds": [0, 1, 2, 3, 4, 5],
+        "undoLabel": "Add cube",
+        "frameFingerprint": "0.000000:0.000000:0.000000:0.000000:0.000000:2.311241:2.311241:0.150000",
+        "frameFinite": true,
+        "renderedNonBackgroundPixels": 15572
+      },
+      "afterUndo": {
+        "mesh": { "vertices": 0, "edges": 0, "corners": 0, "faces": 0, "version": 0 },
+        "redoLabel": "Add cube",
+        "renderedNonBackgroundPixels": 0
+      },
+      "afterRedo": {
+        "mesh": { "vertices": 8, "edges": 12, "corners": 24, "faces": 6, "version": 14 },
+        "undoLabel": "Add cube",
+        "renderedNonBackgroundPixels": 15572
+      },
+      "final": {
+        "mesh": { "vertices": 12, "edges": 20, "corners": 40, "faces": 10, "version": 16 },
+        "selectedFaceIds": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "stableIdsAfterReload": true,
+        "savedDocumentBytes": 3576,
+        "objBytes": 798,
+        "glbBytes": 1028,
+        "renderer": {
+          "state": "ready",
+          "width": 843,
+          "height": 640,
+          "readbackBytes": 2158080,
+          "nonBackgroundPixels": 99928,
+          "distinctSampledColors": 10,
+          "pixelFingerprint": "3967c41f"
+        },
+        "warnings": [],
+        "errors": []
+      }
+    }
+  },
+  "physicalDevice": {
+    "iPadSafari": "NOT_RUN",
+    "applePencil": "NOT_RUN",
+    "status": "BLOCKED"
+  }
+}

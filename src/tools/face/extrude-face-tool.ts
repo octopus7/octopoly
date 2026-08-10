@@ -2,11 +2,13 @@ import type {
   FaceId,
   PickingService,
   PointerSample,
+  Ray,
   Tool,
   ToolContext,
   ToolInputResult,
   Vec3,
 } from "@octopoly/contracts";
+import { NUMERIC_TOLERANCE_POLICY } from "@octopoly/contracts";
 
 import { pointsOverlay, polylineOverlay } from "../../renderer/overlays";
 import {
@@ -19,8 +21,22 @@ import {
   surfaceAt,
   UNHANDLED,
 } from "../basic/gesture";
+import {
+  type ConstructionPlane,
+  intersectRayPlane,
+  selectedFacesAreaWeightedNormal,
+  wellConditionedNormalDragPlane,
+} from "../basic/construction-plane";
 
 const EXTRUDE_FACE_COLOR = Object.freeze({ x: 0.75, y: 0.42, z: 1, w: 1 });
+
+type ExtrudeTargetMode =
+  | { readonly kind: "surface" }
+  | {
+      readonly kind: "plane";
+      readonly plane: ConstructionPlane;
+      readonly faceNormal: Vec3;
+    };
 
 export class ExtrudeFacesTool implements Tool {
   readonly id = "face.extrude";
@@ -28,6 +44,7 @@ export class ExtrudeFacesTool implements Tool {
   #faces: ReadonlyArray<FaceId> = [];
   #anchor: Vec3 | null = null;
   #target: Vec3 | null = null;
+  #targetMode: ExtrudeTargetMode | null = null;
 
   constructor(
     private readonly picking: PickingService,
@@ -51,26 +68,52 @@ export class ExtrudeFacesTool implements Tool {
     if (sample.phase === "down") {
       if (!isModelingPointer(sample)) return UNHANDLED;
       const pick = pickAt(sample, context, this.picking, this.radiusCssPx);
-      if (
-        pick?.kind !== "face" ||
-        pick.face === undefined ||
-        !this.#gesture.begin(sample.pointerId, "Extrude faces", context)
-      ) {
+      if (pick?.kind !== "face" || pick.face === undefined) {
         return UNHANDLED;
       }
       const selected = context.selection.snapshot().faces;
-      this.#faces = selected.has(pick.face) && selected.size > 0 ? [...selected] : [pick.face];
-      this.#anchor = surfaceAt(sample, context, this.picking)?.position ?? pick.position;
-      this.#target = this.#anchor;
+      const faces = selected.has(pick.face) && selected.size > 0 ? [...selected] : [pick.face];
+      const surface = surfaceAt(sample, context, this.picking);
+      let anchor: Vec3;
+      let targetMode: ExtrudeTargetMode;
+      if (surface !== null) {
+        anchor = surface.position;
+        targetMode = { kind: "surface" };
+      } else {
+        const ray = this.#ray(sample, context);
+        const faceNormal = selectedFacesAreaWeightedNormal(context.mesh, faces);
+        const plane =
+          faceNormal === null
+            ? null
+            : wellConditionedNormalDragPlane(pick.position, faceNormal, ray);
+        const intersection = plane === null ? null : intersectRayPlane(ray, plane);
+        if (faceNormal === null || plane === null || intersection === null) return UNHANDLED;
+        anchor = intersection;
+        targetMode = { kind: "plane", plane, faceNormal };
+      }
+      if (!this.#gesture.begin(sample.pointerId, "Extrude faces", context)) return UNHANDLED;
+      this.#faces = faces;
+      this.#anchor = anchor;
+      this.#target = anchor;
+      this.#targetMode = targetMode;
       this.#publish(context);
       return CAPTURED;
     }
 
     if (!this.#gesture.active(sample.pointerId)) return UNHANDLED;
     if (sample.phase === "move" || sample.phase === "up") {
-      const surface = surfaceAt(sample, context, this.picking);
-      if (surface !== null) this.#target = surface.position;
-      this.#publish(context);
+      if (this.#targetMode?.kind === "surface") {
+        const surface = surfaceAt(sample, context, this.picking);
+        if (surface !== null) this.#target = surface.position;
+      } else if (this.#targetMode?.kind === "plane") {
+        this.#target = intersectRayPlane(this.#ray(sample, context), this.#targetMode.plane);
+      }
+      if (this.#target === null) {
+        context.setPreview(null);
+        context.requestRender();
+      } else {
+        this.#publish(context);
+      }
     }
 
     if (sample.phase !== "up") return HANDLED;
@@ -109,11 +152,26 @@ export class ExtrudeFacesTool implements Tool {
 
   #offset(): Vec3 | null {
     if (this.#anchor === null || this.#target === null) return null;
-    return {
+    const delta = {
       x: this.#target.x - this.#anchor.x,
       y: this.#target.y - this.#anchor.y,
       z: this.#target.z - this.#anchor.z,
     };
+    if (!Number.isFinite(delta.x) || !Number.isFinite(delta.y) || !Number.isFinite(delta.z)) {
+      return null;
+    }
+    if (this.#targetMode?.kind === "plane") {
+      const normal = this.#targetMode.faceNormal;
+      const distance = delta.x * normal.x + delta.y * normal.y + delta.z * normal.z;
+      if (!Number.isFinite(distance) || Math.abs(distance) <= NUMERIC_TOLERANCE_POLICY.absoluteDistance) {
+        return null;
+      }
+      return { x: normal.x * distance, y: normal.y * distance, z: normal.z * distance };
+    }
+    if (Math.hypot(delta.x, delta.y, delta.z) <= NUMERIC_TOLERANCE_POLICY.absoluteDistance) {
+      return null;
+    }
+    return delta;
   }
 
   #publish(context: ToolContext): void {
@@ -132,5 +190,14 @@ export class ExtrudeFacesTool implements Tool {
     this.#faces = [];
     this.#anchor = null;
     this.#target = null;
+    this.#targetMode = null;
+  }
+
+  #ray(sample: PointerSample, context: ToolContext): Ray {
+    return this.picking.rayFromScreen(
+      { x: sample.x, y: sample.y },
+      context.getCamera(),
+      context.getViewport(),
+    );
   }
 }

@@ -1,4 +1,5 @@
 import type {
+  Ray,
   PickingService,
   PointerSample,
   Tool,
@@ -7,6 +8,7 @@ import type {
   Vec3,
   VertexId,
 } from "@octopoly/contracts";
+import { NUMERIC_TOLERANCE_POLICY } from "@octopoly/contracts";
 
 import { pointsOverlay } from "../../renderer/overlays";
 import {
@@ -19,8 +21,17 @@ import {
   surfaceAt,
   UNHANDLED,
 } from "./gesture";
+import {
+  cameraFacingGesturePlane,
+  type ConstructionPlane,
+  intersectRayPlane,
+} from "./construction-plane";
 
 const MOVE_COLOR = Object.freeze({ x: 0.2, y: 0.82, z: 1, w: 1 });
+
+type MoveTargetMode =
+  | { readonly kind: "surface" }
+  | { readonly kind: "plane"; readonly plane: ConstructionPlane };
 
 function add(value: Vec3, delta: Vec3): Vec3 {
   return { x: value.x + delta.x, y: value.y + delta.y, z: value.z + delta.z };
@@ -31,6 +42,7 @@ export class MoveVerticesTool implements Tool {
   readonly #gesture = new MutationGesture();
   #anchor: Vec3 | null = null;
   #target: Vec3 | null = null;
+  #targetMode: MoveTargetMode | null = null;
   #origins = new Map<VertexId, Vec3>();
 
   constructor(
@@ -64,22 +76,51 @@ export class MoveVerticesTool implements Tool {
         const vertex = context.mesh.vertex(id);
         if (vertex !== null) origins.set(id, vertex.position);
       }
-      if (origins.size === 0 || !this.#gesture.begin(sample.pointerId, "Move vertices", context)) {
+      if (origins.size === 0) {
         return UNHANDLED;
       }
 
+      const surface = surfaceAt(sample, context, this.picking);
+      let anchor: Vec3;
+      let target: Vec3;
+      let targetMode: MoveTargetMode;
+      if (surface !== null) {
+        anchor = hit.position;
+        target = surface.position;
+        targetMode = { kind: "surface" };
+      } else {
+        const ray = this.#ray(sample, context);
+        const plane = cameraFacingGesturePlane(hit.position, context.getCamera());
+        const intersection = plane === null ? null : intersectRayPlane(ray, plane);
+        if (plane === null || intersection === null) return UNHANDLED;
+        anchor = intersection;
+        target = intersection;
+        targetMode = { kind: "plane", plane };
+      }
+      if (!this.#gesture.begin(sample.pointerId, "Move vertices", context)) return UNHANDLED;
+
       this.#origins = origins;
-      this.#anchor = hit.position;
-      this.#target = surfaceAt(sample, context, this.picking)?.position ?? hit.position;
+      this.#anchor = anchor;
+      this.#target = target;
+      this.#targetMode = targetMode;
       this.#publish(context);
       return CAPTURED;
     }
 
     if (!this.#gesture.active(sample.pointerId)) return UNHANDLED;
     if (sample.phase === "move" || sample.phase === "up") {
-      const hit = surfaceAt(sample, context, this.picking);
-      if (hit !== null) this.#target = hit.position;
-      this.#publish(context);
+      if (this.#targetMode?.kind === "surface") {
+        const hit = surfaceAt(sample, context, this.picking);
+        if (hit !== null) this.#target = hit.position;
+      } else if (this.#targetMode?.kind === "plane") {
+        this.#target = intersectRayPlane(this.#ray(sample, context), this.#targetMode.plane);
+      }
+      if (this.#target === null) {
+        context.setPreview(null);
+        context.requestRender();
+      } else {
+        this.#publish(context);
+      }
     }
 
     if (sample.phase === "up") {
@@ -124,7 +165,14 @@ export class MoveVerticesTool implements Tool {
       y: this.#target.y - this.#anchor.y,
       z: this.#target.z - this.#anchor.z,
     };
-    if (delta.x === 0 && delta.y === 0 && delta.z === 0) return null;
+    if (
+      !Number.isFinite(delta.x) ||
+      !Number.isFinite(delta.y) ||
+      !Number.isFinite(delta.z) ||
+      Math.hypot(delta.x, delta.y, delta.z) <= NUMERIC_TOLERANCE_POLICY.absoluteDistance
+    ) {
+      return null;
+    }
     return new Map([...this.#origins].map(([id, origin]) => [id, add(origin, delta)]));
   }
 
@@ -142,6 +190,15 @@ export class MoveVerticesTool implements Tool {
   #clearState(): void {
     this.#anchor = null;
     this.#target = null;
+    this.#targetMode = null;
     this.#origins.clear();
+  }
+
+  #ray(sample: PointerSample, context: ToolContext): Ray {
+    return this.picking.rayFromScreen(
+      { x: sample.x, y: sample.y },
+      context.getCamera(),
+      context.getViewport(),
+    );
   }
 }
