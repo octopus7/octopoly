@@ -4,20 +4,26 @@ import { mountBasicPrimitivesUi, type BasicPrimitivesUiAdapter } from "../../../
 import { CoreWorkspace, createProductionCoreWorkspace } from "../../../src/app/composition";
 import { createBasicPrimitivesEntry } from "../../../src/app/composition/primitive-entry";
 import type { SelectionFrame } from "../../../src/tools/basic/construction-plane";
+import {
+  CATALOG_SCENARIOS,
+  FINGERPRINT_ALGORITHM,
+  evaluateSmokeCompletion,
+  hashFingerprint,
+  parseGlbExport,
+  parseObjExport,
+  requiredSmokeActions,
+  scenarioExpectation,
+  type SmokeCheckpoint,
+  type SmokeCheckpointName,
+  type SmokeHistoryRecord,
+  type SmokeScenario,
+  type SmokeRendererEvidence,
+} from "./smoke-result";
 
 type SmokeStatus = "STARTING" | "READY" | "RUNNING" | "PASS" | "FAIL" | "UNSUPPORTED";
-type Scenario = "plane" | "cube" | "duck" | "frog" | "pig" | "cow" | "rabbit";
+type Scenario = SmokeScenario;
 
-interface RendererEvidence {
-  readonly state: string;
-  readonly width: number;
-  readonly height: number;
-  readonly readbackBytes: number;
-  readonly nonZeroPixels: number;
-  readonly nonBackgroundPixels: number;
-  readonly distinctSampledColors: number;
-  readonly pixelFingerprint: string;
-}
+type RendererEvidence = SmokeRendererEvidence;
 
 interface SmokeResult {
   scenario: Scenario;
@@ -31,11 +37,16 @@ interface SmokeResult {
   frameFinite: boolean;
   rendererEvidence: RendererEvidence | null;
   history: { canUndo: boolean; canRedo: boolean; undoLabel: string | null; redoLabel: string | null };
-  historyLabels: Array<{ action: string; undoLabel: string | null; redoLabel: string | null }>;
+  historyLabels: SmokeHistoryRecord[];
   stableIdsAfterReload: boolean | null;
   savedDocumentBytes: number;
   exportSizes: { obj: number; glb: number };
+  exports: { obj: ReturnType<typeof parseObjExport> | null; glb: ReturnType<typeof parseGlbExport> | null };
+  fingerprintAlgorithm: string;
   actions: string[];
+  requiredActions: string[];
+  checkpoints: Partial<Record<SmokeCheckpointName, SmokeCheckpoint>>;
+  completionFailures: string[];
   warnings: string[];
   errors: string[];
 }
@@ -71,19 +82,13 @@ window.addEventListener("unhandledrejection", (event) => {
   publish();
 });
 
-const scenarios: ReadonlyArray<Scenario> = ["plane", "cube", "duck", "frog", "pig", "cow", "rabbit"];
 const requestedScenario = new URLSearchParams(location.search).get("scenario");
-const scenario: Scenario = scenarios.includes(requestedScenario as Scenario) ? requestedScenario as Scenario : "plane";
+const scenario: Scenario = (CATALOG_SCENARIOS as readonly string[]).includes(requestedScenario ?? "")
+  ? requestedScenario as Scenario
+  : "plane";
 const creationAction = `add-${scenario}`;
-const expectedFaces: Readonly<Record<Scenario, number>> = Object.freeze({
-  plane: 1,
-  cube: 6,
-  duck: 18,
-  frog: 42,
-  pig: 48,
-  cow: 54,
-  rabbit: 36,
-});
+const requiredActions = [...requiredSmokeActions(scenario)];
+const expectation = scenarioExpectation(scenario);
 const projectId = `basic-primitives-${scenario}`;
 
 const result: SmokeResult = {
@@ -102,7 +107,12 @@ const result: SmokeResult = {
   stableIdsAfterReload: null,
   savedDocumentBytes: 0,
   exportSizes: { obj: 0, glb: 0 },
+  exports: { obj: null, glb: null },
+  fingerprintAlgorithm: FINGERPRINT_ALGORITHM,
   actions: [],
+  requiredActions,
+  checkpoints: {},
+  completionFailures: [],
   warnings,
   errors,
 };
@@ -141,6 +151,7 @@ ui = mountBasicPrimitivesUi(viewport, {
     const created = entry.addPlane();
     if ((created.faces?.length ?? 0) !== 1) throw new Error("Add Plane did not create exactly one face");
     await captureRendererEvidence();
+    recordCheckpoint("creation", creationAction);
   }),
   addCube: () => runAction("add-cube", async () => {
     if (scenario !== "cube") throw new Error(`This browser scenario requires Add ${scenario}`);
@@ -148,12 +159,31 @@ ui = mountBasicPrimitivesUi(viewport, {
     const created = entry.addCube();
     if ((created.faces?.length ?? 0) !== 6) throw new Error("Add Cube did not create exactly six faces");
     await captureRendererEvidence();
+    recordCheckpoint("creation", creationAction);
   }),
   addDuck: () => createScenarioPrimitive("duck", () => entry.addDuck()),
   addFrog: () => createScenarioPrimitive("frog", () => entry.addFrog()),
   addPig: () => createScenarioPrimitive("pig", () => entry.addPig()),
   addCow: () => createScenarioPrimitive("cow", () => entry.addCow()),
   addRabbit: () => createScenarioPrimitive("rabbit", () => entry.addRabbit()),
+  addCat: () => createScenarioPrimitive("cat", () => entry.addCat()),
+  addDog: () => createScenarioPrimitive("dog", () => entry.addDog()),
+  addFish: () => createScenarioPrimitive("fish", () => entry.addFish()),
+  addTurtle: () => createScenarioPrimitive("turtle", () => entry.addTurtle()),
+  addElephant: () => createScenarioPrimitive("elephant", () => entry.addElephant()),
+  addCup: () => createScenarioPrimitive("cup", () => entry.addCup()),
+  addChair: () => createScenarioPrimitive("chair", () => entry.addChair()),
+  addFlowerpot: () => createScenarioPrimitive("flowerpot", () => entry.addFlowerpot()),
+  addKettle: () => createScenarioPrimitive("kettle", () => entry.addKettle()),
+  addSneaker: () => createScenarioPrimitive("sneaker", () => entry.addSneaker()),
+  addBackpack: () => createScenarioPrimitive("backpack", () => entry.addBackpack()),
+  addHelmet: () => createScenarioPrimitive("helmet", () => entry.addHelmet()),
+  addGamepad: () => createScenarioPrimitive("gamepad", () => entry.addGamepad()),
+  addCamera: () => createScenarioPrimitive("camera", () => entry.addCamera()),
+  addBicycleSaddle: () => createScenarioPrimitive("bicycle-saddle", () => entry.addBicycleSaddle()),
+  addCar: () => createScenarioPrimitive("car", () => entry.addCar()),
+  addRocket: () => createScenarioPrimitive("rocket", () => entry.addRocket()),
+  addTreasureChest: () => createScenarioPrimitive("treasure-chest", () => entry.addTreasureChest()),
   frameSelection: () => runAction("frame-selection", async () => {
     if (entry.frameSelection() === null) throw new Error("Frame Selection produced no plan");
     await captureRendererEvidence();
@@ -170,12 +200,17 @@ ui = mountBasicPrimitivesUi(viewport, {
     result.stableIdsAfterReload = stableIdFingerprint(workspace.serializedMesh()) === savedIds;
     workspace.selection.update("replace", { faces: new Set(savedFaceIds) });
     await captureRendererEvidence();
+    recordCheckpoint("reload", "reload");
   }),
   exportObj: () => runAction("export-obj", async () => {
-    result.exportSizes.obj = new TextEncoder().encode(workspace.exportObj()).byteLength;
+    const payload = workspace.exportObj();
+    result.exports.obj = parseObjExport(payload);
+    result.exportSizes.obj = result.exports.obj.byteLength;
   }),
   exportGlb: () => runAction("export-glb", async () => {
-    result.exportSizes.glb = workspace.exportGlb().byteLength;
+    const payload = workspace.exportGlb();
+    result.exports.glb = parseGlbExport(payload);
+    result.exportSizes.glb = result.exports.glb.byteLength;
   }),
 }, uiState(false));
 
@@ -183,8 +218,8 @@ ui.element.dataset.testid = "new-scene-ui";
 assignAdapterTestIds(ui.element);
 bind(moveButton, "move", moveSelection);
 bind(extrudeButton, "extrude", extrudeSelection);
-bind(undoButton, "undo", async () => { workspace.history.undo(); await captureRendererEvidence(); });
-bind(redoButton, "redo", async () => { workspace.history.redo(); await captureRendererEvidence(); });
+bind(undoButton, "undo", async () => { workspace.history.undo(); await captureRendererEvidence(); recordCheckpoint("undo", "undo"); });
+bind(redoButton, "redo", async () => { workspace.history.redo(); await captureRendererEvidence(); recordCheckpoint("redo", "redo"); });
 publish();
 
 void initialize();
@@ -223,10 +258,11 @@ function createScenarioPrimitive(
     if (scenario !== requiredScenario) throw new Error(`This browser scenario requires Add ${scenario}`);
     if (!entry.state().emptyMesh) throw new Error(`Add ${requiredScenario} requires an empty New Scene`);
     const created = create();
-    if ((created.faces?.length ?? 0) !== expectedFaces[requiredScenario]) {
+    if ((created.faces?.length ?? 0) !== scenarioExpectation(requiredScenario).counts.faces) {
       throw new Error(`Add ${requiredScenario} created an unexpected face count`);
     }
     await captureRendererEvidence();
+    recordCheckpoint("creation", creationAction);
   });
 }
 
@@ -255,21 +291,38 @@ function runAction(action: string, operation: () => Promise<void>): Promise<void
 
 async function moveSelection(): Promise<void> {
   assertMeshPresent();
+  workspace.selection.update("replace", { faces: new Set(workspace.mesh.snapshot().faces.map((face) => face.id)) });
   workspace.selection.update("add", { vertices: new Set(workspace.mesh.snapshot().vertices.map((vertex) => vertex.id)) });
   workspace.activateTool("basic.move-vertices");
   const point = findPick("vertex");
   dispatchGesture(41, point, { x: point.x + 48, y: point.y + 32 });
   expectUndoLabel("Move vertices");
   await captureRendererEvidence();
+  recordCheckpoint("afterMove", "move");
 }
 
 async function extrudeSelection(): Promise<void> {
   assertMeshPresent();
-  workspace.activateTool("face.extrude");
   const point = findFaceDragPoint();
-  dispatchGesture(42, point, { x: point.x + 56, y: point.y });
+  const hit = workspace.picking.pick(point, workspace.cameraSnapshot(), workspace.viewportSnapshot(), workspace.mesh.snapshot(), 12);
+  if (hit?.kind !== "face" || hit.face === undefined) throw new Error("Could not select a deterministic face for extrusion");
+  workspace.selection.update("replace", { faces: new Set([hit.face]) });
+  const dragOffsets = [
+    { x: 14, y: 0 },
+    { x: 0, y: 14 },
+    { x: 10, y: 10 },
+    { x: -14, y: 0 },
+    { x: 0, y: -14 },
+    { x: -10, y: 10 },
+  ];
+  for (const offset of dragOffsets) {
+    workspace.activateTool("face.extrude");
+    dispatchGesture(42, point, { x: point.x + offset.x, y: point.y + offset.y });
+    if (workspace.history.snapshot().undoLabel === "Extrude faces") break;
+  }
   expectUndoLabel("Extrude faces");
   await captureRendererEvidence();
+  recordCheckpoint("afterExtrude", "extrude");
 }
 
 function dispatchGesture(pointerId: number, start: { x: number; y: number }, end: { x: number; y: number }): void {
@@ -318,7 +371,7 @@ function findFaceDragPoint(): { x: number; y: number } {
   for (const dx of [36, -36, 28, -28, 20, -20]) {
     for (const dy of [0, 12, -12]) {
       const point = { x: center.x + dx, y: center.y + dy };
-      if (workspace.picking.pick(point, camera, view, mesh, 4)?.kind === "face") return point;
+      if (workspace.picking.pick(point, camera, view, mesh, 12)?.kind === "face") return point;
     }
   }
   const fallback = findPick("face");
@@ -373,6 +426,32 @@ async function captureRendererEvidence(): Promise<void> {
   };
 }
 
+function recordCheckpoint(name: SmokeCheckpointName, action: string): void {
+  if (result.rendererEvidence === null) throw new Error(`Missing renderer evidence for ${name}`);
+  const serialized = workspace.serializedMesh();
+  const history = workspace.history.snapshot();
+  const frameFingerprint = frame === null ? null : frameValues(frame).map((value) => value.toFixed(6)).join(":");
+  result.checkpoints[name] = Object.freeze({
+    action,
+    mesh: counts(workspace.mesh.snapshot()),
+    faceIds: Object.freeze(workspace.mesh.snapshot().faces.map(({ id }) => id).sort((a, b) => a - b)),
+    faceVertexCounts: Object.freeze(serialized.faces.map(({ corners }) => corners.length)),
+    meshFingerprint: exactMeshFingerprint(serialized),
+    topologyFingerprint: topologyFingerprint(serialized),
+    stableIdFingerprint: stableIdFingerprint(serialized),
+    selectedFaceIds: Object.freeze([...workspace.selection.snapshot().faces].sort((a, b) => a - b)),
+    frameFinite: frame !== null && frameValues(frame).every(Number.isFinite),
+    frameFingerprint,
+    renderer: Object.freeze({ ...result.rendererEvidence }),
+    history: Object.freeze({
+      canUndo: history.canUndo,
+      canRedo: history.canRedo,
+      undoLabel: history.undoLabel ?? null,
+      redoLabel: history.redoLabel ?? null,
+    }),
+  });
+}
+
 function syncState(): void {
   const mesh = workspace.mesh.snapshot();
   const history = workspace.history.snapshot();
@@ -419,7 +498,13 @@ function setBusy(busy: boolean): void {
 
 function recordHistory(action: string): void {
   const history = workspace.history.snapshot();
-  result.historyLabels.push({ action, undoLabel: history.undoLabel ?? null, redoLabel: history.redoLabel ?? null });
+  result.historyLabels.push({
+    action,
+    canUndo: history.canUndo,
+    canRedo: history.canRedo,
+    undoLabel: history.undoLabel ?? null,
+    redoLabel: history.redoLabel ?? null,
+  });
 }
 
 function expectUndoLabel(label: string): void {
@@ -431,17 +516,22 @@ function assertMeshPresent(): void {
 }
 
 function isComplete(): boolean {
-  return [creationAction, "move", "extrude", "undo", "redo", "save", "reload", "export-obj", "export-glb"]
-    .every((action) => result.actions.includes(action))
-    && result.frameFinite
-    && result.rendererEvidence !== null
-    && result.rendererEvidence.nonZeroPixels > 0
-    && result.rendererEvidence.nonBackgroundPixels > 0
-    && result.stableIdsAfterReload === true
-    && result.exportSizes.obj > 0
-    && result.exportSizes.glb > 0
-    && warnings.length === 0
-    && errors.length === 0;
+  const evaluation = evaluateSmokeCompletion({
+    scenario,
+    requiredActions,
+    actions: result.actions,
+    checkpoints: result.checkpoints,
+    historyLabels: result.historyLabels,
+    fingerprintAlgorithm: result.fingerprintAlgorithm,
+    stableIdsAfterReload: result.stableIdsAfterReload,
+    savedDocumentBytes: result.savedDocumentBytes,
+    exportSizes: result.exportSizes,
+    exports: result.exports,
+    warnings,
+    errors,
+  });
+  result.completionFailures = [...evaluation.failures];
+  return evaluation.complete;
 }
 
 function fail(error: unknown): void {
@@ -460,12 +550,32 @@ function frameValues(value: SelectionFrame): number[] {
 }
 
 function stableIdFingerprint(mesh: ProjectDocument["mesh"]): string {
-  return JSON.stringify({
+  return hashFingerprint(JSON.stringify({
     vertices: mesh.vertices.map((item) => item.id).sort((a, b) => a - b),
     edges: mesh.edges.map((item) => item.id).sort((a, b) => a - b),
     corners: mesh.corners.map((item) => item.id).sort((a, b) => a - b),
     faces: mesh.faces.map((item) => item.id).sort((a, b) => a - b),
-  });
+  }));
+}
+
+function exactMeshFingerprint(mesh: ProjectDocument["mesh"]): string {
+  return hashFingerprint(JSON.stringify({
+    vertices: mesh.vertices,
+    edges: mesh.edges,
+    corners: mesh.corners,
+    faces: mesh.faces,
+    attributes: mesh.attributes,
+  }));
+}
+
+function topologyFingerprint(mesh: ProjectDocument["mesh"]): string {
+  return hashFingerprint(JSON.stringify({
+    vertices: mesh.vertices.map(({ id }) => id),
+    edges: mesh.edges,
+    corners: mesh.corners,
+    faces: mesh.faces,
+    attributes: mesh.attributes,
+  }));
 }
 
 function assignAdapterTestIds(element: HTMLElement): void {
@@ -478,6 +588,24 @@ function assignAdapterTestIds(element: HTMLElement): void {
     "Add Pig": "add-pig",
     "Add Cow": "add-cow",
     "Add Rabbit": "add-rabbit",
+    "Add Cat": "add-cat",
+    "Add Dog": "add-dog",
+    "Add Fish": "add-fish",
+    "Add Turtle": "add-turtle",
+    "Add Elephant": "add-elephant",
+    "Add Cup": "add-cup",
+    "Add Chair": "add-chair",
+    "Add Flowerpot": "add-flowerpot",
+    "Add Kettle": "add-kettle",
+    "Add Sneaker": "add-sneaker",
+    "Add Backpack": "add-backpack",
+    "Add Helmet": "add-helmet",
+    "Add Gamepad": "add-gamepad",
+    "Add Camera": "add-camera",
+    "Add Bicycle Saddle": "add-bicycle-saddle",
+    "Add Car": "add-car",
+    "Add Rocket": "add-rocket",
+    "Add Treasure Chest": "add-treasure-chest",
     "Frame Selection": "frame-selection",
     "Save Project": "save-project",
     "Reload Project": "reload-project",

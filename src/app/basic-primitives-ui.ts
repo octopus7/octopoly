@@ -7,6 +7,24 @@ export interface BasicPrimitivesUiCallbacks {
   readonly addPig: () => void | Promise<void>;
   readonly addCow: () => void | Promise<void>;
   readonly addRabbit: () => void | Promise<void>;
+  readonly addCat: () => void | Promise<void>;
+  readonly addDog: () => void | Promise<void>;
+  readonly addFish: () => void | Promise<void>;
+  readonly addTurtle: () => void | Promise<void>;
+  readonly addElephant: () => void | Promise<void>;
+  readonly addCup: () => void | Promise<void>;
+  readonly addChair: () => void | Promise<void>;
+  readonly addFlowerpot: () => void | Promise<void>;
+  readonly addKettle: () => void | Promise<void>;
+  readonly addSneaker: () => void | Promise<void>;
+  readonly addBackpack: () => void | Promise<void>;
+  readonly addHelmet: () => void | Promise<void>;
+  readonly addGamepad: () => void | Promise<void>;
+  readonly addCamera: () => void | Promise<void>;
+  readonly addBicycleSaddle: () => void | Promise<void>;
+  readonly addCar: () => void | Promise<void>;
+  readonly addRocket: () => void | Promise<void>;
+  readonly addTreasureChest: () => void | Promise<void>;
   readonly frameSelection: () => void | Promise<void>;
   readonly save: () => void | Promise<void>;
   readonly reload: () => void | Promise<void>;
@@ -46,6 +64,24 @@ const ACTIONS: ReadonlyArray<ActionDefinition> = [
   { name: "addPig", label: "Add Pig", requiresMesh: false, emptyState: true },
   { name: "addCow", label: "Add Cow", requiresMesh: false, emptyState: true },
   { name: "addRabbit", label: "Add Rabbit", requiresMesh: false, emptyState: true },
+  { name: "addCat", label: "Add Cat", requiresMesh: false, emptyState: true },
+  { name: "addDog", label: "Add Dog", requiresMesh: false, emptyState: true },
+  { name: "addFish", label: "Add Fish", requiresMesh: false, emptyState: true },
+  { name: "addTurtle", label: "Add Turtle", requiresMesh: false, emptyState: true },
+  { name: "addElephant", label: "Add Elephant", requiresMesh: false, emptyState: true },
+  { name: "addCup", label: "Add Cup", requiresMesh: false, emptyState: true },
+  { name: "addChair", label: "Add Chair", requiresMesh: false, emptyState: true },
+  { name: "addFlowerpot", label: "Add Flowerpot", requiresMesh: false, emptyState: true },
+  { name: "addKettle", label: "Add Kettle", requiresMesh: false, emptyState: true },
+  { name: "addSneaker", label: "Add Sneaker", requiresMesh: false, emptyState: true },
+  { name: "addBackpack", label: "Add Backpack", requiresMesh: false, emptyState: true },
+  { name: "addHelmet", label: "Add Helmet", requiresMesh: false, emptyState: true },
+  { name: "addGamepad", label: "Add Gamepad", requiresMesh: false, emptyState: true },
+  { name: "addCamera", label: "Add Camera", requiresMesh: false, emptyState: true },
+  { name: "addBicycleSaddle", label: "Add Bicycle Saddle", requiresMesh: false, emptyState: true },
+  { name: "addCar", label: "Add Car", requiresMesh: false, emptyState: true },
+  { name: "addRocket", label: "Add Rocket", requiresMesh: false, emptyState: true },
+  { name: "addTreasureChest", label: "Add Treasure Chest", requiresMesh: false, emptyState: true },
   { name: "frameSelection", label: "Frame Selection", requiresMesh: true, emptyState: false },
   { name: "save", label: "Save Project", requiresMesh: false, emptyState: false },
   { name: "reload", label: "Reload Project", requiresMesh: false, emptyState: false },
@@ -94,8 +130,16 @@ export function mountBasicPrimitivesUi(
 
   const emptyActions = document.createElement("div");
   emptyActions.setAttribute("role", "group");
-  emptyActions.setAttribute("aria-label", "Start a new scene");
-  Object.assign(emptyActions.style, { display: "flex", flexWrap: "wrap", gap: "8px" });
+  emptyActions.setAttribute("aria-label", "Primitive catalog");
+  Object.assign(emptyActions.style, {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "8px",
+    maxHeight: "min(52vh, 440px)",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
+    paddingInlineEnd: "4px",
+  });
   emptyState.append(emptyActions);
 
   const toolbar = document.createElement("div");

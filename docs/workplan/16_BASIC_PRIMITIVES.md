@@ -520,7 +520,7 @@ script를 추가하지 않고 동등한 existing command를 RESULT에 기록한�
 
 ## RESULT
 
-Status: COMPLETE
+Status: IN_PROGRESS
 
 ### Baseline refs
 - Minimum input commit: `e54edeed9094d71679b4b081729a34354e820e4a`
@@ -528,19 +528,21 @@ Status: COMPLETE
 - Branch/worktree: `wt/basic-primitives` / `/home/beelink/wt-basic-primitives`
 - Start-SHA ancestry check: PASS — resolved start is an ancestor of feature checkpoint `cce4123`
 - Scope-extension base: `28cd1aa24c5724eae98336433c89c00ec2b23c63`; verified ancestor of animal feature commit `4d441b6`
+- Catalog-extension base: `165508b5a489f9d39b6491531aa1356ceb6f2d0b`; started clean with exact local/remote equality and preserved ancestry
 - Worktree start state: clean, exact resolved start SHA
 - `baseline/full-v1` required: NO
 
 ### Implemented
-- Package-local Plane, Cube, Duck, Frog, Pig, Cow, and Rabbit recipes using only canonical mutation results for stable IDs.
+- Package-local catalog of 25 editable recipes using only canonical mutation results for stable IDs: Plane, Cube, Duck, Frog, Pig, Cow, Rabbit, plus the explicitly approved 18-model extension.
 - One history transaction per primitive, aggregate topology validation, selection after commit, undo/redo, and complete rollback on intermediate vertex/face failure.
 - Plane: centered unit XY quad with `+Z` winding.
 - Cube: centered unit cube with 8 vertices, 12 edges, 24 corners, 6 quads, and outward winding.
 - Finite selection bounds/framing with viewport aspect/FOV handling and at least 15% padding.
 - Reference-first Move/Extrude with reference-free frozen construction-plane fallback and recoverable degenerate/parallel/no-op behavior.
 - Deterministic editable low-poly animal silhouettes: Duck body/head/beak; Frog squat body/eyes/legs; Pig body/snout/ears/legs; Cow body/head/muzzle/horns/legs; Rabbit body/head/long ears/hind legs.
-- Additive New Scene UI for Import Reference, all seven Add actions, Frame Selection, save/reload, and OBJ/GLB export; every action is a native accessible button with a 44 CSS px minimum target.
-- Real-browser seven-scenario harness using the production CoreWorkspace, renderer, picking, tools, persistence, and exporters.
+- The exact 18-model extension is Cat, Dog, Fish, Turtle, Elephant, Cup, Chair, Flowerpot, Kettle, Sneaker, Backpack, Helmet, Gamepad, Camera, Bicycle Saddle, Car, Rocket, and Treasure Chest; duplicate source-list Sneaker/Kettle entries were not duplicated.
+- Additive New Scene UI for Import Reference, all 25 Add actions, Frame Selection, save/reload, and OBJ/GLB export; every action is a native accessible button with a 44 CSS px minimum target. The expanded catalog is a semantic, keyboard-navigable, scrollable group.
+- Real-browser 25-scenario harness using the production CoreWorkspace, renderer, picking, tools, persistence, and exporters.
 - A 16-owned idempotent `ensureDefaultCubeForFirstMount` helper is ready for Workstream 19 Phase A shared-bootstrap wiring.
 
 ### Files created or modified
@@ -562,17 +564,21 @@ Status: COMPLETE
 - `docs/validation/basic-primitives/agent-c.md`
 - `docs/validation/basic-primitives/browser-smoke.html`
 - `docs/validation/basic-primitives/browser-smoke.ts`
+- `docs/validation/basic-primitives/smoke-result.ts`
+- `docs/validation/basic-primitives/catalog-runner.html`
+- `docs/validation/basic-primitives/catalog-runner.ts`
 - `docs/validation/basic-primitives/stage1-desktop-chrome.json`
 - `docs/validation/basic-primitives/desktop-chrome-plane-cube.json`
 - `docs/validation/basic-primitives/desktop-chrome-all-primitives.json`
+- `docs/validation/basic-primitives/desktop-chrome-catalog-25.json`
 - `docs/workplan/16_BASIC_PRIMITIVES.md` (`RESULT` only)
 
 All implementation/evidence paths are inside Workstream 16 Integration Ownership. No contract, shared config, mesh/history/selection/renderer/project/IO implementation, Optional source, barrel, package, lockfile, or build configuration was changed.
 
 ### Public API / local entrypoints
-- `PLANE_RECIPE`, `CUBE_RECIPE`, `DUCK_RECIPE`, `FROG_RECIPE`, `PIG_RECIPE`, `COW_RECIPE`, and `RABBIT_RECIPE`
+- 25 package-local `*_RECIPE` constants, one for each exact built-in catalog model
 - `createPrimitive(recipe, services)`
-- `createBasicPrimitivesEntry(dependencies)` with all seven Add methods, `ensureDefaultCubeForFirstMount`, `frameSelection`, and `state`
+- `createBasicPrimitivesEntry(dependencies)` with all 25 Add methods, unchanged `ensureDefaultCubeForFirstMount`, `frameSelection`, and `state`
 - `mountBasicPrimitivesUi(viewport, callbacks, state)`
 - Construction-plane helpers for selected bounds/framing, ray-plane intersection, area-weighted face normals, and best-conditioned drag planes
 
@@ -604,6 +610,30 @@ These are package-local entrypoints; shared bootstrap/CoreWorkspace composition 
 - Actual Chrome/WebGL2 for every animal passed Add -> Undo -> Redo -> Move -> Extrude -> Save -> Reload -> OBJ -> GLB with stable IDs, non-empty frames, finite framing, and zero warnings/errors.
 - Consolidated evidence: `docs/validation/basic-primitives/desktop-chrome-all-primitives.json`.
 
+### Exact 18-model catalog extension evidence
+- Cat: 74 vertices / 112 edges / 224 corners / 58 faces; body, head, pointed ears, four legs, long segmented tail.
+- Dog: 80 / 120 / 240 / 60; body, head/muzzle, floppy ears, four legs, tail.
+- Fish: 40 / 60 / 120 / 30; tapered asymmetric-axis body, tail fin, dorsal fin, paired side fins.
+- Turtle: 56 / 84 / 168 / 42; shell, head, four legs, tail.
+- Elephant: 80 / 120 / 240 / 60; body, head, two-part trunk, large ears, four thick legs.
+- Cup: 40 / 60 / 120 / 30; vertically tapered vessel, rim/opening-like closed silhouette, three-part handle.
+- Chair: 48 / 72 / 144 / 36; seat, back, four legs.
+- Flowerpot: 16 / 24 / 48 / 12; vertically tapered closed pot and distinct closed rim/opening-like silhouette.
+- Kettle: 48 / 72 / 144 / 36; body, three-part handle, two-part tapered spout.
+- Sneaker: 32 / 48 / 96 / 24; asymmetric wedge sole, upper, heel, and toe.
+- Backpack: 48 / 72 / 144 / 36; body, front pocket, paired segmented straps.
+- Helmet: 40 / 60 / 120 / 28; 8-sided curved shell, closed visor/opening boundary and rim silhouettes.
+- Gamepad: 80 / 120 / 240 / 56; paired rounded wedges, distinct buttons and two 8-sided sticks.
+- Camera: 32 / 48 / 96 / 22; box body, 8-sided cylindrical lens, shutter button.
+- Bicycle Saddle: 24 / 36 / 72 / 18; three asymmetric tapered components defining a curved organic saddle silhouette.
+- Car: 80 / 120 / 240 / 52; large tapered body/cabin and four 8-sided wheel components.
+- Rocket: 53 / 80 / 160 / 39; 8-sided cylindrical body, pyramid nose cone, four fins.
+- Treasure Chest: 24 / 36 / 72 / 18; box body, tapered lid, hinge silhouette.
+- Every recipe test fixes exact counts, finite nonzero bounds, globally unique coordinates, valid non-repeating indices/cycles, two-face component edge use, exact component count, nondegenerate outward winding, and model-specific landmarks.
+- All 18 entries reuse the generic atomic create/selection/framing path and undo completely to empty; no manual production IDs, separate object/GPU path, loader, kernel, history, renderer, contract, barrel, or bootstrap change was added.
+- Actual 25-scenario Chrome/WebGL2 evidence passed Add -> verified Undo-to-empty -> exact Redo restoration -> reference-free Move -> single-face Extrude -> Save -> Reload -> OBJ -> GLB for existing seven plus all 18 additions. Schema v3 raw per-phase SmokeResult records include recipe-authoritative vertex/edge/corner/face counts, live face-ID sets, face-cycle sizes, hashed mesh/topology/stable-ID fingerprints, exact action/checkpoint/history state, finite renderer readbacks, persistence, parsed OBJ records, parsed GLB headers/chunks/accessors/primitive metadata, candidate base HEAD, and generator/schema provenance.
+- Consolidated evidence: `docs/validation/basic-primitives/desktop-chrome-catalog-25.json`.
+
 ### Construction-plane / Frame Selection evidence
 - Unit tests cover selected vertex/edge/face/mixed bounds, duplicate removal, empty/live-element no-op, thin/point bounds, portrait/landscape framing, finite intersections, parallel rejection, area-weighted normals, and degenerate faces.
 - Existing reference surface hits remain first priority.
@@ -616,13 +646,19 @@ These are package-local entrypoints; shared bootstrap/CoreWorkspace composition 
 - Strict TDD Cube entry RED: `addCube is not a function`; GREEN after composition entry implementation.
 - Strict TDD animal vertical slices: each missing recipe first failed as `undefined`; each missing entry method then failed as `is not a function`; each missing UI action then failed as an absent accessible button. Every slice was made GREEN before starting the next animal.
 - Strict TDD default-Cube helper RED: `ensureDefaultCubeForFirstMount is not a function`; GREEN after the idempotent package-local helper.
-- Focused primitive/UI tests: PASS — 4 files, 32 tests.
-- `npm run ci`: PASS — typecheck; 137 Vitest files / 698 tests; production build; baseline artifact verification.
+- Strict TDD exact 18-model extension: for each model, a missing recipe RED was observed before recipe GREEN, then a missing entry-method RED before entry GREEN, then an absent accessible action RED before UI GREEN. No next model began before the previous vertical slice was GREEN.
+- Additional Cup/Flowerpot taper RED proved the old horizontal wedge did not widen vertically; GREEN uses a closed outward Y-axis frustum while preserving exact topology.
+- Focused primitive/UI/evidence tests: PASS — 4 files, 101 tests; owned combined evaluator/evidence E2E file alone is 60 tests.
+- `npm run ci`: PASS — typecheck; 137 Vitest files / 767 tests; production build; baseline artifact verification.
 - Production artifact: 4 files, 229,686 bytes; compressed JS/CSS 62,148 bytes; no warnings/failures.
 - Harness-inclusive temporary TypeScript project: PASS; temporary config removed.
 - `git diff --check`: PASS.
 - Self-contained security scan: PASS — zero hardcoded-secret, shell-injection, eval/exec, unsafe-deserialization, SQL-injection, or DOM `innerHTML` findings.
-- Self-contained code review: PASS — no security concerns or blocking logic errors found; topology/transaction/selection/framing/UI lifecycle/browser-evidence paths checked against the spec.
+- Independent review `deleg_848b155f`: FAIL — it correctly found that action-name-only completion could overstate Undo/Redo restoration, the 25-scenario harness had dropped Move/Extrude, and the first evidence JSON contained manually asserted aggregate claims rather than raw runner output.
+- Independent review `deleg_d554e228`: FAIL — it correctly found that the evaluator trusted evidence-supplied face/count/action expectations, did not require exact checkpoint/history states, treated positive export byte lengths as sufficient without OBJ/GLB parsing, and placed the evaluator/test in two paths outside exact Workstream 16 ownership while omitting them from the inventory.
+- Second-review strict RED: the owned E2E suite produced 24 expected negative-test failures for wrong authoritative counts, same-length wrong selected IDs, caller-supplied actions, checkpoint actions, checkpoint/action-by-action history, malformed fingerprints, garbage exports, mismatched parsed export counts, and ownership. The old schema-v2 evidence separately failed the schema-v3/provenance test with expected `2` versus `3`.
+- Second-review GREEN: evaluator/types moved to `docs/validation/basic-primitives/smoke-result.ts`; all evaluator/evidence tests were merged into `tests/e2e/basic-primitives-browser.test.ts`; the two outside-ownership files were deleted. The evaluator now derives exact expectations from the 25 recipe exports, compares live selected/created face-ID sets, derives actions internally, validates every checkpoint and history record, and fails closed on parsed OBJ/GLB structure/count inconsistencies.
+- Post-fix review state: `PENDING_AFTER_FIX`. Both reviewer failure sets were addressed directly with strict RED/GREEN tests and regenerated raw browser evidence, but no post-second-fix independent review has run and no independent PASS is claimed.
 
 ### Core-only / Optional regression
 - `npm run verify:core -- --scan-only`: PASS; 151 Core source files, Optional roots excluded, no failures.
@@ -630,8 +666,8 @@ These are package-local entrypoints; shared bootstrap/CoreWorkspace composition 
 - `npm run verify:ipad`: automated fixture PASS; physical device NOT_RUN; release readiness BLOCKED.
 
 ### Browser / device evidence
-- Desktop browser/WebGL2: PASS — Headless Chrome 145 on Linux x86_64, renderer `ready`, real production WebGL2 readback, warnings/errors/JavaScript errors 0.
-- Evidence: `docs/validation/basic-primitives/desktop-chrome-plane-cube.json` and `docs/validation/basic-primitives/desktop-chrome-all-primitives.json`.
+- Desktop browser/WebGL2: PASS — schema-v3 capture `2026-08-10T12:00:39.710Z`, Headless Chrome 145 on Linux x86_64, renderer `ready`, real production WebGL2 readback, warnings/errors/JavaScript errors 0.
+- Evidence: `docs/validation/basic-primitives/desktop-chrome-plane-cube.json`, `docs/validation/basic-primitives/desktop-chrome-all-primitives.json`, and `docs/validation/basic-primitives/desktop-chrome-catalog-25.json`.
 - Physical iPad Safari: NOT_RUN / BLOCKED.
 - Apple Pencil: NOT_RUN / BLOCKED.
 - Desktop automation and the deterministic iPad fixture do not replace physical-device evidence.
@@ -659,10 +695,10 @@ These are package-local entrypoints; shared bootstrap/CoreWorkspace composition 
 ### Final disposition
 - Verified feature checkpoint commit: `cce4123` (`[verified] feat: add basic plane and cube primitives`)
 - Verified scope-extension feature commit: `4d441b6779d794186d0a9d22d1706bbd3df7d355` (`[verified] feat: add editable low-poly animal primitives`)
-- Final local branch tip: this RESULT-only commit; exact SHA reported externally after commit creation.
-- Pushed `origin/wt/basic-primitives` tip: exact SHA verified and reported externally after non-force push.
-- Local/remote tip equality: verified externally after push.
-- Push performed: YES — non-force push to the same-name origin branch.
+- Current candidate base/local HEAD: `165508b5a489f9d39b6491531aa1356ceb6f2d0b`.
+- Current post-review fix set: uncommitted and staged for another independent review.
+- Current candidate commit performed: NO.
+- Current candidate push performed: NO; `origin/wt/basic-primitives` remains at the candidate base HEAD.
 - Main merge performed: NO
 - Main push performed: NO
 - Immutable release tag created: NO

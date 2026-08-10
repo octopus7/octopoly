@@ -17,7 +17,7 @@ import {
   createPrimitive,
   type PrimitiveCreationServices,
 } from "./primitive-creation";
-import { COW_RECIPE, CUBE_RECIPE, DUCK_RECIPE, FROG_RECIPE, PIG_RECIPE, PLANE_RECIPE, RABBIT_RECIPE, type PrimitiveRecipe } from "./primitive-recipes";
+import { CAT_RECIPE, COW_RECIPE, DOG_RECIPE, FISH_RECIPE, CUBE_RECIPE, DUCK_RECIPE, FROG_RECIPE, PIG_RECIPE, PLANE_RECIPE, RABBIT_RECIPE, TURTLE_RECIPE, ELEPHANT_RECIPE, CUP_RECIPE, CHAIR_RECIPE, FLOWERPOT_RECIPE, KETTLE_RECIPE, SNEAKER_RECIPE, BACKPACK_RECIPE, HELMET_RECIPE, GAMEPAD_RECIPE, CAMERA_RECIPE, BICYCLE_SADDLE_RECIPE, CAR_RECIPE, ROCKET_RECIPE, TREASURE_CHEST_RECIPE, type PrimitiveRecipe } from "./primitive-recipes";
 
 export interface BasicPrimitivesEntryDependencies extends PrimitiveCreationServices {
   readonly mesh: MeshQuery;
@@ -42,6 +42,24 @@ export interface BasicPrimitivesEntry {
   addPig(): MeshElementSet;
   addCow(): MeshElementSet;
   addRabbit(): MeshElementSet;
+  addCat(): MeshElementSet;
+  addDog(): MeshElementSet;
+  addFish(): MeshElementSet;
+  addTurtle(): MeshElementSet;
+  addElephant(): MeshElementSet;
+  addCup(): MeshElementSet;
+  addChair(): MeshElementSet;
+  addFlowerpot(): MeshElementSet;
+  addKettle(): MeshElementSet;
+  addSneaker(): MeshElementSet;
+  addBackpack(): MeshElementSet;
+  addHelmet(): MeshElementSet;
+  addGamepad(): MeshElementSet;
+  addCamera(): MeshElementSet;
+  addBicycleSaddle(): MeshElementSet;
+  addCar(): MeshElementSet;
+  addRocket(): MeshElementSet;
+  addTreasureChest(): MeshElementSet;
   ensureDefaultCubeForFirstMount(genuinelyNewProject: boolean): MeshElementSet | null;
   frameSelection(): SelectionFrame | null;
   state(): BasicPrimitivesEntryState;
@@ -100,6 +118,38 @@ export function createBasicPrimitivesEntry(
     addRabbit(): MeshElementSet {
       return add(RABBIT_RECIPE);
     },
+    addCat(): MeshElementSet {
+      return add(CAT_RECIPE);
+    },
+    addDog(): MeshElementSet {
+      return add(DOG_RECIPE);
+    },
+    addFish(): MeshElementSet {
+      return add(FISH_RECIPE);
+    },
+    addTurtle(): MeshElementSet {
+      return add(TURTLE_RECIPE);
+    },
+    addElephant(): MeshElementSet {
+      return add(ELEPHANT_RECIPE);
+    },
+    addCup(): MeshElementSet {
+      return add(CUP_RECIPE);
+    },
+    addChair(): MeshElementSet {
+      return add(CHAIR_RECIPE);
+    },
+    addFlowerpot(): MeshElementSet { return add(FLOWERPOT_RECIPE); },
+    addKettle(): MeshElementSet { return add(KETTLE_RECIPE); },
+    addSneaker(): MeshElementSet { return add(SNEAKER_RECIPE); },
+    addBackpack(): MeshElementSet { return add(BACKPACK_RECIPE); },
+    addHelmet(): MeshElementSet { return add(HELMET_RECIPE); },
+    addGamepad(): MeshElementSet { return add(GAMEPAD_RECIPE); },
+    addCamera(): MeshElementSet { return add(CAMERA_RECIPE); },
+    addBicycleSaddle(): MeshElementSet { return add(BICYCLE_SADDLE_RECIPE); },
+    addCar(): MeshElementSet { return add(CAR_RECIPE); },
+    addRocket(): MeshElementSet { return add(ROCKET_RECIPE); },
+    addTreasureChest(): MeshElementSet { return add(TREASURE_CHEST_RECIPE); },
     ensureDefaultCubeForFirstMount(genuinelyNewProject: boolean): MeshElementSet | null {
       if (defaultCubeMountChecked) return null;
       defaultCubeMountChecked = true;

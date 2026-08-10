@@ -15,6 +15,24 @@ function callbacks(): BasicPrimitivesUiCallbacks {
     addPig: vi.fn(),
     addCow: vi.fn(),
     addRabbit: vi.fn(),
+    addCat: vi.fn(),
+    addDog: vi.fn(),
+    addFish: vi.fn(),
+    addTurtle: vi.fn(),
+    addElephant: vi.fn(),
+    addCup: vi.fn(),
+    addChair: vi.fn(),
+    addFlowerpot: vi.fn(),
+    addKettle: vi.fn(),
+    addSneaker: vi.fn(),
+    addBackpack: vi.fn(),
+    addHelmet: vi.fn(),
+    addGamepad: vi.fn(),
+    addCamera: vi.fn(),
+    addBicycleSaddle: vi.fn(),
+    addCar: vi.fn(),
+    addRocket: vi.fn(),
+    addTreasureChest: vi.fn(),
     frameSelection: vi.fn(),
     save: vi.fn(),
     reload: vi.fn(),
@@ -70,6 +88,24 @@ describe("basic primitives empty-state UI", () => {
       ["Add Pig", actions.addPig],
       ["Add Cow", actions.addCow],
       ["Add Rabbit", actions.addRabbit],
+      ["Add Cat", actions.addCat],
+      ["Add Dog", actions.addDog],
+      ["Add Fish", actions.addFish],
+      ["Add Turtle", actions.addTurtle],
+      ["Add Elephant", actions.addElephant],
+      ["Add Cup", actions.addCup],
+      ["Add Chair", actions.addChair],
+      ["Add Flowerpot", actions.addFlowerpot],
+      ["Add Kettle", actions.addKettle],
+      ["Add Sneaker", actions.addSneaker],
+      ["Add Backpack", actions.addBackpack],
+      ["Add Helmet", actions.addHelmet],
+      ["Add Gamepad", actions.addGamepad],
+      ["Add Camera", actions.addCamera],
+      ["Add Bicycle Saddle", actions.addBicycleSaddle],
+      ["Add Car", actions.addCar],
+      ["Add Rocket", actions.addRocket],
+      ["Add Treasure Chest", actions.addTreasureChest],
       ["Frame Selection", actions.frameSelection],
       ["Save Project", actions.save],
       ["Reload Project", actions.reload],
@@ -126,7 +162,7 @@ describe("basic primitives empty-state UI", () => {
     });
 
     const buttons = Array.from(ui.element.querySelectorAll("button"));
-    expect(buttons).toHaveLength(13);
+    expect(buttons).toHaveLength(31);
     for (const button of buttons) {
       expect(button.type).toBe("button");
       expect(button.disabled).toBe(true);
@@ -147,6 +183,22 @@ describe("basic primitives empty-state UI", () => {
     expect(liveStatus?.textContent).toBe("Ready");
     expect(alert?.closest("[hidden]")).toBeNull();
     expect(liveStatus?.closest("[hidden]")).toBeNull();
+  });
+
+  it("keeps the expanded primitive catalog semantically grouped and keyboard-scrollable", () => {
+    const viewport = document.createElement("section");
+    document.body.append(viewport);
+    const ui = mountBasicPrimitivesUi(viewport, callbacks(), {
+      emptyMesh: true, hasReference: false, busy: false, error: null, status: null,
+    });
+    const catalog = ui.element.querySelector<HTMLElement>('[aria-label="Primitive catalog"]');
+    expect(catalog).not.toBeNull();
+    expect(catalog?.getAttribute("role")).toBe("group");
+    expect(catalog?.style.overflowY).toBe("auto");
+    expect(catalog?.style.maxHeight).not.toBe("");
+    const buttons = Array.from(catalog?.querySelectorAll<HTMLButtonElement>("button") ?? []);
+    expect(buttons).toHaveLength(26);
+    expect(buttons.every((button) => button.tabIndex === 0)).toBe(true);
   });
 
   it("disposes idempotently and rejects updates or callbacks after disposal", () => {
