@@ -485,7 +485,7 @@ desktop mouse MVP의 완료를 과장하거나 iPad external-pointer support를 
 
 ## RESULT
 
-Status: READY_WITH_EXTERNAL_EVIDENCE
+Status: BLOCKED
 
 ### Baseline and execution
 - Input `POST_PLAN_BASE_SHA`: `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f`
@@ -592,8 +592,9 @@ Status: READY_WITH_EXTERNAL_EVIDENCE
   `CoreWorkspace` composition file was intentionally not modified because it is reserved to workstream 19.
 
 ### Known limitations
-- Physical Windows mouse and precision-trackpad smoke are NOT_RUN, so the workstream remains
-  `READY_WITH_EXTERNAL_EVIDENCE` rather than `COMPLETE` despite actual Chrome/Edge browser-engine automation passing.
+- Required physical Windows Chrome/Edge mouse smoke is NOT_RUN, so the canonical workstream status remains `BLOCKED`
+  rather than `COMPLETE` despite actual Chrome/Edge browser-engine automation passing. The former descriptive label
+  `READY_WITH_EXTERNAL_EVIDENCE` is not a repository RESULT status and must not be used as a start-gate value.
 - Physical iPad external mouse/trackpad and Apple Pencil evidence are NOT_RUN; no iPad external-pointer support claim is
   made.
 - Shared production `CoreWorkspace` instantiation/disposal is deferred to workstream 19 as required; this branch ships
