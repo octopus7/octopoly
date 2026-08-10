@@ -781,80 +781,97 @@ Early parallel core mode는 표준 완료 commit과 구분한다. 허용된 순�
 
 ## RESULT
 
-Status: NOT_STARTED
+Status: IN_PROGRESS
 
 Product evidence: NOT_ASSESSED
 
 ### Execution mode
-- Standard or early-parallel:
-- Branch/worktree:
-- Input baseline resolved SHA (`POST_PLAN_BASE_SHA` or `PRACTICAL_TOOL_BASE_SHA`):
-- Input-SHA ancestry check: NOT_RUN
-- PRODUCT_INPUT_BASE_SHA / PRACTICAL_TOOL_BASE_SHA:
-- 16/18 RESULT status and final SHAs:
-- 20~24 RESULT status and final SHAs:
-- 25 integration RESULT / final SHA:
-- Early-core commits carried forward:
+- Standard or early-parallel: Early parallel core only
+- Branch/worktree: `wt/guided-retopo-core` / `/home/beelink/wt-guided-retopo-core`
+- Input baseline resolved SHA (`POST_PLAN_BASE_SHA` or `PRACTICAL_TOOL_BASE_SHA`): `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f`
+- Input-SHA ancestry check: PASS — `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f` is an ancestor of the early-core checkpoint and RESULT descendant
+- PRODUCT_INPUT_BASE_SHA / PRACTICAL_TOOL_BASE_SHA: NOT RESOLVED — Standard mode deferred until 25 is complete
+- 16/18 RESULT status and final SHAs: NOT CONSUMED — outside Early Core
+- 20~24 RESULT status and final SHAs: NOT CONSUMED — outside Early Core
+- 25 integration RESULT / final SHA: NOT CONSUMED — Standard mode not started
+- Early-core commits carried forward: `ee477ff09b6623678882c4e2e297a87ec3eab20d` (`feat(guided): add early core checkpoint`)
 
 ### Implemented
-- NOT STARTED
+- Versioned, immutable Guided lesson schema with a closed constraint vocabulary and deeply frozen parser output.
+- Pure Guided session lifecycle for start, committed-state evaluation, pause/resume, optional evaluated-versus-skipped provenance, abandon, restart and versioned progress restore.
+- Deterministic, non-mutating topology diagnostics over canonical `MeshQuery`/`MeshSnapshot`, including face-local degeneracy tolerance, manifold, loop, joint-support and density checks.
+- Canonical `ToolPreview` flow/density overlays with source identity, mesh-version, region, seed and density cache identity plus cancel/dispose invalidation.
+- Strict offline sample-manifest provenance, license, modification-rights, path and precomputed SHA-256 validation.
+- Local `HTMLElement` Guided panel and accessibility helpers with native controls, enabled focus fallback, persistent fixed-polarity live regions, non-color status presentation, reduced-motion descriptors and mixed-input availability.
 
 ### Files created or modified
-- NONE
+- Pure product modules: `src/guided/{core,content,analysis,preview,ui,accessibility}/**`
+- Pure tests and canonical-contract fixtures: `tests/guided/**`
+- RESULT-only update: `docs/workplan/17_GUIDED_RETOPO.md`
+- No app, composition, project, persistence, E2E, device, shared contract, build configuration or integration source was modified.
 
 ### Public/local API
-- NONE
+- Lesson/content: `parseGuidedLesson`, `BUILTIN_GUIDED_LESSONS`, `validateSampleManifest`, `verifySampleContentHash`
+- Session: `createGuidedSession`
+- Analysis/preview: `analyzeTopology`, `evaluatePurposeConstraints`, `buildGuidedFlowPreview`
+- Local UI/accessibility: `mountGuidedPanel`, `statusPresentation`, `createAccessiblePreviewDescriptor`, `recordInputDevice`
 
 ### Lesson/content coverage
-- First-asset lesson:
-- Eye loop:
-- Mouth loop:
-- Joint loop:
-- Glossary:
+- First-asset lesson: Schema/session primitives only; launcher and actual first-asset workflow deferred to Standard mode.
+- Eye loop: Purpose-oriented closed-loop/manifold built-in definition and deterministic tests.
+- Mouth loop: Purpose-oriented closed-loop/density-band built-in definition and deterministic tests.
+- Joint loop: Purpose-oriented joint-support/manifold built-in definition and deterministic tests.
+- Glossary: Locale-neutral glossary keys and local glossary action represented; localized content wiring deferred.
 
 ### Sample provenance / license
-- Sample manifest:
-- Content hash validation:
-- Author/source/license/attribution:
+- Sample manifest: Versioned immutable metadata contract implemented; no sample asset was added in Early Core.
+- Content hash validation: Strict `sha256:<64 lowercase hex>` metadata and precomputed expected/actual comparison covered.
+- Author/source/license/attribution: Required; relative allowlisted license path, redistribution/commercial rights and modification rights validated.
 
 ### Tests / validation
-- Typecheck/test/build:
-- Guided core/content/analysis:
-- Pro/Core-only regression:
-- Actual first-asset E2E:
-- Completion/abandon/recovery:
-- Offline/network/telemetry gate:
+- Typecheck/test/build: PASS — final `npm run ci`: 140 files / 695 tests, TypeScript, Vite production build and baseline artifact verification. One earlier full-suite attempt hit the existing 5-second mesh budget timeout at 5.575s; the same test passed alone at 3.196s and the complete rerun passed at 2.704s.
+- Guided core/content/analysis: PASS — `npx vitest run tests/guided`: 8 files / 48 tests. Recent blocker focus: 3 files / 20 tests plus `npm run typecheck` PASS.
+- Canonical regression: PASS — `npx vitest run tests/contracts tests/retopo tests/tools/runtime`: 14 files / 91 tests.
+- Ownership/security/offline scan: PASS — 18 pure files before RESULT, no ownership violations, whitespace errors, prohibited concrete imports, network/storage/telemetry APIs, unsafe HTML/eval/process APIs, hardcoded secret patterns, `.only`, TODO or FIXME markers.
+- Pro/Core-only regression: PASS within full `npm run ci`; no Guided app wiring was introduced.
+- Actual first-asset E2E: NOT_RUN — prohibited in Early Core.
+- Completion/abandon/recovery: Pure session completion, abandon, restart, restore and stale preview lifecycle PASS; crash/background project recovery deferred.
+- Offline/network/telemetry gate: Static scan PASS; no account, network, storage or telemetry dependency in `src/guided/**`.
 
 ### Accessibility / input matrix
-- Pencil:
-- Touch:
-- Mouse:
-- Keyboard:
-- Screen reader/focus/color/reduced motion:
+- Pencil: Pure availability and handoff representation PASS; physical Pencil lesson path NOT_RUN.
+- Touch: Pure availability and handoff representation PASS; physical touch lesson path NOT_RUN.
+- Mouse: Pure availability and handoff representation PASS; browser lesson path NOT_RUN.
+- Keyboard: Native button semantics, deterministic order and enabled focus fallback PASS in jsdom; full app path NOT_RUN.
+- Screen reader/focus/color/reduced motion: Persistent polite/assertive live-region identity, deferred initial announcement, deduplication, text/icon/pattern status and static reduced-motion descriptor tests PASS; assistive-technology hardware smoke NOT_RUN.
 
 ### Browser / device evidence
-- Desktop browser:
-- iPad Safari:
-- Performance/memory/input limits:
+- Desktop browser: NOT_RUN — local pure DOM tests only.
+- iPad Safari: NOT_RUN — Standard/device gate deferred.
+- Performance/memory/input limits: Full canonical CI budget suite PASS on the development host; Guided-specific physical-device profiling NOT_RUN.
 
 ### Integration notes
-- NONE
+- Standard mode remains deferred until workstream 25 publishes the required exact practical-tool baseline.
+- App/composition wiring, sample launcher/assets, project-associated persistence/cleanup, history integration, localization, actual first-asset E2E and Pro transition belong to the later Standard/integration phase.
+- Early Core consumes canonical contracts only and does not introduce a shadow mesh, history, selection or retopo implementation.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
-- NONE RECORDED
+- Technical status remains `IN_PROGRESS`: no Standard mode, app wiring, actual sample asset, project persistence/recovery, localized lesson UI, first-asset save/reload/export E2E, browser smoke or physical iPad/input evidence.
+- Product study has not started.
+- Density diagnostics are advisory warnings; product tuning and usability thresholds require later device and study evidence.
 
 ### Product study
-- Evidence collection method:
-- Cohort:
+- Evidence collection method: NOT_STARTED
+- Cohort: NONE
 - Outcome: NOT_ASSESSED
 
 ### Final disposition
-- Final local branch tip: NOT_SET
-- Pushed same-name origin branch tip: NOT_SET
-- Local/remote tip equality: NOT_CHECKED
-- Branch push performed: NO
+- Final local branch tip: This RESULT commit; exact non-self-referential SHA is reported in the final handoff.
+- Pushed same-name origin branch tip: `origin/wt/guided-retopo-core`; exact SHA is reported in the final handoff.
+- Local/remote tip equality: verified after non-force push and reported in the final handoff.
+- Branch push performed: YES — non-force push to `origin/wt/guided-retopo-core`
 - Tag created: NO — prohibited by this workstream
 - Main merge/deploy performed: NO — out of scope
