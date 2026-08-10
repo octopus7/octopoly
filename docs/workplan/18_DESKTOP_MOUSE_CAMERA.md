@@ -33,14 +33,15 @@ follow-up workstream이며 09/14의 immutable baseline이나 release 의미를 �
 Mode: WORKTREE
 Branch: wt/desktop-mouse-camera
 Worktree: ../wt-desktop-mouse-camera
-Order: AFTER 09 COMPLETE; MAY RUN IN PARALLEL WITH 16 AND 17
-Branch point: implementation 대화 시작 시 검증한 정확한 `origin/main^{commit}`
-Output: ONE VERIFIED WORKSTREAM COMMIT; NO TAG
+Order: AFTER PLANNING COMMIT PUSH; MAY RUN IN PARALLEL WITH 16 AND 17 EARLY CORE
+Branch point: exact immutable `POST_PLAN_BASE_SHA` recorded after the planning commit push
+Output: VERIFIED UNIT COMMITS + FINAL RESULT COMMIT; NO TAG
+Push: origin/wt/desktop-mouse-camera AFTER ACCEPTANCE; NEVER FORCE-PUSH
 ```
 
-branch point는 `baseline/optional-sdk-v1^{commit}`을 ancestor로 가져야 한다. 14의 개발 통합 commit이 이미
-main에 있으면 그 산출물을 보존하는 최신 clean `origin/main`에서 분기하되, 14의 `baseline/full-v1` 존재나
-release readiness는 18의 시작 조건이 아니다.
+공지된 exact `POST_PLAN_BASE_SHA`는 `baseline/optional-sdk-v1^{commit}`을 ancestor로 가져야 한다. mutable
+`origin/main` tip을 다시 선택하지 않으며, 14의 `baseline/full-v1` 존재나 release readiness는 18의 시작
+조건이 아니다.
 
 16 기본 도형 추가와 17 guided retopology는 18의 선행 조건이 아니며 서로 독립 branch/worktree에서 병렬
 진행할 수 있다. 18의 자체 acceptance는 reference fixture 또는 기존 mesh fixture로 완결한다. 다만 최종 제품
@@ -115,9 +116,9 @@ mapping을 제공한다.
   `14_OPTIONAL_INTEGRATION.md`, `INTERFACE_CONTRACTS.md`, 이 문서와
   `docs/OCTOPOLY_DESKTOP_MOUSE_INPUT_ANALYSIS.md`를 끝까지 읽었다.
 - `09_INTEGRATION` RESULT가 `COMPLETE`이고 `baseline/optional-sdk-v1`이 존재한다.
-- 현재 `origin/main^{commit}`을 정확한 SHA로 해석했으며 그 commit이 `baseline/optional-sdk-v1^{commit}`의
-  후손이다.
-- `wt/desktop-mouse-camera`가 위 resolved main commit에서 분기했고 현재 작업 위치가 지정 worktree와 branch다.
+- planning push 뒤 공지된 exact `POST_PLAN_BASE_SHA`를 확인했고 그 commit이
+  `baseline/optional-sdk-v1^{commit}`의 후손이다.
+- `wt/desktop-mouse-camera`가 exact `POST_PLAN_BASE_SHA`에서 분기했고 현재 작업 위치가 지정 worktree와 branch다.
 - worktree에 관련 없는 미커밋 변경이 없고 16/17 또는 사용자 파일과 소유 범위가 겹치지 않는다.
 - 현재 `PointerSample`, `ToolInputResult`, `NormalizedInputSurface`, `ToolRuntime.capturedPointerId()`와
   `OrbitCameraController` API가 아래 설계를 contract 변경 없이 표현할 수 있음을 확인했다.
@@ -247,24 +248,18 @@ src/input/mouse/**
 src/input/surface/normalizedInputSurface.ts
 src/input/surface/index.ts
 src/app/composition/workspace-input.ts
-src/app/composition/core-workspace.ts
-src/app/composition/index.ts
 src/tools/basic/gesture.ts
-src/camera/index.ts (조건부: 기존 zoom hard limit이나 public behavior 보완이 실제로 필요할 때만)
 
 tests/input/mouse/**
 tests/input/normalizedInput.test.ts
 tests/app/composition/workspace-input.test.ts
-tests/tools/basic/** (primary-button routing 관련 focused test만)
-tests/camera/camera.test.ts (조건부 camera 변경 대응만)
+tests/tools/basic/gesture-mouse-routing.test.*
 tests/integration/desktop-mouse-camera.integration.test.ts
 tests/e2e/desktop-mouse-camera.browser.test.ts
 tests/device/desktop-mouse-camera/**
 scripts/verify-desktop-mouse*
 docs/validation/desktop-mouse/**
 
-package.json (검증 command 게시가 꼭 필요할 때만)
-선택된 test 설정 (기존 실제 Chrome/Edge runner 연결에 꼭 필요할 때만)
 docs/workplan/18_DESKTOP_MOUSE_CAMERA.md (RESULT만)
 ```
 
@@ -334,21 +329,17 @@ docs/validation/desktop-mouse/**
 ### Main Agent Reserved
 
 ```text
-src/app/composition/core-workspace.ts
-src/app/composition/index.ts
 src/tools/basic/gesture.ts
-tests/tools/basic/**의 primary-button focused 변경
-src/camera/index.ts와 tests/camera/camera.test.ts의 조건부 변경
-package.json과 선택된 test 설정의 조건부 변경
+tests/tools/basic/gesture-mouse-routing.test.*
 docs/workplan/18_DESKTOP_MOUSE_CAMERA.md의 RESULT
 ```
 
 주 에이전트 책임:
 
 - exact baseline/branch/start gate 판정과 ownership freeze
-- Agent A local wheel adapter와 Agent B owner controller를 CoreWorkspace lifecycle에 연결
+- Agent A local wheel adapter와 Agent B owner controller를 branch-local input entry에 연결
 - primary-button helper가 pen/Pencil behavior를 바꾸지 않는지 검토
-- 조건부 camera/config 변경의 필요성을 판정하고 불필요한 변경을 거부
+- shared CoreWorkspace/camera/config 변경은 19 Phase A integration note로 넘기고 이 branch에서 수정하지 않음
 - A/B 결과가 고정된 revision에서 C browser evidence를 실행
 - 전체 acceptance, RESULT, final workstream commit과 branch push 준비
 
@@ -357,8 +348,8 @@ RESULT/final commit`이다.
 
 ## Internal Work Sequence and Gates
 
-1. **Gate 0 — Baseline and boundary:** exact `origin/main` SHA, 09 ancestry, clean WORKTREE, frozen contract와
-   current capture semantics를 확인한다.
+1. **Gate 0 — Baseline and boundary:** 공지된 exact `POST_PLAN_BASE_SHA`, 09 ancestry, clean WORKTREE,
+   frozen contract와 current capture semantics를 확인한다.
 2. **Gate 1 — Ownership freeze:** A/B/C/Main의 파일 목록과 public/local API를 선언한다. Wheel adapter는
    local API이고 공용 contract request가 없음을 확인한다.
 3. **Gate 2 — Parallel implementation:** Agent A는 DOM/wheel 경계, Agent B는 pure owner/router state를 서로의
@@ -458,7 +449,7 @@ desktop mouse MVP의 완료를 과장하거나 iPad external-pointer support를 
 - [ ] actual precision trackpad 또는 iPad external pointer 결과는 physical evidence가 있는 범위에서만 claim했다.
 - [ ] 16 산출물이 있는 경우 기본 도형 조합 E2E 결과를 기록하고, 없는 경우 이를 18 자체 실패로 취급하지
       않았다.
-- [ ] RESULT를 포함한 한 final workstream commit을 만들었고 tag를 만들지 않았다.
+- [ ] 검증된 기능 단위 commit과 RESULT를 포함한 final commit을 만들었고 tag를 만들지 않았다.
 
 ## Failure and Stop Rules
 
@@ -483,7 +474,7 @@ desktop mouse MVP의 완료를 과장하거나 iPad external-pointer support를 
 
 1. 모든 acceptance evidence와 미실행 physical-device 항목을 구분해 수집한다.
 2. 이 문서의 `RESULT`를 먼저 갱신한다. final commit SHA를 RESULT 안에 자기 참조로 기록하지 않는다.
-3. 18 Ownership과 승인된 조건부 파일만 포함한 한 final workstream commit을
+3. 18 Ownership 안에서 검증된 기능 단위 commit을 허용하고, RESULT를 포함한 final commit을
    `wt/desktop-mouse-camera`에 생성한다.
 4. targeted tests, canonical CI-equivalent와 changed-file audit를 final tree에서 다시 확인한다.
 5. 루트 `AGENTS.md`의 사전 승인에 따라 같은 이름의 origin branch로 non-force push할 수 있다.
@@ -497,9 +488,9 @@ desktop mouse MVP의 완료를 과장하거나 iPad external-pointer support를 
 Status: NOT_STARTED
 
 ### Baseline and execution
-- Input main ref: NOT RESOLVED
-- Input resolved SHA: NOT RESOLVED
+- Input `POST_PLAN_BASE_SHA`: NOT_SET
 - 09 baseline ancestry: NOT CHECKED
+- Start-SHA ancestry check: NOT_RUN
 - Branch/worktree: `wt/desktop-mouse-camera` / `../wt-desktop-mouse-camera`
 - 16/17 dependency: NONE
 
@@ -551,7 +542,9 @@ Status: NOT_STARTED
 - Implementation and validation have not started.
 
 ### Final disposition
-- Final workstream commit: NOT CREATED
+- Final local branch tip: NOT_SET
+- Pushed `origin/wt/desktop-mouse-camera` tip: NOT_SET
+- Local/remote tip equality: NOT_CHECKED
 - Branch push: NOT PERFORMED
 - Main merge: NOT PERFORMED
 - Tag: NOT CREATED — prohibited for this workstream

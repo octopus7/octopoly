@@ -37,21 +37,32 @@ baseline을 깨지 않는 **post-baseline additive workstream**으로만 실행�
 Mode: WORKTREE
 Branch: wt/guided-retopo
 Worktree: ../wt-guided-retopo
-Order: AFTER approved 16 Add Plane/sample result is integrated into main
-Minimum product input: e54edeed9094d71679b4b081729a34354e820e4a
-Branch point: exact approved main descendant containing the accepted 16 result
-Output: one Guided Retopo workstream commit + same-name origin branch push
+Order: AFTER 25 PRACTICAL TOOL INTEGRATION IS PUSHED
+Minimum product input: exact PRODUCT_INPUT_BASE_SHA published by 19 Phase A
+Branch point: exact `PRACTICAL_TOOL_BASE_SHA` recorded and pushed by 25
+Output: reviewed early-core commits + one final Standard/RESULT commit + same-name origin branch push
 Tag: NONE
 Main merge/deploy: OUT OF SCOPE
 ```
 
-`origin/main` 같은 mutable ref를 결과에 그대로 적지 않는다. 시작 시 해석한 exact commit SHA와 16 입력 commit
-SHA를 RESULT에 기록하고 ancestry를 확인한다.
+`origin/main` 같은 mutable ref를 결과에 그대로 적지 않는다. 시작 시 25 RESULT의 exact
+`PRACTICAL_TOOL_BASE_SHA`, 19의 `PRODUCT_INPUT_BASE_SHA`, 16/18과 20~24 입력 commit SHA를 RESULT에 기록하고
+ancestry를 확인한다.
 
 ### Early parallel core mode
 
-16이 아직 `COMPLETE`가 아니어도 아래 순수 범위는 별도 준비 branch `wt/guided-retopo-core`에서 병렬화할 수
-있다.
+구현 계획 commit이 push된 뒤 아래 실행 정보로 순수 범위를 병렬화할 수 있다.
+
+```text
+Mode: WORKTREE — EARLY CORE ONLY
+Branch: wt/guided-retopo-core
+Worktree: ../wt-guided-retopo-core
+Branch point: exact immutable POST_PLAN_BASE_SHA
+Output: reviewed pure checkpoint commits + IN_PROGRESS RESULT + same-name origin branch push
+Main merge/tag/deploy: PROHIBITED
+```
+
+허용 경로:
 
 ```text
 src/guided/core/**
@@ -84,9 +95,10 @@ scripts/verify-guided*
 16이 소유한 empty state / Add Plane / sample launcher 경로
 ```
 
-Early parallel core는 16의 concrete API를 추측하거나 복사하지 않으며 `COMPLETE`가 될 수 없다. 16이 main에
-통합되면 exact post-16 commit에서 표준 `wt/guided-retopo`를 새로 만들고, 준비 branch의 **순수 소유 범위
-commit만 검토 후 cherry-pick**한다. 다른 worktree를 merge하지 않고 app wiring은 새 표준 branch에서 수행한다.
+Early parallel core는 16/18 또는 20~24의 concrete API를 추측하거나 복사하지 않으며 `COMPLETE`가 될 수 없다.
+25가 20~24를 통합하면 exact `PRACTICAL_TOOL_BASE_SHA`에서 표준 `wt/guided-retopo`를 새로 만들고, 준비 branch의
+**순수 소유 범위 commit만 검토 후 cherry-pick**한다. 다른 worktree를 merge하지 않고 app wiring, persistence,
+sample asset, integration/E2E/device 작업은 새 표준 branch에서 수행한다.
 
 ## Required Inputs
 
@@ -103,11 +115,13 @@ commit만 검토 후 cherry-pick**한다. 다른 worktree를 merge하지 않고 
 9. `docs/OCTOPOLY_IPAD_COMMERCIAL_VIABILITY.md`
 10. `docs/OCTOPOLY_FOLLOW_UP_FEATURE_ANALYSIS.md`
 11. `docs/workplan/16_BASIC_PRIMITIVES.md`와 그 RESULT
-12. mouse-only lesson path가 18 산출물을 소비한다면 `docs/workplan/18_DESKTOP_MOUSE_CAMERA.md`와 그 RESULT
+12. `docs/workplan/18_DESKTOP_MOUSE_CAMERA.md`와 그 RESULT
+13. `docs/workplan/20_TOPOLOGY_ACTIONS.md`부터 `24_RETOPO_VISIBILITY.md`까지와 각 RESULT
+14. `docs/workplan/25_PRACTICAL_TOOL_INTEGRATION.md`와 그 RESULT
 
-구현 시작 시 16 RESULT status, final commit SHA와 제공하는 Add Plane/Cube, framing, reference-free editing
-진입점/API를 preflight 표에 고정한다. 18은 Guided core의 start gate가 아니지만, mouse-only completion이 그
-camera/input 산출물을 소비하면 exact 18 commit과 검증 evidence를 함께 고정한다.
+구현 시작 시 25가 게시한 exact `PRACTICAL_TOOL_BASE_SHA`, 16/18과 20~24 final SHA, Add Plane/Cube, camera,
+topology actions, transform/refinement/symmetry, project/recovery, import/visibility의 실제 API와 ownership을
+preflight 표에 고정한다.
 
 ## Goal
 
@@ -170,19 +184,21 @@ MVP 제품 E2E는 위 목적 중 승인된 한 개의 first-asset lesson을 처�
 
 ### Standard-mode gates
 
-- `docs/workplan/16_BASIC_PRIMITIVES.md` RESULT가 `COMPLETE` 또는 명시적으로 수용 가능한
-  `READY_WITH_CONTRACT_REQUEST`다.
-- 16 final commit이 current branch point의 ancestor이며 branch tip/RESULT/provenance가 확인된다.
-- 16의 `Add Plane`, sample launcher, selection/framing, save/reload 중 17이 소비하는 실제 API와 소유 경계가
-  확정되어 있다.
+- `docs/workplan/25_PRACTICAL_TOOL_INTEGRATION.md` technical status가 `COMPLETE`이고 exact
+  `PRACTICAL_TOOL_BASE_SHA`가 push되었다. 별도 external/device evidence의 `NOT_RUN`은 PASS로 간주하지 않는다.
+- `PRACTICAL_TOOL_BASE_SHA`가 19 Phase A의 `PRODUCT_INPUT_BASE_SHA`와 16/18, 20~24 accepted commits를 모두
+  ancestor로 가진다.
+- 16과 18 및 20~24 RESULT status/provenance가 25에서 명시적으로 수용되었다.
+- Guided가 소비하는 Add Plane, camera, topology action, transform/refinement/symmetry, project/recovery,
+  import/visibility API와 소유 경계가 확정되어 있다.
 - 16의 integration note와 contract request를 `accepted | rejected | deferred`로 판정했다.
 - 16이 sample을 제공하지 않거나 license/provenance가 부족하면 17이 자체 승인 sample을 소유한다는 결정을
   먼저 기록한다.
 
 ### Early-parallel gates
 
-- 준비 branch와 16 branch가 같은 exact baseline에서 시작했거나 차이를 명시적으로 기록했다.
-- Agent A/B가 app/composition, project concrete implementation과 16 소유 경로를 수정하지 않는다.
+- 준비 branch가 exact `POST_PLAN_BASE_SHA`에서 시작했다.
+- Agent A/B/C가 early-mode 허용 경로 밖의 app/composition/project/persistence/sample/E2E/device 경로를 수정하지 않는다.
 - fake `MeshQuery`, `HistoryService`, `SelectionService`, `RetopoEngine`과 serialized lesson fixtures만 사용한다.
 - 조기 산출물의 공개 타입은 `src/guided/**` 내부 API이며 canonical cross-module contract로 가장하지 않는다.
 
@@ -403,8 +419,9 @@ topology를 sample에 숨겨 사용자 결과를 좌표 일치로 채점하지 �
 | Keyboard | focusable viewport/step controls, 선택·anchor 이동·preview confirm/cancel·Undo/Redo·skip/resume를 통해 pointer-only gesture 없이 완주 가능 |
 
 Pencil/touch/mouse/keyboard 경로는 같은 lesson goal을 사용하되 동일한 gesture를 강요하지 않는다.
-`docs/workplan/18_DESKTOP_MOUSE_CAMERA.md`가 미완료라면 mouse navigation을 17에서 중복 구현하지 않는다. 그러나 실제
-mouse-only lesson completion을 검증할 수 없으면 17을 `COMPLETE`로 기록하지 않고 integration blocker로 남긴다.
+Standard 구현 write 전에 25의 실제 tool/action/accessibility adapter만으로 각 입력의 완주가 가능한지 preflight한다.
+불가능한 경로는 Guided 내부에서 mesh/tool/camera를 복제하지 않고 exact missing capability와 소유 파일을 blocker로
+기록해 별도 입력 접근성 변경 승인을 받는다. mouse navigation은 18 산출물만 소비하며 중복 구현하지 않는다.
 
 touch-only 경로는 기존 touch navigation을 우발적으로 modeling으로 바꾸지 않는다. visible mode, pointer owner,
 cancel/lost-capture cleanup과 exit affordance가 있어야 한다. keyboard path는 자동 정답 적용이 아니라 사용자가
@@ -448,14 +465,24 @@ docs/licenses/guided/**
 docs/workplan/17_GUIDED_RETOPO.md (RESULT만)
 ```
 
-`src/app/bootstrap.*`는 16과 동시에 수정하지 않는다. 16이 main에 통합된 뒤 주 에이전트만 Guided 진입점의
-최소 변경을 수행한다. 공용 `src/contracts/**`, concrete mesh/history/tool/retopo/renderer 내부, Optional
+`src/app/bootstrap.*`는 16/18 또는 20~24와 동시에 수정하지 않는다. 25가 main에 통합된 뒤 Standard 주 에이전트만
+Guided 진입점의 최소 변경을 수행한다. 공용 `src/contracts/**`, concrete mesh/history/tool/retopo/renderer 내부, Optional
 extension 내부, package/lockfile, build/CI 설정과 다른 workplan은 Ownership에 포함하지 않는다.
 
 새 dependency나 shared config 변경이 꼭 필요하면 구현하지 않고 RESULT에 요청한다. 기존 dependency와
 canonical test command로 구현하는 것을 기본으로 한다.
 
 ## Agent Allocation
+
+### Early-mode allocation
+
+- **Agent A:** `src/guided/core/**`, `src/guided/content/**`와 대응 core/content/fixture unit tests만 소유한다.
+  `src/guided/persistence/**`, sample/license asset은 금지한다.
+- **Agent B:** 아래 analysis/preview 소유 범위를 그대로 사용할 수 있다.
+- **Agent C:** `src/guided/ui/**`, `src/guided/accessibility/**`와 대응 unit tests만 소유한다. app/integration/E2E/device/evidence는 금지한다.
+- **Main Agent:** ownership/preflight와 `IN_PROGRESS` RESULT/checkpoint push만 소유한다.
+
+아래 표는 **Standard mode**에서만 적용한다.
 
 ### Agent A — Lesson Core, Content, and Local Progress
 
@@ -553,7 +580,8 @@ preflight and ownership freeze
 -> Agent A lesson schema/state + Agent B analysis/preview in parallel
 -> Agent C local UI/accessibility shell and E2E fixture preparation
 -> pure contract tests and content/provenance validation
--> 16 COMPLETE/main integration gate
+-> 25 practical baseline / Standard-mode gate
+-> reviewed early-core commits into exact PRACTICAL_TOOL_BASE_SHA branch
 -> main agent start-source/project/tool composition
 -> input-specific completion paths
 -> actual first-asset E2E and Pro regression
@@ -684,8 +712,8 @@ Product evidence: NOT_ASSESSED | STUDY_IN_PROGRESS | GO | ITERATE | NO_GO
 
 다음을 모두 충족해야 `Status: COMPLETE`다.
 
-- [ ] exact baseline SHA, 16 입력 문서/RESULT/final SHA와 ancestry를 기록했다.
-- [ ] 16 이전 조기 작업이 있었다면 순수 소유 commit만 표준 post-16 branch로 옮겼고 provenance를 기록했다.
+- [ ] exact `PRACTICAL_TOOL_BASE_SHA`, 16/18과 20~24 입력 문서/RESULT/final SHA 및 ancestry를 기록했다.
+- [ ] 조기 작업이 있었다면 순수 소유 commit만 표준 `PRACTICAL_TOOL_BASE_SHA` branch로 옮겼고 provenance를 기록했다.
 - [ ] Guided/Pro가 동일 mesh/history/tool/selection/retopo service instance를 사용하며 별도 코어가 없다.
 - [ ] `src/guided/**` core가 lesson/sample filename과 16 concrete implementation에 의존하지 않는다.
 - [ ] lesson schema/data, engine, locale/UI와 sample manifest가 분리되어 있다.
@@ -701,6 +729,7 @@ Product evidence: NOT_ASSESSED | STUDY_IN_PROGRESS | GO | ITERATE | NO_GO
 - [ ] 기본 runtime이 offline이며 account/network/telemetry dependency와 외부 행동 전송이 없다.
 - [ ] actual first-asset E2E가 UI부터 Pro transition, save/reload/export까지 통과한다.
 - [ ] completion, abandon, crash/background-style recovery와 stale preview cleanup test가 통과한다.
+- [ ] 22의 project-associated cleanup hook에 Guided progress를 등록하고 project 삭제 시 해당 local state만 atomic하게 정리한다.
 - [ ] Guided 제거/비활성 Pro mode와 Optional 유무 조합에서 기존 Core vertical slice가 회귀하지 않는다.
 - [ ] canonical typecheck/test/build와 clean checkout CI-equivalent가 통과한다.
 - [ ] representative desktop browser 및 minimum supported iPad/input device gate가 PASS다. 미검증은 PASS가 아니다.
@@ -759,10 +788,12 @@ Product evidence: NOT_ASSESSED
 ### Execution mode
 - Standard or early-parallel:
 - Branch/worktree:
-- Input baseline resolved SHA:
-- 16 input document:
-- 16 RESULT status:
-- 16 final resolved SHA:
+- Input baseline resolved SHA (`POST_PLAN_BASE_SHA` or `PRACTICAL_TOOL_BASE_SHA`):
+- Input-SHA ancestry check: NOT_RUN
+- PRODUCT_INPUT_BASE_SHA / PRACTICAL_TOOL_BASE_SHA:
+- 16/18 RESULT status and final SHAs:
+- 20~24 RESULT status and final SHAs:
+- 25 integration RESULT / final SHA:
 - Early-core commits carried forward:
 
 ### Implemented
@@ -821,7 +852,9 @@ Product evidence: NOT_ASSESSED
 - Outcome: NOT_ASSESSED
 
 ### Final disposition
-- Final worktree commit created: NO
+- Final local branch tip: NOT_SET
+- Pushed same-name origin branch tip: NOT_SET
+- Local/remote tip equality: NOT_CHECKED
 - Branch push performed: NO
 - Tag created: NO — prohibited by this workstream
 - Main merge/deploy performed: NO — out of scope

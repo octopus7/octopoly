@@ -25,9 +25,10 @@ URL은 `https://octopoly.pages.dev/`이다. 초기 제품은 정적 Pages SPA이
 2. 이 `/AGENTS.md`, `docs/workplan/00_MASTER.md`, `docs/workplan/00_BOOTSTRAP.md`,
    `docs/workplan/INTERFACE_CONTRACTS.md`, 지정 작업 MD를 순서대로 끝까지 읽는다.
 3. 지정 작업 MD의 `Required`, `Execution`, `Ownership`, `Acceptance`, 현재 `RESULT`를 확인한다.
-4. 01 이상 작업이면 `docs/workplan/00_BOOTSTRAP.md`의 RESULT가 `COMPLETE`이고 immutable baseline ref가
-   존재하는지 확인한 뒤 그 ref를 commit SHA로 해석한다.
-5. 현재 branch/worktree가 `Execution`과 일치하며 해석된 baseline commit에서 시작했는지 확인한다.
+4. 01~08 작업이면 `docs/workplan/00_BOOTSTRAP.md`의 RESULT가 `COMPLETE`이고 immutable core baseline ref가
+   존재하는지 확인한 뒤 그 ref를 commit SHA로 해석한다. 09 이후 후속 작업은 지정 작업 MD가 요구하는
+   exact immutable input SHA와 선행 RESULT status를 확인하고, mutable branch 이름으로 대체하지 않는다.
+5. 현재 branch/worktree가 `Execution`과 일치하며 위에서 해석한 exact input commit에서 시작했는지 확인한다.
 6. baseline에 공용 contract/scaffold, 빌드 설정, 테스트 실행 경로가 준비되어 있는지 확인한다.
 7. Agent A/B/C를 사용한다면 주 에이전트가 서로 겹치지 않는 구체적인 파일 소유 범위를 먼저 정한다.
 8. 확인 결과와 이번 대화의 구현 범위를 짧게 알린 뒤 작업을 시작한다.
@@ -89,10 +90,12 @@ URL은 `https://octopoly.pages.dev/`이다. 초기 제품은 정적 Pages SPA이
 ### Integration
 
 - Core merge와 cross-module 수정은 `docs/workplan/09_INTEGRATION.md`, Optional 10~13의 merge와 조립은
-  `docs/workplan/14_OPTIONAL_INTEGRATION.md` 작업만 수행한다.
+  `docs/workplan/14_OPTIONAL_INTEGRATION.md`, 후속 제품 16/18과 이후 17 Standard의 merge 및 shared seam
+  조립은 `docs/workplan/19_FOLLOW_UP_INTEGRATION.md`, 도구 완성 20~24의 merge와 shared seam 조립은
+  `docs/workplan/25_PRACTICAL_TOOL_INTEGRATION.md` 작업만 수행한다.
 - Pages production release, preview, rollback/roll-forward와 deploy tag는
   `docs/workplan/15_CLOUDFLARE_PAGES.md` 작업만 수행한다.
-- 01~08 및 10~13 작업자는 integration이나 main merge를 수행하지 않는다.
+- 01~08, 10~13, 16~18 및 20~24 작업자는 integration이나 main merge를 수행하지 않는다.
 - Integration은 각 작업 MD의 RESULT와 contract change request를 먼저 읽는다.
 
 ## 4. 공용 Contract
@@ -100,6 +103,9 @@ URL은 `https://octopoly.pages.dev/`이다. 초기 제품은 정적 Pages SPA이
 `docs/workplan/INTERFACE_CONTRACTS.md`는 병렬 구현 시작 후 frozen contract로 취급한다.
 
 - 개별 workstream에서 임의로 수정하지 않는다.
+- 09/14/19/25 Integration은 지정 작업 MD가 명시적으로 소유한 additive reconciliation만 수행할 수 있다.
+  이때 `INTERFACE_CONTRACTS.md`, 실제 `src/contracts/**` source/export와 contract tests를 같은 commit에서 함께
+  갱신하고 RESULT에 accepted request와 재동결 지점을 기록한다. breaking 변경은 별도 승인 없이 수행하지 않는다.
 - 다른 module의 concrete implementation에 직접 의존하지 않는다.
 - shadow type이나 중복 interface를 만들어 contract를 우회하지 않는다.
 - contract에 없는 cross-module method, event, data shape을 추측해 public API로 만들지 않는다.
@@ -126,9 +132,9 @@ URL은 `https://octopoly.pages.dev/`이다. 초기 제품은 정적 Pages SPA이
 - 공용 project bootstrap
 - 공용 contract 소스
 
-필요한 변경은 RESULT의 integration 요청사항으로 남긴다. 초기 scaffold/baseline을 만드는 별도 작업,
-09 Core Integration, 14 Optional Integration 또는 15 Pages Release/Operations만 각 문서에서 합의된 범위로
-이 파일들을 수정할 수 있다.
+필요한 변경은 RESULT의 integration 요청사항으로 남긴다. 초기 scaffold/baseline을 만드는 별도 작업과
+09 Core Integration, 14 Optional Integration, 19 Follow-up Integration, 25 Practical Tool Integration 또는
+15 Pages Release/Operations만 각 작업 MD의 명시적 Ownership 범위에서 이 파일들을 수정할 수 있다.
 
 ## 6. 병렬 서브에이전트 운영
 

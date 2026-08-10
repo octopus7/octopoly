@@ -22,7 +22,7 @@ Worktree: NONE
 Order: AFTER 09 COMPLETE AND AFTER 10~13 COMMITTED RESULTS
 Input baseline: `baseline/optional-sdk-v1^{commit}`
 Output: FINAL OPTIONAL INTEGRATION COMMIT + IMMUTABLE TAG `baseline/full-v1`
-Push: ONLY WITH EXPLICIT USER AUTHORIZATION
+Push: PRE-AUTHORIZED AFTER ALL ACCEPTANCE/RESULT/TAG GATES; NEVER FORCE-PUSH
 ```
 
 별도 worktree를 만들지 않는다. merge 전에 현재 branch가 `main`이고 working tree가 clean한지 확인한다.
@@ -559,7 +559,8 @@ full bundle with image-backed providers
 4. final commit에 annotated tag `baseline/full-v1`을 생성한다.
 5. `git rev-parse baseline/full-v1^{commit}`과 `git rev-parse HEAD`가 같은지 검증한다.
 6. branch, resolved SHA, build/test/device 결과를 최종 응답에 보고한다.
-7. push는 사용자의 명시적 요청이 있을 때만 main과 tag를 함께 수행하며 force push하지 않는다.
+7. 루트 authority의 사전 승인에 따라 모든 acceptance/RESULT/tag gate가 통과한 경우 main과 tag를 함께
+   non-force push한다. gate 미충족 시 push/tag를 수행하지 않는다.
 
 ## RESULT
 

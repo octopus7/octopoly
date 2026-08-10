@@ -42,6 +42,13 @@ Reference import
 - `docs/workplan/16_BASIC_PRIMITIVES.md` — 빈 장면에서 시작할 수 있는 Plane/Cube 생성 흐름
 - `docs/workplan/17_GUIDED_RETOPO.md` — 초보자용 단계형 retopology 학습·가이드 흐름
 - `docs/workplan/18_DESKTOP_MOUSE_CAMERA.md` — 데스크톱 마우스·트랙패드 카메라 조작
+- `docs/workplan/19_FOLLOW_UP_INTEGRATION.md` — 16/18와 이후 17의 단계별 main 조립
+- `docs/workplan/20_TOPOLOGY_ACTIONS.md` — existing kernel/selection 기능의 실사용 action/UX
+- `docs/workplan/21_TRANSFORM_REFINEMENT_SYMMETRY.md` — transform, slide/relax/projection과 symmetry
+- `docs/workplan/22_PROJECT_LIFECYCLE.md` — 이름 있는 project, dirty/autosave와 recovery
+- `docs/workplan/23_IMPORT_INTEROP.md` — OBJ/GLB/glTF reference 관리와 export interop
+- `docs/workplan/24_RETOPO_VISIBILITY.md` — opacity/x-ray/wire/hide/isolate와 picking 일치
+- `docs/workplan/25_PRACTICAL_TOOL_INTEGRATION.md` — 20~24 main 조립과 complete-asset E2E
 - `docs/workplan/START_PROMPTS.md` — 새 작업 대화에 복사할 프롬프트
 
 ## Mandatory Start Gate
@@ -83,6 +90,13 @@ baseline 이전에는 01~08의 branch/worktree나 기능 코드를 만들지 않
 | 16 | Basic Primitives | YES | WORKTREE | `wt/basic-primitives` |
 | 17 | Guided Retopo | CONDITIONAL | WORKTREE | `wt/guided-retopo` |
 | 18 | Desktop Mouse Camera | NO | WORKTREE | `wt/desktop-mouse-camera` |
+| 19 | Follow-up Product Integration | YES | MAIN | `main` |
+| 20 | Topology Actions and Selection UX | YES | WORKTREE | `wt/topology-actions` |
+| 21 | Transform, Refinement, Symmetry | YES | WORKTREE | `wt/transform-refinement` |
+| 22 | Project Lifecycle | YES | WORKTREE | `wt/project-lifecycle` |
+| 23 | Import / Reference / Export Interop | YES | WORKTREE | `wt/import-interop` |
+| 24 | Retopology Visibility | YES | WORKTREE | `wt/retopo-visibility` |
+| 25 | Practical Tool Integration | YES | MAIN | `main` |
 
 ## Core Dependency Direction
 
@@ -109,9 +123,10 @@ baseline 이전에는 01~08의 branch/worktree나 기능 코드를 만들지 않
 ## Data Ownership
 
 ```text
-Shared contracts/scaffold  -> 00 Bootstrap, 이후 09/14 Integration만 제한적으로 조정
-Deployment build/config    -> 00 Bootstrap, 이후 15가 문서 Ownership 안에서만 제한적으로 조정
-Input/camera/IO/UI leaves  -> 01 Main Leaf
+Shared contracts/scaffold  -> 00 Bootstrap, 이후 09/14/19/25 Integration이 명시 Ownership에서만 조정
+Shared build/test config -> 00/09/14/19/25가 명시 Ownership에서만 조정
+Pages deployment config  -> 00 Bootstrap, 이후 15가 문서 Ownership 안에서만 조정
+Initial Core input/camera/IO/UI leaves -> 01 Main Leaf; 18/20/23/24 후속 Ownership 제외
 Mesh topology/attributes   -> 02 Mesh Kernel
 Reference/high-poly query  -> 03 Surface Engine
 Selection state/operators  -> 04 Selection Engine
@@ -125,6 +140,13 @@ Pages release/operations   -> 15 Cloudflare Pages
 Basic primitive creation  -> 16 Basic Primitives
 Guided learning/content   -> 17 Guided Retopo
 Mouse/wheel camera input  -> 18 Desktop Mouse Camera
+Follow-up shared composition -> 19 Follow-up Product Integration
+Topology actions/selection UX -> 20 Topology Actions
+Transform/refinement/symmetry -> 21 Transform, Refinement, and Symmetry
+Project lifecycle/recovery -> 22 Project Lifecycle
+Import/reference/export interop -> 23 Import and Interop
+Retopo/reference visibility -> 24 Retopo Visibility
+Practical shared composition -> 25 Practical Tool Integration
 ```
 
 각 workstream의 Agent A/B/C는 해당 문서에 지정된 파일 범위만 소유한다. 역할 설명만 있고 파일 소유가
@@ -211,9 +233,10 @@ GitHub 저장소와 Pages 연결은 사용자가 이미 완료했다. 00은 proj
 output을 확인한 뒤 빈 shell을 배포한다. Dynamic backend 부재가 Core/Optional build나 local IndexedDB project
 persistence를 막아서는 안 된다.
 
-현재 GitHub 저장소 기준 production 배포 성공은 사용자가 확인했지만 애플리케이션은 아직 구현되지 않았다.
-따라서 이는 Pages 연결 상태의 확인일 뿐 00 RESULT 완료가 아니다. 00의 첫 빈 shell 이후, 실제 Core-only 또는
-Full Optional production release의 preview·rollback·cache/header 운영 강화는 15에서 별도로 수행한다.
+이 절의 “first implementation” 설명은 00 실행 전 역사적 bootstrap 조건이다. 현재 저장소는 00, 09와 14의
+개발 통합을 이미 포함하며, 확인된 production 배포와 release readiness는 각 RESULT/evidence를 따른다. 실제
+Core-only 또는 Full Optional production release의 preview·rollback·cache/header 운영 강화는 15에서 별도로
+수행한다.
 
 ## Optional Feature Rule
 
@@ -283,10 +306,12 @@ commit이 `main`에 포함되어 있으면 시작할 수 있으며, 실제 iPad/
 `baseline/full-v1`이 생성되지 않은 상태 자체는 시작 차단 조건이 아니다. 단, 이 작업들이 14의 release
 hard gate를 통과한 것으로 기록하거나 `baseline/full-v1`을 대신 만들어서는 안 된다.
 
-계획 문서를 포함한 최신 `origin/main`을 한 번 fetch한 뒤 그 commit을 `POST_PLAN_BASE_SHA`로 기록하고,
-16, 18 및 17의 early-core 준비 worktree는 정확히 그 SHA에서 만든다. 17의 app 연결과 실제 first-asset
-vertical slice를 수행하는 표준 worktree는 승인된 16 산출물이 main에 병합된 exact SHA에서 새로 만든다.
-브랜치마다 문서의 RESULT, commit SHA, 테스트 evidence를 남기며 직접 main에 merge하지 않는다.
+계획 문서를 포함한 최신 `origin/main` exact commit을 `POST_PLAN_BASE_SHA`로 기록하고 16, 18, 17 early-core를
+그 SHA에서 만든다. 19 Phase A는 16/18과 additive product contracts를 포함한 **integration anchor**를 만들고,
+그 SHA를 descendant RESULT metadata commit에 `PRODUCT_INPUT_BASE_SHA`로 기록·push한다. 20~24는 metadata tip이
+아니라 anchor에서 병렬 시작한다. 25도 practical code/evidence anchor와 descendant RESULT metadata commit을 분리해
+`PRACTICAL_TOOL_BASE_SHA`를 게시한다. 17 Standard는 그 anchor에서 새로 만든다. 기능 worktree는 RESULT, local/remote
+tip, ancestry와 evidence를 남기고 직접 main에 merge하지 않는다.
 
 ```text
                          POST_PLAN_BASE_SHA
@@ -295,26 +320,51 @@ vertical slice를 수행하는 표준 worktree는 승인된 16 산출물이 main
              16 Basic Primitives   17 Early Core   18 Mouse Camera
                      │          │              │
                      ▼          │              │
-                merge 16 ───────┘              │
-                     │                         │
-                     ▼                         │
-             17 Standard Integration           │
-                     └──────────┬──────────────┘
-                                ▼
-                    coordinator merge + combined E2E
+             19 Phase A: merge 16 + 18 ─────────┘
+                     │
+                     ▼
+             PRODUCT_INPUT_BASE_SHA
+         ┌───────────┼───────────┬───────────┬───────────┐
+         ▼           ▼           ▼           ▼           ▼
+   20 Topology  21 Transform 22 Project  23 Interop  24 Visibility
+         └───────────┴───────────┴───────────┴───────────┘
+                             │
+                             ▼
+             25 Practical Tool Integration
+                             │
+                             ▼
+                 PRACTICAL_TOOL_BASE_SHA
+                             │
+             17 Early Core ──┤ reviewed pure commits
+                             ▼
+                    17 Standard
+                             │
+                             ▼
+             19 Phase B + Guided E2E
 ```
 
 - 16과 18의 전체 구현, 17의 lesson schema/state·diagnostic·preview early core는 서로 기다리지 않고 병렬
   시작할 수 있다.
-- 17 early core는 자체 fixture만 사용하고 16 구현을 추측하지 않는다. 앱 연결과 실제 first-asset E2E는
-  승인된 16 시작 경로가 main에 병합된 뒤 표준 branch에서 수행한다.
-- 16과 18은 app-shell 접점이 겹칠 수 있으므로 각 브랜치는 additive adapter/registration 경계를 우선하고,
-  공용 composition 충돌은 coordinator merge에서 한 번만 해결한다.
-- 권장 merge 순서는 `16 -> 18 -> 17`이다. 각 merge 직후 해당 기능 회귀를 실행하고, 마지막에는
-  `빈 장면 primitive 생성 -> 마우스 카메라 확인 -> guided lesson -> 저장/재로드 -> export` 조합 smoke를
-  실행한다.
+- 17 early core는 자체 fixture만 사용하고 16/18 또는 20~24 구현을 추측하지 않는다. app/persistence/sample/E2E는
+  25가 push한 `PRACTICAL_TOOL_BASE_SHA`에서 만든 Standard branch에서 수행한다.
+- 16과 18은 app-shell 접점이 겹칠 수 있으므로 additive leaf adapter를 우선하고 공용 충돌은 19 Phase A가 해결한다.
+  19 Phase A는 20~24가 병렬 소비할 frozen `ReferenceSceneService`와 `DurableChangeSource`도 anchor에 게시한다.
+- 20~24는 practical tool에 필요한 disjoint leaf 경계를 소유하며 shared composition은 25만 해결한다.
+- 고정 순서는 `19 Phase A: 16 -> 18`, `25: 20 -> 21 -> 22 -> 23 -> 24`, `19 Phase B: 17`이다.
+  마지막 Guided smoke는 practical complete-asset E2E 위에서 수행한다.
 - 15 Pages release는 이 기능들과 독립이다. 16~18을 production에 포함하려면 merge된 정확한 candidate SHA를
   별도 release 입력으로 명시하고 15의 preview/production/rollback gate를 다시 적용한다.
+
+## Practical Tool Completion — 20~25
+
+19 Phase A 뒤 사업화가 아니라 day-to-day retopology에 필요한 다섯 workstream을 동일한 exact
+`PRODUCT_INPUT_BASE_SHA`에서 병렬 시작한다. 20은 기존 kernel/selection capability를 UI action으로 노출하고,
+21은 transform/refinement/symmetry, 22는 data safety, 23은 import/export pipeline, 24는 가시성/picking을 닫는다.
+25만 이를 main에 조립하고 `PRACTICAL_TOOL_BASE_SHA`를 게시한다.
+
+20~24는 shared bootstrap/composition을 소유하지 않고 additive leaf adapter를 게시한다. 25만 main merge,
+shared seam reconciliation과 complete-asset browser/data-safety/interop E2E를 수행한다. 20~25는 release tag나
+Pages deploy를 수행하지 않는다.
 
 ## Definition of Ready for a Work Conversation
 
@@ -322,7 +372,7 @@ vertical slice를 수행하는 표준 worktree는 승인된 16 산출물이 main
 baseline과 Pages evidence 조건을 충족해야 한다.
 
 - 00 RESULT가 COMPLETE이고 immutable baseline ref가 존재함
-- baseline ref를 SHA로 해석했으며 지정 branch/worktree가 그 commit에서 생성됨
+- 각 작업 MD가 지정한 immutable input ref/SHA를 해석했으며 branch/worktree가 그 commit에서 생성됨
 - 작업 MD와 contract를 읽음
 - Agent별 파일 소유 범위를 확정함
 - 테스트 명령과 acceptance fixture를 확인함

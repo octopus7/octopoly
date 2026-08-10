@@ -32,9 +32,9 @@ post-14 Core 기능이다.
 Mode: WORKTREE
 Branch: wt/basic-primitives
 Worktree: ../wt-basic-primitives
-Order: AFTER 14 DEVELOPMENT INTEGRATION COMMIT IS AVAILABLE ON MAIN
-Minimum input commit: e54edeed9094d71679b4b081729a34354e820e4a
-Input baseline: the minimum input commit OR the latest clean main descendant resolved at implementation start
+Order: AFTER PLANNING COMMIT PUSH; MAY RUN IN PARALLEL WITH 18 AND 17 EARLY CORE
+Minimum input ancestor: e54edeed9094d71679b4b081729a34354e820e4a
+Branch point: exact immutable `POST_PLAN_BASE_SHA` recorded after the planning commit push
 Output: FINAL BASIC PRIMITIVES FEATURE COMMIT + RESULT ON wt/basic-primitives
 Push: origin/wt/basic-primitives AFTER ACCEPTANCE; NEVER FORCE-PUSH
 Immutable release tag: NONE
@@ -44,15 +44,13 @@ Immutable release tag: NONE
 
 구현을 시작할 때 다음 순서로 입력 SHA를 확정한다.
 
-1. `e54edeed9094d71679b4b081729a34354e820e4a`가 local Git object로 존재하는지 확인한다.
-2. 최신 `origin/main^{commit}`을 candidate로 해석한다. local `main`을 사용할 때는 `origin/main`과 동일하거나
-   사용자가 명시적으로 선택한 clean descendant여야 한다.
-3. `git merge-base --is-ancestor e54edeed9094d71679b4b081729a34354e820e4a <candidate>`가 성공해야 한다.
-4. `wt/basic-primitives` branch/worktree를 정확히 그 candidate commit에서 생성하고 시작 SHA를 RESULT에
-   기록한다.
-5. `baseline/full-v1`의 존재 여부는 확인 자료로만 기록할 수 있으며, 부재를 blocker로 취급하지 않는다.
+1. planning commit이 `origin/main`에 push되었고 그 exact commit이 `POST_PLAN_BASE_SHA`로 공지되었는지 확인한다.
+2. `git merge-base --is-ancestor e54edeed9094d71679b4b081729a34354e820e4a "$POST_PLAN_BASE_SHA"`가 성공해야 한다.
+3. `git rev-parse origin/main^{commit}`이 공지된 SHA의 후손인지 확인하되 mutable tip을 branch point로 대체하지 않는다.
+4. `wt/basic-primitives` branch/worktree를 정확히 `POST_PLAN_BASE_SHA`에서 생성하고 시작 SHA를 RESULT에 기록한다.
+5. `baseline/full-v1`의 존재 여부는 확인 자료로만 기록하며 부재를 blocker로 취급하지 않는다.
 
-candidate가 최소 입력 commit의 후손이 아니거나, 지정 worktree를 clean하게 만들 수 없거나, 같은 경로에
+공지된 SHA가 없거나 최소 입력 commit의 후손이 아니거나, 지정 worktree를 clean하게 만들 수 없거나, 같은 경로에
 분리할 수 없는 사용자 변경이 있으면 구현을 시작하지 않는다.
 
 ## Goal
@@ -248,23 +246,18 @@ plane picker, transform gizmo, numeric input, Rotate/Scale은 후속 범위다. 
 ```text
 src/app/composition/primitive-creation.*
 src/app/composition/primitive-recipes.*
-src/app/composition/core-workspace.ts
-src/app/bootstrap.ts
-src/app/bootstrap.css
-src/camera/index.ts
+src/app/composition/primitive-entry.*
+src/app/basic-primitives-ui.*
 src/tools/basic/construction-plane.*
 src/tools/basic/move-tool.ts
 src/tools/face/extrude-face-tool.ts
 
 tests/app/composition/primitive-creation.test.*
 tests/app/composition/primitive-recipes.test.*
-tests/camera/camera.test.ts
 tests/tools/basic/basic-tools.test.ts
 tests/tools/basic/construction-plane.test.*
 tests/tools/face/extrude-face-tool.test.ts
 tests/bootstrap/basic-primitives-empty-state.test.*
-tests/integration/core-workspace.integration.test.ts
-tests/e2e/core-workspace-vertical.test.ts
 tests/e2e/basic-primitives-browser.*
 docs/validation/basic-primitives/**
 
@@ -321,11 +314,9 @@ tests/app/composition/primitive-recipes.test.*
 소유 파일:
 
 ```text
-src/camera/index.ts
 src/tools/basic/construction-plane.*
 src/tools/basic/move-tool.ts
 src/tools/face/extrude-face-tool.ts
-tests/camera/camera.test.ts
 tests/tools/basic/basic-tools.test.ts
 tests/tools/basic/construction-plane.test.*
 tests/tools/face/extrude-face-tool.test.ts
@@ -344,8 +335,7 @@ tests/tools/face/extrude-face-tool.test.ts
 소유 파일:
 
 ```text
-src/app/bootstrap.ts
-src/app/bootstrap.css
+src/app/basic-primitives-ui.*
 tests/bootstrap/basic-primitives-empty-state.test.*
 tests/e2e/basic-primitives-browser.*
 docs/validation/basic-primitives/**
@@ -363,19 +353,18 @@ docs/validation/basic-primitives/**
 소유 파일:
 
 ```text
-src/app/composition/core-workspace.ts
-tests/integration/core-workspace.integration.test.ts
-tests/e2e/core-workspace-vertical.test.ts
+src/app/composition/primitive-entry.*
 docs/workplan/16_BASIC_PRIMITIVES.md (RESULT만)
 ```
 
 책임:
 
 - baseline/worktree/ownership gate 판정
-- Agent A의 command와 Agent B의 framing/fallback을 CoreWorkspace에 연결
-- Agent C가 사용할 local workspace entry와 event/update 경로 동결
+- Agent A의 command와 Agent B의 framing/fallback을 package-local primitive entry에 연결
+- Agent C가 사용할 additive UI adapter와 event/update 경로 동결
 - Stage 1 Plane acceptance 후 Stage 2 Cube 시작 승인
-- Core-only/Full Optional 회귀, 최종 실제 UI vertical slice, RESULT와 branch commit/push
+- branch-local fixture 회귀, 최종 실제 UI vertical slice, RESULT와 branch commit/push
+- `core-workspace.ts`, shared bootstrap/camera barrel 및 cross-feature E2E 조립은 19 Phase A로 이관
 
 ## Work Sequence and Gates
 
@@ -475,7 +464,8 @@ script를 추가하지 않고 동등한 existing command를 RESULT에 기록한�
 
 ## Acceptance Gates
 
-- [ ] 구현 branch가 확정된 latest main descendant에서 시작했고 `baseline/full-v1` 부재를 blocker로 쓰지 않았다.
+- [ ] 구현 branch가 planning push로 확정된 exact immutable `POST_PLAN_BASE_SHA`에서 시작했고
+  `baseline/full-v1` 부재를 blocker로 쓰지 않았다.
 - [ ] Agent A/B/C/Main Agent의 실제 수정 파일이 겹치지 않고 Integration Ownership 안에 있다.
 - [ ] frozen public contract, shared config, mesh/history/selection/renderer/project concrete implementation을
       불필요하게 변경하지 않았다.
@@ -490,8 +480,8 @@ script를 추가하지 않고 동등한 existing command를 RESULT에 기록한�
 - [ ] 실제 UI E2E가 New Scene에서 생성·편집·저장·재로드·export까지 상태 변화로 검증되었다.
 - [ ] Core-only와 Full Optional 회귀, canonical typecheck/test/build/CI가 통과했다.
 - [ ] 실제 실행하지 않은 iPad/Pencil 항목과 performance 위험을 Known limitations에 기록했다.
-- [ ] RESULT를 갱신하고 clean feature commit을 `wt/basic-primitives`에 만들었으며 승인된 경우 같은 origin
-      branch로 non-force push했다.
+- [ ] RESULT를 갱신하고 clean feature commit을 `wt/basic-primitives`에 만들었으며 루트 사전 승인에 따라
+      같은 origin branch로 non-force push했다.
 - [ ] main merge, Pages deploy 또는 immutable release tag를 수행하지 않았다.
 
 ## Failure and Stop Rules
@@ -500,8 +490,8 @@ script를 추가하지 않고 동등한 existing command를 RESULT에 기록한�
 - worktree가 dirty하거나 기존 사용자 변경과 Ownership 파일이 겹쳐 안전하게 분리할 수 없으면 중단한다.
 - 구현에 frozen contract, shared config, mesh/history/selection kernel 또는 Optional 내부 수정이 필요하면
   우회하지 않고 필요한 signature/path/이유를 보고한다.
-- 순차 생성 중 실패 후 topology/version/ID allocator/history/selection이 원상 복구되지 않으면 다음 stage로
-  진행하지 않는다.
+- 순차 생성 중 실패 후 live topology/version/history/selection이 원상 복구되지 않으면 다음 stage로 진행하지
+  않는다. 소비된 stable ID는 삭제 후 재사용하지 않는 공용 정책에 따라 allocator를 되감지 않아도 된다.
 - Plane Stage 1의 실제 vertical slice가 통과하지 않으면 Cube Stage 2를 완료 처리하지 않는다.
 - construction-plane fallback이 `SurfaceHit`에 가짜 reference ID를 넣거나 `SurfaceQuery` 의미를 바꿔야만
   동작한다면 그 방식을 사용하지 않고 중단한다.
@@ -523,7 +513,8 @@ script를 추가하지 않고 동등한 existing command를 RESULT에 기록한�
    자기 참조로 기록하려고 추가 commit을 만들지 않는다.
 4. 최종 commit에는 Integration Ownership 안의 16 변경과 이 RESULT만 포함한다. 기존 main/user sidecar
    변경을 섞지 않는다.
-5. 완료된 branch는 `origin/wt/basic-primitives`로 non-force push할 수 있다. main merge/push는 수행하지 않는다.
+5. 루트 사전 승인에 따라 완료된 branch를 `origin/wt/basic-primitives`로 non-force push한다. main merge/push는
+   수행하지 않는다.
 6. `baseline/full-v1`, `deploy/*` 또는 다른 immutable tag는 생성·이동하지 않는다. 별도 승인된 후속 release
    plan만 tag를 소유한다.
 
@@ -533,8 +524,9 @@ Status: NOT_STARTED
 
 ### Baseline refs
 - Minimum input commit: `e54edeed9094d71679b4b081729a34354e820e4a`
-- Resolved start commit: NOT_SET
+- Resolved start `POST_PLAN_BASE_SHA`: NOT_SET
 - Branch/worktree: `wt/basic-primitives` / `../wt-basic-primitives`
+- Start-SHA ancestry check: NOT_RUN
 - `baseline/full-v1` required: NO
 
 ### Implemented
@@ -575,7 +567,9 @@ Status: NOT_STARTED
 - NOT_EVALUATED
 
 ### Final disposition
-- Final branch commit: NOT_CREATED
+- Final local branch tip: NOT_SET
+- Pushed `origin/wt/basic-primitives` tip: NOT_SET
+- Local/remote tip equality: NOT_CHECKED
 - Push performed: NO
 - Main merge performed: NO
 - Immutable release tag created: NO

@@ -368,7 +368,7 @@ Status: COMPLETE
 
 ### Baseline commit
 - Ref: `baseline/core-v1`
-- Resolved SHA: immutable tag 생성 후 최종 보고에서 기록
+- Resolved SHA: `8bd9407294e1f5823a751504ca2c0aee14a39159`
 - Branch: `main`
 - 01~08 branch point announced: YES — tag 검증 후 생성되는 각 작업에 전달
 
@@ -409,7 +409,8 @@ Status: COMPLETE
 - Production URL: `https://octopoly.pages.dev/`
 - Candidate commit SHA: `db201e7db61321438c51eaea7d87c242d45a7cd6`
 - Candidate deployment: `e08ad106-a69d-4657-88cc-fb0877e2226f` — SUCCESS
-- Final deployed commit SHA: 최종 RESULT commit push 후 외부 검증하여 최종 보고에 기록
+- Final deployed commit SHA: `8bd9407294e1f5823a751504ca2c0aee14a39159`
+- Final deployment: `31412bfa-f011-4f47-aa70-e744ad75bf67` — Cloudflare Pages check `SUCCESS`
 - Functions / Workers used: NO
 
 ### Tests / validation

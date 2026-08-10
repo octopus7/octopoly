@@ -17,9 +17,9 @@ iPad Safari와 Apple Pencil을 우선 지원하는 low-poly / retopology 웹 모
 
 그다음 선택한 `docs/workplan/XX_*.md`를 해당 대화의 단일 작업 명세로 사용합니다.
 
-중단된 16~19 설계 검토를 재개하는 다음 대화는 먼저
-[`docs/workplan/NEXT_SESSION_HANDOFF.md`](docs/workplan/NEXT_SESSION_HANDOFF.md)를 읽고, 기록된 미해결
-정합성 문제를 닫기 전 구현 대화를 시작하지 않습니다.
+후속 16~25 실행을 재개할 때는
+[`docs/workplan/NEXT_SESSION_HANDOFF.md`](docs/workplan/NEXT_SESSION_HANDOFF.md)에서 현재 planning commit,
+`POST_PLAN_BASE_SHA`, 남은 보호 승인과 worktree 생성 여부를 먼저 확인합니다.
 
 ## 문서 구조
 
@@ -47,6 +47,13 @@ docs/workplan/
   16_BASIC_PRIMITIVES.md
   17_GUIDED_RETOPO.md
   18_DESKTOP_MOUSE_CAMERA.md
+  19_FOLLOW_UP_INTEGRATION.md
+  20_TOPOLOGY_ACTIONS.md
+  21_TRANSFORM_REFINEMENT_SYMMETRY.md
+  22_PROJECT_LIFECYCLE.md
+  23_IMPORT_INTEROP.md
+  24_RETOPO_VISIBILITY.md
+  25_PRACTICAL_TOOL_INTEGRATION.md
   INTERFACE_CONTRACTS.md
   OCTOPOLY_TASK_TIMELINE.md
   NEXT_SESSION_HANDOFF.md
@@ -91,9 +98,15 @@ main에서 다음 baseline을 준비합니다.
    `baseline/full-v1`을 생성합니다.
 9. Core-only는 09, Full Optional은 14의 immutable baseline을 입력으로 15에서 Pages preview, production,
    실제 rollback/roll-forward와 정적 배포 운영 정책을 검증합니다.
-10. 후속 제품 기능은 계획 문서를 포함한 동일한 `origin/main` SHA에서 16 Basic Primitives, 17 Guided
-    Retopo early core, 18 Desktop Mouse Camera를 별도 worktree로 병렬 진행합니다. 17의 앱 연결과 first-asset
-    E2E는 승인된 16 병합 뒤 표준 branch에서 마무리하고 coordinator가 검증 후 병합합니다.
+10. 후속 제품 기능은 계획 commit의 동일한 `POST_PLAN_BASE_SHA`에서 16 Basic Primitives, 17 Guided early
+    core, 18 Desktop Mouse Camera를 별도 worktree로 병렬 진행합니다.
+11. 19 Phase A가 16과 18을 main에 조립해 exact `PRODUCT_INPUT_BASE_SHA`를 게시합니다.
+12. 그 SHA에서 20 Topology Actions, 21 Transform/Refinement/Symmetry, 22 Project Lifecycle, 23 Import/Interop,
+    24 Retopo Visibility를 별도 worktree로 병렬 진행합니다.
+13. 25가 `20 -> 21 -> 22 -> 23 -> 24`를 main에 조립하고 complete-asset E2E 뒤 exact
+    `PRACTICAL_TOOL_BASE_SHA`를 게시합니다.
+14. 17 Standard는 그 SHA에서 early-core 순수 commit을 검토해 반입하고 first-asset Guided를 수행하며,
+    19 Phase B가 최종 Guided 조합 E2E와 main 통합을 담당합니다.
 
 16~18은 `baseline/full-v1` release tag 부재와 별개로 시작할 수 있습니다. 이 작업들은 제품 사용성 공백을
 닫는 기능 개발이며, 14의 실제 iPad/Pencil release gate를 통과한 것으로 대신 기록하거나 release tag를
@@ -102,10 +115,9 @@ main에서 다음 baseline을 준비합니다.
 현재 배포 기준은 Cloudflare Pages의 정적 SPA입니다. Pages Functions/Workers와 server-side secret은 초기
 범위에 없으며, 동적 기능이 필요해질 때 별도 Cloudflare Worker와 versioned API 경계로 추가합니다.
 GitHub 저장소와 기존 Pages project `octopoly`의 연결은 완료되어 있으며 현재 production URL은
-[`https://octopoly.pages.dev/`](https://octopoly.pages.dev/)입니다. 00 Bootstrap의 최초 구현은 이 배포물을
-`OctoPoly` 빈 앱 셸로 교체하고 commit SHA를 검증하는 것입니다.
-사용자는 현재 GitHub 저장소 기준 배포 성공을 확인했지만 애플리케이션은 아직 구현되지 않았습니다. 따라서
-이 상태는 Pages 연결 확인이며 00 Bootstrap의 앱 셸 구현·검증 완료를 뜻하지 않습니다.
+[`https://octopoly.pages.dev/`](https://octopoly.pages.dev/)입니다. 00 Bootstrap의 최초 빈 앱 셸 조건은
+역사적 bootstrap 설명이며 현재 저장소에는 00/09/14 개발 통합이 존재합니다. 현재 배포 SHA와 release/device
+readiness는 `00_BOOTSTRAP.md`, `14_OPTIONAL_INTEGRATION.md` 및 validation evidence를 기준으로 판정합니다.
 
 01~08 작업자는 main merge나 cross-worktree 조립을 수행하지 않습니다. Optional 기능이 하나도 없어도
 01~09 Core는 정상적으로 빌드되고 사용할 수 있어야 합니다.

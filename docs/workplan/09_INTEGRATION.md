@@ -323,7 +323,7 @@ Release readiness: BLOCKED
 - Core input: `baseline/core-v1`
 - Optional SDK output: `baseline/optional-sdk-v1`
 - Core input resolved SHA: `8bd9407294e1f5823a751504ca2c0aee14a39159`
-- Output resolved SHA: final integration commit에 annotated tag를 생성한 뒤 최종 보고에서 검증
+- Output resolved SHA: `175ecff7613c15d5afd39327e957885c6eed4e50`
 
 ### Integrated
 - 권장 순서대로 02 Mesh Kernel, 03 Surface Engine, 07 Renderer, 04 Selection Engine, 05 History Engine,
