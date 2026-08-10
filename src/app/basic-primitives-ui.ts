@@ -2,6 +2,11 @@ export interface BasicPrimitivesUiCallbacks {
   readonly importReference: () => void | Promise<void>;
   readonly addPlane: () => void | Promise<void>;
   readonly addCube: () => void | Promise<void>;
+  readonly addDuck: () => void | Promise<void>;
+  readonly addFrog: () => void | Promise<void>;
+  readonly addPig: () => void | Promise<void>;
+  readonly addCow: () => void | Promise<void>;
+  readonly addRabbit: () => void | Promise<void>;
   readonly frameSelection: () => void | Promise<void>;
   readonly save: () => void | Promise<void>;
   readonly reload: () => void | Promise<void>;
@@ -36,6 +41,11 @@ const ACTIONS: ReadonlyArray<ActionDefinition> = [
   { name: "importReference", label: "Import Reference", requiresMesh: false, emptyState: true },
   { name: "addPlane", label: "Add Plane", requiresMesh: false, emptyState: true },
   { name: "addCube", label: "Add Cube", requiresMesh: false, emptyState: true },
+  { name: "addDuck", label: "Add Duck", requiresMesh: false, emptyState: true },
+  { name: "addFrog", label: "Add Frog", requiresMesh: false, emptyState: true },
+  { name: "addPig", label: "Add Pig", requiresMesh: false, emptyState: true },
+  { name: "addCow", label: "Add Cow", requiresMesh: false, emptyState: true },
+  { name: "addRabbit", label: "Add Rabbit", requiresMesh: false, emptyState: true },
   { name: "frameSelection", label: "Frame Selection", requiresMesh: true, emptyState: false },
   { name: "save", label: "Save Project", requiresMesh: false, emptyState: false },
   { name: "reload", label: "Reload Project", requiresMesh: false, emptyState: false },

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OctoPoly Workstream 16 Plane/Cube browser smoke</title>
+    <title>OctoPoly Workstream 16 primitives browser smoke</title>
     <style>
       :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #10131a; color: #f7f8fb; }
       * { box-sizing: border-box; }
@@ -26,9 +26,9 @@
         <canvas id="smoke-canvas" data-testid="canvas" width="960" height="640" aria-label="OctoPoly basic primitives WebGL2 viewport"></canvas>
       </section>
       <aside id="smoke-panel">
-        <h1>Workstream 16 — Plane/Cube</h1>
-        <p>Use <code>?scenario=plane</code> or <code>?scenario=cube</code>, then drive the New Scene adapter and normalized-input controls.</p>
-        <div id="smoke-controls" data-testid="stage1-controls" role="toolbar" aria-label="Stage 1 validation controls">
+        <h1>Workstream 16 — Editable Primitives</h1>
+        <p>Use <code>?scenario=plane|cube|duck|frog|pig|cow|rabbit</code>, then drive the New Scene adapter and normalized-input controls.</p>
+        <div id="smoke-controls" data-testid="primitive-controls" role="toolbar" aria-label="Primitive validation controls">
           <button type="button" data-testid="move-selection">Move selection</button>
           <button type="button" data-testid="extrude-selection">Extrude selection</button>
           <button type="button" data-testid="undo">Undo</button>

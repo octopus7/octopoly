@@ -6,6 +6,7 @@ import { createBasicPrimitivesEntry } from "../../../src/app/composition/primiti
 import type { SelectionFrame } from "../../../src/tools/basic/construction-plane";
 
 type SmokeStatus = "STARTING" | "READY" | "RUNNING" | "PASS" | "FAIL" | "UNSUPPORTED";
+type Scenario = "plane" | "cube" | "duck" | "frog" | "pig" | "cow" | "rabbit";
 
 interface RendererEvidence {
   readonly state: string;
@@ -19,7 +20,7 @@ interface RendererEvidence {
 }
 
 interface SmokeResult {
-  scenario: "plane" | "cube";
+  scenario: Scenario;
   status: SmokeStatus;
   phase: string;
   browser: string;
@@ -70,9 +71,20 @@ window.addEventListener("unhandledrejection", (event) => {
   publish();
 });
 
-const scenario = new URLSearchParams(location.search).get("scenario") === "cube" ? "cube" : "plane";
-const creationAction = scenario === "cube" ? "add-cube" : "add-plane";
-const projectId = `stage-2-${scenario}`;
+const scenarios: ReadonlyArray<Scenario> = ["plane", "cube", "duck", "frog", "pig", "cow", "rabbit"];
+const requestedScenario = new URLSearchParams(location.search).get("scenario");
+const scenario: Scenario = scenarios.includes(requestedScenario as Scenario) ? requestedScenario as Scenario : "plane";
+const creationAction = `add-${scenario}`;
+const expectedFaces: Readonly<Record<Scenario, number>> = Object.freeze({
+  plane: 1,
+  cube: 6,
+  duck: 18,
+  frog: 42,
+  pig: 48,
+  cow: 54,
+  rabbit: 36,
+});
+const projectId = `basic-primitives-${scenario}`;
 
 const result: SmokeResult = {
   scenario,
@@ -112,7 +124,7 @@ const entry = createBasicPrimitivesEntry({
   getCamera: () => workspace.cameraSnapshot(),
   getViewport: () => workspace.viewportSnapshot(),
   applyFrame(nextFrame) {
-    // CoreWorkspace does not expose a camera replacement setter. Stage 1 records
+    // CoreWorkspace does not expose a camera replacement setter. This harness records
     // the real entry's finite framing plan rather than duplicating camera state.
     frame = nextFrame;
   },
@@ -121,22 +133,27 @@ const entry = createBasicPrimitivesEntry({
 
 ui = mountBasicPrimitivesUi(viewport, {
   importReference: () => runAction("import-reference", async () => {
-    throw new Error("Reference import is intentionally outside this reference-free Stage 1 harness");
+    throw new Error("Reference import is intentionally outside this reference-free primitives harness");
   }),
   addPlane: () => runAction("add-plane", async () => {
-    if (scenario !== "plane") throw new Error("This browser scenario requires Add Cube");
-    if (!entry.state().emptyMesh) throw new Error("Stage 1 Add Plane requires an empty New Scene");
+    if (scenario !== "plane") throw new Error(`This browser scenario requires Add ${scenario}`);
+    if (!entry.state().emptyMesh) throw new Error("Add Plane requires an empty New Scene");
     const created = entry.addPlane();
     if ((created.faces?.length ?? 0) !== 1) throw new Error("Add Plane did not create exactly one face");
     await captureRendererEvidence();
   }),
   addCube: () => runAction("add-cube", async () => {
-    if (scenario !== "cube") throw new Error("This browser scenario requires Add Plane");
+    if (scenario !== "cube") throw new Error(`This browser scenario requires Add ${scenario}`);
     if (!entry.state().emptyMesh) throw new Error("Add Cube requires an empty New Scene");
     const created = entry.addCube();
     if ((created.faces?.length ?? 0) !== 6) throw new Error("Add Cube did not create exactly six faces");
     await captureRendererEvidence();
   }),
+  addDuck: () => createScenarioPrimitive("duck", () => entry.addDuck()),
+  addFrog: () => createScenarioPrimitive("frog", () => entry.addFrog()),
+  addPig: () => createScenarioPrimitive("pig", () => entry.addPig()),
+  addCow: () => createScenarioPrimitive("cow", () => entry.addCow()),
+  addRabbit: () => createScenarioPrimitive("rabbit", () => entry.addRabbit()),
   frameSelection: () => runAction("frame-selection", async () => {
     if (entry.frameSelection() === null) throw new Error("Frame Selection produced no plan");
     await captureRendererEvidence();
@@ -196,6 +213,21 @@ async function initialize(): Promise<void> {
 
 function bind(button: HTMLButtonElement, action: string, operation: () => Promise<void>): void {
   button.addEventListener("click", () => { void runAction(action, operation); });
+}
+
+function createScenarioPrimitive(
+  requiredScenario: Exclude<Scenario, "plane" | "cube">,
+  create: () => { readonly faces?: ReadonlyArray<number> },
+): Promise<void> {
+  return runAction(`add-${requiredScenario}`, async () => {
+    if (scenario !== requiredScenario) throw new Error(`This browser scenario requires Add ${scenario}`);
+    if (!entry.state().emptyMesh) throw new Error(`Add ${requiredScenario} requires an empty New Scene`);
+    const created = create();
+    if ((created.faces?.length ?? 0) !== expectedFaces[requiredScenario]) {
+      throw new Error(`Add ${requiredScenario} created an unexpected face count`);
+    }
+    await captureRendererEvidence();
+  });
 }
 
 function runAction(action: string, operation: () => Promise<void>): Promise<void> {
@@ -355,12 +387,10 @@ function syncState(): void {
     redoLabel: history.redoLabel ?? null,
   };
   ui?.update(uiState(result.status === "RUNNING"));
-  const inactiveCreate = ui?.element.querySelector<HTMLButtonElement>(
-    scenario === "cube" ? '[data-testid="add-plane"]' : '[data-testid="add-cube"]',
-  );
-  if (inactiveCreate !== null && inactiveCreate !== undefined) {
-    inactiveCreate.hidden = true;
-    inactiveCreate.disabled = true;
+  for (const inactiveCreate of ui?.element.querySelectorAll<HTMLButtonElement>('[data-primitive-create="true"]') ?? []) {
+    const active = inactiveCreate.dataset.testid === creationAction;
+    inactiveCreate.hidden = !active;
+    inactiveCreate.disabled = !active;
   }
   publish();
 }
@@ -375,7 +405,7 @@ function uiState(busy: boolean) {
     emptyMesh: entry.state().emptyMesh,
     hasReference: workspace.referenceAssetRefs().length > 0,
     busy,
-    error: result.status === "FAIL" ? errors.at(-1) ?? "Stage 1 failed" : null,
+    error: result.status === "FAIL" ? errors.at(-1) ?? "Primitive validation failed" : null,
     status: `${result.status}: ${result.phase}`,
   } as const;
 }
@@ -397,7 +427,7 @@ function expectUndoLabel(label: string): void {
 }
 
 function assertMeshPresent(): void {
-  if (entry.state().emptyMesh) throw new Error("Add Plane must run before modeling actions");
+  if (entry.state().emptyMesh) throw new Error(`Add ${scenario} must run before modeling actions`);
 }
 
 function isComplete(): boolean {
@@ -443,6 +473,11 @@ function assignAdapterTestIds(element: HTMLElement): void {
     "Import Reference": "import-reference",
     "Add Plane": "add-plane",
     "Add Cube": "add-cube",
+    "Add Duck": "add-duck",
+    "Add Frog": "add-frog",
+    "Add Pig": "add-pig",
+    "Add Cow": "add-cow",
+    "Add Rabbit": "add-rabbit",
     "Frame Selection": "frame-selection",
     "Save Project": "save-project",
     "Reload Project": "reload-project",
@@ -452,7 +487,8 @@ function assignAdapterTestIds(element: HTMLElement): void {
   for (const button of element.querySelectorAll<HTMLButtonElement>("button")) {
     const id = ids[button.getAttribute("aria-label") ?? ""];
     if (id !== undefined) button.dataset.testid = id;
-    if (id === (scenario === "cube" ? "add-plane" : "add-cube")) {
+    if (id?.startsWith("add-") === true) button.dataset.primitiveCreate = "true";
+    if (id?.startsWith("add-") === true && id !== creationAction) {
       button.hidden = true;
       button.disabled = true;
     }

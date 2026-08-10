@@ -17,7 +17,7 @@ import {
   createPrimitive,
   type PrimitiveCreationServices,
 } from "./primitive-creation";
-import { CUBE_RECIPE, PLANE_RECIPE } from "./primitive-recipes";
+import { COW_RECIPE, CUBE_RECIPE, DUCK_RECIPE, FROG_RECIPE, PIG_RECIPE, PLANE_RECIPE, RABBIT_RECIPE, type PrimitiveRecipe } from "./primitive-recipes";
 
 export interface BasicPrimitivesEntryDependencies extends PrimitiveCreationServices {
   readonly mesh: MeshQuery;
@@ -37,6 +37,12 @@ export interface BasicPrimitivesEntryState {
 export interface BasicPrimitivesEntry {
   addPlane(): MeshElementSet;
   addCube(): MeshElementSet;
+  addDuck(): MeshElementSet;
+  addFrog(): MeshElementSet;
+  addPig(): MeshElementSet;
+  addCow(): MeshElementSet;
+  addRabbit(): MeshElementSet;
+  ensureDefaultCubeForFirstMount(genuinelyNewProject: boolean): MeshElementSet | null;
   frameSelection(): SelectionFrame | null;
   state(): BasicPrimitivesEntryState;
 }
@@ -44,6 +50,7 @@ export interface BasicPrimitivesEntry {
 export function createBasicPrimitivesEntry(
   dependencies: BasicPrimitivesEntryDependencies,
 ): BasicPrimitivesEntry {
+  let defaultCubeMountChecked = false;
   const frameSelection = (): SelectionFrame | null => {
     const bounds = calculateSelectedBounds(
       dependencies.mesh,
@@ -65,16 +72,40 @@ export function createBasicPrimitivesEntry(
     return frame;
   };
 
+  const add = (recipe: PrimitiveRecipe): MeshElementSet => {
+    const created = createPrimitive(recipe, dependencies);
+    frameSelection();
+    return created;
+  };
+
   return Object.freeze({
     addPlane(): MeshElementSet {
-      const created = createPrimitive(PLANE_RECIPE, dependencies);
-      frameSelection();
-      return created;
+      return add(PLANE_RECIPE);
     },
     addCube(): MeshElementSet {
-      const created = createPrimitive(CUBE_RECIPE, dependencies);
-      frameSelection();
-      return created;
+      return add(CUBE_RECIPE);
+    },
+    addDuck(): MeshElementSet {
+      return add(DUCK_RECIPE);
+    },
+    addFrog(): MeshElementSet {
+      return add(FROG_RECIPE);
+    },
+    addPig(): MeshElementSet {
+      return add(PIG_RECIPE);
+    },
+    addCow(): MeshElementSet {
+      return add(COW_RECIPE);
+    },
+    addRabbit(): MeshElementSet {
+      return add(RABBIT_RECIPE);
+    },
+    ensureDefaultCubeForFirstMount(genuinelyNewProject: boolean): MeshElementSet | null {
+      if (defaultCubeMountChecked) return null;
+      defaultCubeMountChecked = true;
+      const snapshot = dependencies.mesh.snapshot();
+      const empty = snapshot.vertices.length === 0 && snapshot.faces.length === 0;
+      return genuinelyNewProject && empty ? add(CUBE_RECIPE) : null;
     },
     frameSelection,
     state(): BasicPrimitivesEntryState {

@@ -1,0 +1,51 @@
+{
+  "capturedAt": "2026-08-10T16:46:36+09:00",
+  "runtime": "HeadlessChrome/145.0.0.0 Linux x86_64",
+  "baseUrl": "http://127.0.0.1:4173/docs/validation/basic-primitives/browser-smoke.html",
+  "webgl2": true,
+  "sequence": ["add", "undo", "redo", "move", "extrude", "save", "reload", "export-obj", "export-glb"],
+  "console": { "warnings": [], "errors": [], "javascriptErrors": [], "totalErrors": 0 },
+  "scenarios": {
+    "plane": {
+      "status": "PASS",
+      "create": { "vertices": 4, "edges": 4, "corners": 4, "faces": 1, "selectedFaces": 1, "frameFinite": true, "undoLabel": "Add plane" },
+      "final": { "vertices": 8, "edges": 12, "corners": 20, "faces": 5, "stableIdsAfterReload": true, "objBytes": 511, "glbBytes": 856, "nonBackgroundPixels": 81296, "rendererState": "ready" }
+    },
+    "cube": {
+      "status": "PASS",
+      "create": { "vertices": 8, "edges": 12, "corners": 24, "faces": 6, "selectedFaces": 6, "frameFinite": true, "undoLabel": "Add cube" },
+      "final": { "vertices": 12, "edges": 20, "corners": 40, "faces": 10, "stableIdsAfterReload": true, "objBytes": 798, "glbBytes": 1028, "nonBackgroundPixels": 99928, "rendererState": "ready" }
+    },
+    "duck": {
+      "status": "PASS",
+      "create": { "vertices": 24, "edges": 36, "corners": 72, "faces": 18, "selectedFaces": 18, "frameFinite": true, "undoLabel": "Add duck", "version": 42, "nonBackgroundPixels": 27969 },
+      "final": { "vertices": 28, "edges": 44, "corners": 88, "faces": 22, "stableIdsAfterReload": true, "objBytes": 1813, "glbBytes": 1508, "nonBackgroundPixels": 128857, "rendererState": "ready" }
+    },
+    "frog": {
+      "status": "PASS",
+      "create": { "vertices": 56, "edges": 84, "corners": 168, "faces": 42, "selectedFaces": 42, "frameFinite": true, "undoLabel": "Add frog", "version": 98, "nonBackgroundPixels": 19786 },
+      "final": { "vertices": 60, "edges": 92, "corners": 184, "faces": 46, "stableIdsAfterReload": true, "objBytes": 3991, "glbBytes": 2472, "nonBackgroundPixels": 72103, "rendererState": "ready" }
+    },
+    "pig": {
+      "status": "PASS",
+      "create": { "vertices": 64, "edges": 96, "corners": 192, "faces": 48, "selectedFaces": 48, "frameFinite": true, "undoLabel": "Add pig", "version": 112, "nonBackgroundPixels": 34787 },
+      "final": { "vertices": 68, "edges": 104, "corners": 208, "faces": 52, "stableIdsAfterReload": true, "objBytes": 4477, "glbBytes": 2712, "nonBackgroundPixels": 162764, "rendererState": "ready" }
+    },
+    "cow": {
+      "status": "PASS",
+      "create": { "vertices": 72, "edges": 108, "corners": 216, "faces": 54, "selectedFaces": 54, "frameFinite": true, "undoLabel": "Add cow", "version": 126, "nonBackgroundPixels": 43492 },
+      "final": { "vertices": 76, "edges": 116, "corners": 232, "faces": 58, "stableIdsAfterReload": true, "objBytes": 5043, "glbBytes": 2948, "nonBackgroundPixels": 176881, "rendererState": "ready" }
+    },
+    "rabbit": {
+      "status": "PASS",
+      "create": { "vertices": 48, "edges": 72, "corners": 144, "faces": 36, "selectedFaces": 36, "frameFinite": true, "undoLabel": "Add rabbit", "version": 84, "nonBackgroundPixels": 33630 },
+      "final": { "vertices": 52, "edges": 80, "corners": 160, "faces": 40, "stableIdsAfterReload": true, "objBytes": 3293, "glbBytes": 2228, "nonBackgroundPixels": 124780, "rendererState": "ready" }
+    }
+  },
+  "defaultCubeIntegration": {
+    "status": "READY_FOR_WORKSTREAM_19_PHASE_A",
+    "helper": "BasicPrimitivesEntry.ensureDefaultCubeForFirstMount(genuinelyNewProject)",
+    "behavior": "Creates and frames CUBE_RECIPE once only for an explicitly classified genuinely new empty project; the consumed first-mount check prevents recreation after undo-to-empty; false classification prevents creation for saved, reloaded, or existing projects."
+  },
+  "physicalDevice": { "iPadSafari": "NOT_RUN", "applePencil": "NOT_RUN", "status": "BLOCKED" }
+}

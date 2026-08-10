@@ -10,6 +10,11 @@ function callbacks(): BasicPrimitivesUiCallbacks {
     importReference: vi.fn(),
     addPlane: vi.fn(),
     addCube: vi.fn(),
+    addDuck: vi.fn(),
+    addFrog: vi.fn(),
+    addPig: vi.fn(),
+    addCow: vi.fn(),
+    addRabbit: vi.fn(),
     frameSelection: vi.fn(),
     save: vi.fn(),
     reload: vi.fn(),
@@ -60,6 +65,11 @@ describe("basic primitives empty-state UI", () => {
       ["Import Reference", actions.importReference],
       ["Add Plane", actions.addPlane],
       ["Add Cube", actions.addCube],
+      ["Add Duck", actions.addDuck],
+      ["Add Frog", actions.addFrog],
+      ["Add Pig", actions.addPig],
+      ["Add Cow", actions.addCow],
+      ["Add Rabbit", actions.addRabbit],
       ["Frame Selection", actions.frameSelection],
       ["Save Project", actions.save],
       ["Reload Project", actions.reload],
@@ -116,7 +126,7 @@ describe("basic primitives empty-state UI", () => {
     });
 
     const buttons = Array.from(ui.element.querySelectorAll("button"));
-    expect(buttons).toHaveLength(8);
+    expect(buttons).toHaveLength(13);
     for (const button of buttons) {
       expect(button.type).toBe("button");
       expect(button.disabled).toBe(true);

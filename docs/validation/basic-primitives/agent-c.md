@@ -69,3 +69,27 @@ Key observations:
 - Apple Pencil: **NOT_RUN / BLOCKED**
 
 No physical-device PASS is claimed.
+
+## Extended editable low-poly primitives
+
+Workstream 16 was explicitly extended after the Plane/Cube checkpoint with five deterministic code-native recipes:
+
+- Duck — body, head, beak: 24 vertices / 36 edges / 72 corners / 18 faces.
+- Frog — squat body, two large eyes, four legs: 56 / 84 / 168 / 42.
+- Pig — body, snout, two ears, four legs: 64 / 96 / 192 / 48.
+- Cow — body, head, muzzle, two horns, four legs: 72 / 108 / 216 / 54.
+- Rabbit — body, head, two long ears, two hind legs: 48 / 72 / 144 / 36.
+
+Recipe tests verify finite vertices, exact counts, valid non-repeating face indices, globally unique coordinates, two-use manifold edges per disconnected component, exact component counts, outward winding, and silhouette-specific feature regions. All recipes reuse `createPrimitive`, canonical mutation-result IDs, one history transaction, face selection, finite framing, persistence, and existing OBJ/GLB exporters.
+
+All seven actual Chrome/WebGL2 scenarios passed Add -> Undo -> Redo -> Move -> Extrude -> Save -> Reload -> OBJ -> GLB with stable IDs, finite frames, non-empty renderer readback, and zero warnings/errors. Consolidated evidence is `desktop-chrome-all-primitives.json`.
+
+## Workstream 19 Phase A integration request
+
+Accepted behavior requested from Workstream 19 shared bootstrap ownership:
+
+- On the first mount of a genuinely new empty project, call the 16-owned `BasicPrimitivesEntry.ensureDefaultCubeForFirstMount(true)` exactly once.
+- The helper creates `CUBE_RECIPE` through the existing transaction path, selects all six faces, computes/applies the frame callback, and requests rendering.
+- Saved, reloaded, or otherwise existing projects must call it with `false` (or not call it).
+- The helper consumes its first-mount check even when creation is not eligible, and therefore cannot recreate the Cube after undo-to-empty.
+- No new shared contract is required; the helper is package-local composition supplied for Phase A wiring.
