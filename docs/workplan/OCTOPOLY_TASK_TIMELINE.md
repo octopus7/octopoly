@@ -44,7 +44,7 @@
 | O14 | 14 Optional Integration | 2026-08-10 04:10:33 | 2026-08-10 04:54:25 | 00:43:52 (2,632초) | `BLOCKED` — 통합·회귀·push 완료, 실제 iPad/Pencil 증거 없음 | thread `019fe7ef-1068-7f42-82f4-ecf6f2e5793c` |
 | F16-A | 16 Basic Primitives — Plane/Cube | 2026-08-10 15:11:31 | 2026-08-10 16:10:09 | 00:58:38 (3,518초) | 완료 | Hermes `20260810_151133_a032f7`; RESULT `28cd1aa` |
 | F17-E | 17 Guided Retopo — Early Core | 2026-08-10 15:11:31 | 2026-08-10 16:49:59 | 01:38:28 (5,908초) | Early Core 완료 / 전체 `IN_PROGRESS` | Hermes `20260810_151133_cd9dc8`; RESULT `d142ca6` |
-| F18 | 18 Desktop Mouse Camera | 2026-08-10 15:11:31 | 2026-08-10 16:54:53 | 01:43:22 (6,202초) | 자동·브라우저 검증 완료 / 물리 입력 evidence 대기 | Hermes `20260810_151133_3048a9`; RESULT `9cc9c79` |
+| F18 | 18 Desktop Mouse Camera | 2026-08-10 15:11:31 | 2026-08-10 16:54:53 | 01:43:22 (6,202초) | `BLOCKED` — 자동·브라우저 검증 완료, 물리 입력 evidence 대기 | Hermes `20260810_151133_3048a9`; RESULT `9cc9c79`; remote tip `e35f0f9` |
 | F16-B | 16 Built-in Animal Meshes + default-Cube handoff | 2026-08-10 16:17:43 | 2026-08-10 16:56:01 | 00:38:18 (2,298초) | 완료 | Hermes `20260810_151133_a032f7`; feature `4d441b6`; RESULT `165508b` |
 
 `C01`과 `C02`는 각각 하나의 assistant turn에서 여러 활동을 수행했다. 독립된 시작·종료 메타데이터가 없는
@@ -72,6 +72,7 @@
 | 2026-08-10 16:52:35 | `9cc9c7990266ce0abfac17a034dab2b11d57324d` | 18 Desktop Mouse Camera RESULT |
 | 2026-08-10 16:52:52 | `4d441b6779d794186d0a9d22d1706bbd3df7d355` | 16 editable low-poly animal primitives feature checkpoint |
 | 2026-08-10 16:54:45 | `165508b5a489f9d39b6491531aa1356ceb6f2d0b` | 16 extended primitives RESULT 및 원격 workstream tip |
+| 2026-08-10 17:06:50 | `e35f0f9034fa50e621dd5adbd5d994c7cbbcbdf3` | 18 canonical `BLOCKED` status 정정 및 원격 workstream tip |
 
 Commit은 작업 구간이 아니라 완료 시점의 milestone이다. 작업 막대와 commit milestone이 겹쳐도 중복 작업시간으로 합산하지 않는다.
 
@@ -104,7 +105,8 @@ Commit은 작업 구간이 아니라 완료 시점의 milestone이다. 작업 �
 - 동일 branch point: `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f`
 - 병렬 시작: `2026-08-10 15:11:31 KST`
 - 17 Early Core remote tip: `d142ca607593167ee0d86ad11cd3c4526a2ab661`
-- 18 remote tip: `9cc9c7990266ce0abfac17a034dab2b11d57324d`
+- 18 implementation RESULT: `9cc9c7990266ce0abfac17a034dab2b11d57324d`; canonical status correction/remote tip:
+  `e35f0f9034fa50e621dd5adbd5d994c7cbbcbdf3`
 - 16 동물 확장 remote tip: `165508b5a489f9d39b6491531aa1356ceb6f2d0b`
 
 `2026-08-10 16:52:48 KST` 실측 호스트 상태:
@@ -199,6 +201,7 @@ gantt
     18 Mouse Camera RESULT              :milestone, m14, 2026-08-10 16:52:35, 0s
     16 Animal feature checkpoint        :milestone, m15, 2026-08-10 16:52:52, 0s
     16 Animal RESULT                    :milestone, m16, 2026-08-10 16:54:45, 0s
+    18 BLOCKED status correction        :milestone, m17, 2026-08-10 17:06:50, 0s
 
     section Bootstrap 및 배포
     00 수행 위치 답변                   :done, q01, 2026-08-10 00:14:41, 19s
