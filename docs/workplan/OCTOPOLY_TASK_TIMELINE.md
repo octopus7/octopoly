@@ -1,6 +1,6 @@
 # OctoPoly 전체 작업 소요 시간 및 타임라인
 
-기록 스냅샷: `2026-08-10 17:04:47 KST`
+기록 스냅샷: `2026-08-10 21:23:42 KST`
 
 ## 데이터 기준
 
@@ -46,6 +46,7 @@
 | F17-E | 17 Guided Retopo — Early Core | 2026-08-10 15:11:31 | 2026-08-10 16:49:59 | 01:38:28 (5,908초) | Early Core 완료 / 전체 `IN_PROGRESS` | Hermes `20260810_151133_cd9dc8`; RESULT `d142ca6` |
 | F18 | 18 Desktop Mouse Camera | 2026-08-10 15:11:31 | 2026-08-10 16:54:53 | 01:43:22 (6,202초) | `BLOCKED` — 자동·브라우저 검증 완료, 물리 입력 evidence 대기 | Hermes `20260810_151133_3048a9`; RESULT `9cc9c79`; remote tip `e35f0f9` |
 | F16-B | 16 Built-in Animal Meshes + default-Cube handoff | 2026-08-10 16:17:43 | 2026-08-10 16:56:01 | 00:38:18 (2,298초) | 완료 | Hermes `20260810_151133_a032f7`; feature `4d441b6`; RESULT `165508b` |
+| F16-C | 16 Built-in Catalog 25종 후보·evidence 보완 | 2026-08-10 18:39:38 | 2026-08-10 21:22:47 | 02:43:09 (9,789초) | `IN_PROGRESS` / 리뷰 중단 — branch checkpoint 보존, main 미병합 | Hermes `20260810_151133_a032f7`; checkpoint `3e4655a`; reviews 3회 FAIL |
 
 `C01`과 `C02`는 각각 하나의 assistant turn에서 여러 활동을 수행했다. 독립된 시작·종료 메타데이터가 없는
 내부 활동을 임의로 분할하지 않았다. `C02`의 종료는 사용자가 제공한 `05:20 30%` 현시점과 취침 전 handoff
@@ -73,6 +74,7 @@
 | 2026-08-10 16:52:52 | `4d441b6779d794186d0a9d22d1706bbd3df7d355` | 16 editable low-poly animal primitives feature checkpoint |
 | 2026-08-10 16:54:45 | `165508b5a489f9d39b6491531aa1356ceb6f2d0b` | 16 extended primitives RESULT 및 원격 workstream tip |
 | 2026-08-10 17:06:50 | `e35f0f9034fa50e621dd5adbd5d994c7cbbcbdf3` | 18 canonical `BLOCKED` status 정정 및 원격 workstream tip |
+| 2026-08-10 21:22:47 | `3e4655aab7019f8aa3cdefdc4af105f5f6f40a83` | 16 catalog 25종 후보와 미해결 evidence evaluator를 `IN_PROGRESS` checkpoint로 원격 격리 |
 
 Commit은 작업 구간이 아니라 완료 시점의 milestone이다. 작업 막대와 commit milestone이 겹쳐도 중복 작업시간으로 합산하지 않는다.
 
@@ -107,7 +109,21 @@ Commit은 작업 구간이 아니라 완료 시점의 milestone이다. 작업 �
 - 17 Early Core remote tip: `d142ca607593167ee0d86ad11cd3c4526a2ab661`
 - 18 implementation RESULT: `9cc9c7990266ce0abfac17a034dab2b11d57324d`; canonical status correction/remote tip:
   `e35f0f9034fa50e621dd5adbd5d994c7cbbcbdf3`
-- 16 동물 확장 remote tip: `165508b5a489f9d39b6491531aa1356ceb6f2d0b`
+- 16 검증 완료 animal RESULT: `165508b5a489f9d39b6491531aa1356ceb6f2d0b`
+- 16 catalog 25종 `IN_PROGRESS` checkpoint/remote tip: `3e4655aab7019f8aa3cdefdc4af105f5f6f40a83`
+
+### 16 catalog 25종 checkpoint 상태
+
+- 기존 7종에 승인된 신규 18종을 추가한 production 후보, tests, Chrome/WebGL2 raw evidence와 evaluator를
+  `wt/basic-primitives`에 non-force push했다.
+- branch CI는 137 files / 767 tests, typecheck, production build를 통과했지만 독립 리뷰는 세 차례 모두
+  FAIL이므로 branch 상태는 `IN_PROGRESS`다.
+- 마지막 리뷰 `deleg_6fda7d16`의 blocker는 checkpoint별 selection/live face-ID exact 관계, authoritative
+  Undo-empty fingerprint, GLB accessor·byte-range·decoded-index validation이다.
+- 사용자 지시로 추가 review/보완을 중단했다. checkpoint는 main에 merge하지 않았고 main은 정상 상태를
+  유지한다.
+- 18 physical Windows Chrome/Edge mouse smoke는 `NOT_RUN/BLOCKED`이며, 19 Phase A와
+  `PRODUCT_INPUT_BASE_SHA` 설정은 계속 대기한다.
 
 `2026-08-10 16:52:48 KST` 실측 호스트 상태:
 
@@ -202,6 +218,7 @@ gantt
     16 Animal feature checkpoint        :milestone, m15, 2026-08-10 16:52:52, 0s
     16 Animal RESULT                    :milestone, m16, 2026-08-10 16:54:45, 0s
     18 BLOCKED status correction        :milestone, m17, 2026-08-10 17:06:50, 0s
+    16 Catalog 25 checkpoint            :milestone, m18, 2026-08-10 21:22:47, 0s
 
     section Bootstrap 및 배포
     00 수행 위치 답변                   :done, q01, 2026-08-10 00:14:41, 19s
@@ -286,10 +303,11 @@ gantt
     17 Guided Early Core                :crit, f17e, 2026-08-10 15:11:31, 5908s
     18 Desktop Mouse Camera             :crit, f18, 2026-08-10 15:11:31, 6202s
     16 Animal Meshes                    :crit, f16b, 2026-08-10 16:17:43, 2298s
+    16 Catalog 25 IN_PROGRESS           :crit, f16c, 2026-08-10 18:39:38, 9789s
 
     section Gantt 절대 시간축
     표시 범위 시작                     :milestone, rangeStart, 2026-08-09 22:00:00, 0s
-    표시 범위 종료                     :milestone, rangeEnd, 2026-08-10 17:00:00, 0s
+    표시 범위 종료                     :milestone, rangeEnd, 2026-08-10 21:30:00, 0s
 ```
 
 ## Codex 주간 사용량 (%)
@@ -299,7 +317,7 @@ gantt
 
 사용량 선 그래프는 원자료가 존재하는 역사적 관측 구간 `2026-08-09 22:00:00`부터
 `2026-08-10 05:30:00 KST`까지만 유지한다. 이후 16~18 구간에는 신뢰할 수 있는 추가 사용량 표본이 없어 값을
-추정하지 않았다. Mermaid Gantt는 후속 작업을 포함해 `2026-08-10 17:00:00 KST`까지 확장됐다.
+추정하지 않았다. Mermaid Gantt는 후속 작업을 포함해 `2026-08-10 21:30:00 KST`까지 확장됐다.
 
 ![Codex 주간 사용량 선 그래프](assets/codex-weekly-usage.svg)
 

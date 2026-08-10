@@ -11,27 +11,63 @@ commit을 push한 직후 그 exact commit을 `POST_PLAN_BASE_SHA`로 사용한�
 ## 다음 대화 첫 메시지
 
 ```text
-/AGENTS.md와 docs/workplan/NEXT_SESSION_HANDOFF.md를 끝까지 읽고 live Git을 검증해. 현재 19/25 integration
-authority와 exact-input 규칙이 유지되는지 확인하고, 이 문서를 포함한 pushed planning anchor를 exact
-POST_PLAN_BASE_SHA로 해석해. 그 SHA에서만 16, 18, 17 early-core를 별도 worktree/대화로 시작해.
-tag/Pages deploy는 하지 마.
+/AGENTS.md와 docs/workplan/NEXT_SESSION_HANDOFF.md를 끝까지 읽고 live Git을 검증해. main은 문서 전용
+진행상태 checkpoint 이후 clean/equal이어야 한다. wt/basic-primitives의 checkpoint 3e4655a는 25종 catalog
+후보를 원격 보존한 IN_PROGRESS 상태이며 main에 merge하면 안 된다. 리뷰를 재개하라는 새 사용자 지시가
+없으면 추가 리뷰·보완을 시작하지 마. 18 physical Windows Chrome/Edge mouse gate가 끝나기 전에는 19
+Phase A도 시작하지 말고, tag/Pages deploy도 하지 마.
 ```
 
 ## 현재 Git 및 제품 상태
 
 - 저장소: 문서에 고정된 장비 경로를 사용하지 않는다. 현재 세션에서 repository root를 live Git 상태로 확인한다.
 - branch: `main`
-- planning 작업의 입력 `HEAD` / `origin/main`: `ca1b5b95c92a357f8969862d9709419e6b167c0d`
-- planning anchor/output: 이 문서를 포함해 push된 exact main commit; live Git에서 `POST_PLAN_BASE_SHA`로 해석
+- 현재 상태 문서 갱신 전 `HEAD` / `origin/main`: `20149e71b830548dd109125f72c6b8006bb69011`
+- exact `POST_PLAN_BASE_SHA`: `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f`
 - 14 개발 통합 및 RESULT push: 완료
 - 14 상태: `BLOCKED` — 실제 iPad Safari / Apple Pencil hard-gate evidence가 없음
 - `baseline/full-v1`: 없음. 만들면 안 됨.
 - 15 Cloudflare Pages release/operations: 시작하지 않음
-- planning anchor 생성 시점의 16~25 구현 branch/worktree: 없음, 모두 `NOT_STARTED`; 재개 시 live Git으로 다시 확인
+- Workstream 16 remote tip: `3e4655aab7019f8aa3cdefdc4af105f5f6f40a83` (`wt/basic-primitives`)
+- Workstream 17 Early Core remote tip: `d142ca607593167ee0d86ad11cd3c4526a2ab661`; 전체 상태 `IN_PROGRESS`
+- Workstream 18 remote tip: `e35f0f9034fa50e621dd5adbd5d994c7cbbcbdf3`; physical mouse evidence 부재로 `BLOCKED`
+- `PRODUCT_INPUT_BASE_SHA`: `NOT_SET`; 19 Phase A는 시작하지 않음
+- `PRACTICAL_TOOL_BASE_SHA`: `NOT_SET`; 20~25는 시작하지 않음
 - `/AGENTS.md` 보호 승인: Discord message `1536230618839646248`; authority/exact-input 규칙 적용 완료
 
 이 handoff를 포함한 문서 체크포인트 commit/push 이후에는 다음 세션 시작 시 `git fetch` 후
 `git rev-parse HEAD`, `git rev-parse origin/main`, `git status --short`를 다시 확인한다.
+
+## 2026-08-10 21:23 KST 실행 현황
+
+### Workstream 16 — 25종 built-in catalog checkpoint
+
+- 기존 검증 완료 범위는 Plane, Cube, Duck, Frog, Pig, Cow, Rabbit이며 RESULT tip은
+  `165508b5a489f9d39b6491531aa1356ceb6f2d0b`이다.
+- Cat, Dog, Fish, Turtle, Elephant와 Cup, Chair, Flowerpot, Kettle, Sneaker, Backpack, Helmet, Gamepad,
+  Camera, Bicycle Saddle, Car, Rocket, Treasure Chest를 추가한 25종 catalog 후보는
+  `3e4655aab7019f8aa3cdefdc4af105f5f6f40a83`에 `[checkpoint]`로 원격 보존했다.
+- checkpoint 시 branch status는 `IN_PROGRESS`, review state는 `PENDING_AFTER_FIX`다. `[verified]`, `PASS`,
+  `COMPLETE`를 주장하지 않는다.
+- branch CI 결과는 typecheck/build 포함 137 test files / 767 tests PASS였지만, 독립 review acceptance와는
+  별개다.
+- 독립 리뷰 `deleg_848b155f`, `deleg_d554e228`, `deleg_6fda7d16`은 모두 FAIL이었다.
+- 세 번째 리뷰의 미해결 blocker:
+  1. Redo/Extrude/Reload selected face IDs와 해당 checkpoint live face IDs의 exact 관계 검증 부족
+  2. Undo fingerprint와 authoritative pre-creation empty checkpoint의 exact 비교 부재
+  3. GLB accessor `bufferView`/`type`/`componentType`, byte range 및 decoded index→POSITION 범위 검증 부족
+- 사용자 지시에 따라 추가 review와 보완을 중단했다. 재개 지시 전까지 이 checkpoint를 수정하거나 main에
+  merge하지 않는다.
+- checkpoint의 production catalog 코드까지 포함한 모든 local 변경은 같은 이름의 원격 branch에 non-force
+  push했다. 문제 있는 evidence/evaluator도 이 branch에 격리돼 있다.
+
+### Main 보존 상태와 다음 gate
+
+- Workstream 16 checkpoint는 main에 merge/cherry-pick하지 않았다.
+- 상태 문서 갱신 직전 main local/remote는 모두 `20149e71b830548dd109125f72c6b8006bb69011`, clean이었다.
+- 이 문서와 `OCTOPOLY_TASK_TIMELINE.md`만 별도 docs commit으로 main에 반영한다.
+- 18 physical Windows Chrome/Edge mouse smoke는 `NOT_RUN`; synthetic CDP PASS로 대체하지 않는다.
+- 다음 구현 gate는 18 physical evidence 완료다. 그 전에는 19 Phase A를 시작하지 않는다.
 
 ## 이번 세션에서 작성된 문서
 
