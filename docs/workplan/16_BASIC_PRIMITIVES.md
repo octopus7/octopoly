@@ -520,56 +520,126 @@ script를 추가하지 않고 동등한 existing command를 RESULT에 기록한�
 
 ## RESULT
 
-Status: NOT_STARTED
+Status: COMPLETE
 
 ### Baseline refs
 - Minimum input commit: `e54edeed9094d71679b4b081729a34354e820e4a`
-- Resolved start `POST_PLAN_BASE_SHA`: NOT_SET
-- Branch/worktree: `wt/basic-primitives` / `../wt-basic-primitives`
-- Start-SHA ancestry check: NOT_RUN
+- Resolved start `POST_PLAN_BASE_SHA`: `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f`
+- Branch/worktree: `wt/basic-primitives` / `/home/beelink/wt-basic-primitives`
+- Start-SHA ancestry check: PASS — resolved start is an ancestor of feature checkpoint `cce4123`
+- Worktree start state: clean, exact resolved start SHA
 - `baseline/full-v1` required: NO
 
 ### Implemented
-- NOT_STARTED
+- Package-local Plane and Cube recipes using only canonical mutation results for stable IDs.
+- One history transaction per primitive, aggregate topology validation, selection after commit, undo/redo, and complete rollback on intermediate vertex/face failure.
+- Plane: centered unit XY quad with `+Z` winding.
+- Cube: centered unit cube with 8 vertices, 12 edges, 24 corners, 6 quads, and outward winding.
+- Finite selection bounds/framing with viewport aspect/FOV handling and at least 15% padding.
+- Reference-first Move/Extrude with reference-free frozen construction-plane fallback and recoverable degenerate/parallel/no-op behavior.
+- Additive New Scene UI for Import Reference, Add Plane, Add Cube, Frame Selection, save/reload, and OBJ/GLB export.
+- Real-browser Plane/Cube harness using the production CoreWorkspace, renderer, picking, tools, persistence, and exporters.
 
 ### Files created or modified
-- NOT_STARTED
+- `src/app/composition/primitive-creation.ts`
+- `src/app/composition/primitive-recipes.ts`
+- `src/app/composition/primitive-entry.ts`
+- `src/app/basic-primitives-ui.ts`
+- `src/tools/basic/construction-plane.ts`
+- `src/tools/basic/move-tool.ts`
+- `src/tools/face/extrude-face-tool.ts`
+- `tests/app/composition/primitive-creation.test.ts`
+- `tests/app/composition/primitive-recipes.test.ts`
+- `tests/tools/basic/basic-tools.test.ts`
+- `tests/tools/basic/construction-plane.test.ts`
+- `tests/tools/face/extrude-face-tool.test.ts`
+- `tests/bootstrap/basic-primitives-empty-state.test.ts`
+- `tests/e2e/basic-primitives-browser.test.ts`
+- `tests/e2e/basic-primitives-browser.ts`
+- `docs/validation/basic-primitives/agent-c.md`
+- `docs/validation/basic-primitives/browser-smoke.html`
+- `docs/validation/basic-primitives/browser-smoke.ts`
+- `docs/validation/basic-primitives/stage1-desktop-chrome.json`
+- `docs/validation/basic-primitives/desktop-chrome-plane-cube.json`
+- `docs/workplan/16_BASIC_PRIMITIVES.md` (`RESULT` only)
+
+All implementation/evidence paths are inside Workstream 16 Integration Ownership. No contract, shared config, mesh/history/selection/renderer/project/IO implementation, Optional source, barrel, package, lockfile, or build configuration was changed.
 
 ### Public API / local entrypoints
-- NOT_STARTED
+- `PLANE_RECIPE` and `CUBE_RECIPE`
+- `createPrimitive(recipe, services)`
+- `createBasicPrimitivesEntry(dependencies)` with `addPlane`, `addCube`, `frameSelection`, and `state`
+- `mountBasicPrimitivesUi(viewport, callbacks, state)`
+- Construction-plane helpers for selected bounds/framing, ray-plane intersection, area-weighted face normals, and best-conditioned drag planes
+
+These are package-local entrypoints; shared bootstrap/CoreWorkspace composition remains owned by Workstream 19.
 
 ### Stage 1 — Plane evidence
-- NOT_STARTED
+- Plane Stage 1 passed before Cube work began.
+- Focused creation tests verify 4 sequential mutation-result vertex IDs, 1 quad, 4 edges/corners, one `Add plane` history entry, face selection, undo/redo stable IDs, malformed-result rejection, and rollback.
+- Actual Chrome/WebGL2 flow passed: New Scene -> Add Plane -> Undo empty -> Redo -> Move -> Extrude -> Save -> Reload -> OBJ/GLB.
+- Create evidence: 4 vertices / 4 edges / 4 corners / 1 selected face; finite frame plan; 12,728 non-background pixels.
+- Edited/exported evidence: stable-ID reload true; OBJ 511 bytes; GLB 856 bytes; warnings/errors 0.
 
 ### Stage 2 — Cube evidence
-- NOT_STARTED
+- Cube began only after the Plane vertical slice actual-browser PASS.
+- Exact recipe test verifies 8 centered vertices, six named quad cycles, 12 edges, 24 corners, 6 faces, and positive outward-normal dot products.
+- Atomic command test verifies 14 mutation calls in one `Add cube` transaction, all six created faces selected, undo/redo, and full rollback when the fourth face mutation fails.
+- Actual Chrome/WebGL2 create evidence: 8 vertices / 12 edges / 24 corners / 6 selected faces; finite frame plan; 15,572 non-background pixels.
+- Actual undo returned all topology counts to zero; redo restored 8/12/24/6.
+- Actual reference-free Move/Extrude, save/reload and export passed; final edited mesh 12/20/40/10, stable-ID reload true, OBJ 798 bytes, GLB 1,028 bytes, warnings/errors 0.
 
 ### Construction-plane / Frame Selection evidence
-- NOT_STARTED
+- Unit tests cover selected vertex/edge/face/mixed bounds, duplicate removal, empty/live-element no-op, thin/point bounds, portrait/landscape framing, finite intersections, parallel rejection, area-weighted normals, and degenerate faces.
+- Existing reference surface hits remain first priority.
+- Reference-free Move uses a camera-facing plane frozen at pointer down.
+- Reference-free Extrude uses a frozen best-conditioned plane and projects displacement onto the finite selected-face normal.
+- Zero displacement, invalid/parallel rays, cancel, deactivate, and preview cleanup do not create history entries.
 
 ### Tests / validation
-- NOT_STARTED
+- Strict TDD Cube recipe RED: `CUBE_RECIPE` was missing; GREEN after exact recipe implementation.
+- Strict TDD Cube entry RED: `addCube is not a function`; GREEN after composition entry implementation.
+- Focused primitive/UI tests: PASS — 4 files, 21 tests.
+- `npm run ci`: PASS — typecheck; 137 Vitest files / 687 tests; production build; baseline artifact verification.
+- Production artifact: 4 files, 229,686 bytes; compressed JS/CSS 62,148 bytes; no warnings/failures.
+- Harness-inclusive temporary TypeScript project: PASS; temporary config removed.
+- `git diff --check`: PASS.
+- Self-contained security scan: PASS — zero hardcoded-secret, shell-injection, eval/exec, unsafe-deserialization, SQL-injection, or DOM `innerHTML` findings.
+- Self-contained code review: PASS — no security concerns or blocking logic errors found; topology/transaction/selection/framing/UI lifecycle/browser-evidence paths checked against the spec.
 
 ### Core-only / Optional regression
-- NOT_STARTED
+- `npm run verify:core -- --scan-only`: PASS; 151 Core source files, Optional roots excluded, no failures.
+- `npm run verify:optional`: PASS; Core-only physical-removal typecheck/tests/build, 09 vertical slice, all 16 Optional combinations, semantic matrix, and full-source build passed.
+- `npm run verify:ipad`: automated fixture PASS; physical device NOT_RUN; release readiness BLOCKED.
 
 ### Browser / device evidence
-- Desktop browser/WebGL2: NOT_RUN
-- Physical iPad Safari/Apple Pencil: NOT_RUN
+- Desktop browser/WebGL2: PASS — Headless Chrome 145 on Linux x86_64, renderer `ready`, real production WebGL2 readback, warnings/errors/JavaScript errors 0.
+- Evidence: `docs/validation/basic-primitives/desktop-chrome-plane-cube.json`.
+- Physical iPad Safari: NOT_RUN / BLOCKED.
+- Apple Pencil: NOT_RUN / BLOCKED.
+- Desktop automation and the deterministic iPad fixture do not replace physical-device evidence.
 
 ### Integration notes
-- NONE
+- Workstream 19 owns shared `core-workspace.ts`, bootstrap, camera-controller application, shared barrels, and product-level composition. Workstream 16 publishes a package-local `applyFrame(SelectionFrame)` callback and requests rendering without modifying those shared seams.
+- The browser harness records the real finite frame plan and renders through the production workspace; applying the new target/position to the shared camera controller remains a Workstream 19 integration action.
+- No main merge, Pages deployment, or release tag was performed.
 
 ### Requested contract changes
 - NONE
 
 ### Known limitations
-- NOT_EVALUATED
+- Physical iPad Safari and Apple Pencil behavior/performance were not run and remain BLOCKED release evidence.
+- No device-level performance numbers are claimed.
+- Full transform gizmos, axis locks, Rotate/Scale, object/outliner semantics, Sphere/Cylinder, and reference-free CreateVertex/RetopoStroke remain out of scope.
+- Product bootstrap/shared camera wiring is deferred to Workstream 19 as planned; no frozen contract change is requested.
 
 ### Final disposition
-- Final local branch tip: NOT_SET
-- Pushed `origin/wt/basic-primitives` tip: NOT_SET
-- Local/remote tip equality: NOT_CHECKED
-- Push performed: NO
+- Verified feature checkpoint commit: `cce4123` (`[verified] feat: add basic plane and cube primitives`)
+- Final local branch tip: this RESULT-only commit; exact SHA reported externally after commit creation.
+- Pushed `origin/wt/basic-primitives` tip: exact SHA verified and reported externally after non-force push.
+- Local/remote tip equality: verified externally after push.
+- Push performed: YES — non-force push to the same-name origin branch.
 - Main merge performed: NO
+- Main push performed: NO
 - Immutable release tag created: NO
+- Pages deploy performed: NO
