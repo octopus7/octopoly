@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-08-10T16:49:15+09:00",
+  "candidateCommit": "3cbaa26b1db1a33793c1deb37e2c6510f4678242",
+  "command": "node scripts/verify-desktop-mouse.mjs",
+  "evidenceClass": "SYNTHETIC_CDP_AUTOMATION",
+  "automationStatus": "PASS",
+  "physicalDesktopMouse": "NOT_RUN",
+  "precisionTrackpad": "NOT_RUN",
+  "physicalIPadExternalPointer": "NOT_RUN",
+  "browsers": [
+    {
+      "name": "Windows Chrome",
+      "product": "Chrome/151.0.7922.76",
+      "status": "PASS",
+      "orbitCapture": "1/1",
+      "shiftPan": "PASS",
+      "wheelZoom": "PASS",
+      "handledWheelPageScrollSuppressed": "PASS",
+      "blockedWheelPageScrollPreserved": "PASS",
+      "leftModeling": "PASS",
+      "rightReserved": "PASS",
+      "contextMenuDefaultPreserved": "PASS",
+      "penRegression": "PASS",
+      "touchRegression": "PASS",
+      "middleBitLossCleanup": "PASS",
+      "blurCleanup": "PASS",
+      "postDisposeCallbacks": "PASS",
+      "pageExceptions": 0
+    },
+    {
+      "name": "Windows Edge",
+      "product": "Edg/151.0.4129.72",
+      "status": "PASS",
+      "orbitCapture": "1/1",
+      "shiftPan": "PASS",
+      "wheelZoom": "PASS",
+      "handledWheelPageScrollSuppressed": "PASS",
+      "blockedWheelPageScrollPreserved": "PASS",
+      "leftModeling": "PASS",
+      "rightReserved": "PASS",
+      "contextMenuDefaultPreserved": "PASS",
+      "penRegression": "PASS",
+      "touchRegression": "PASS",
+      "middleBitLossCleanup": "PASS",
+      "blurCleanup": "PASS",
+      "postDisposeCallbacks": "PASS",
+      "pageExceptions": 0
+    }
+  ],
+  "limitations": [
+    "CDP-injected browser events are synthetic automation and do not constitute a physical mouse or precision-trackpad run.",
+    "No physical iPad external mouse, trackpad, or Apple Pencil run was performed in this workstream."
+  ]
+}

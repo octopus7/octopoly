@@ -485,66 +485,124 @@ desktop mouse MVP의 완료를 과장하거나 iPad external-pointer support를 
 
 ## RESULT
 
-Status: NOT_STARTED
+Status: READY_WITH_EXTERNAL_EVIDENCE
 
 ### Baseline and execution
-- Input `POST_PLAN_BASE_SHA`: NOT_SET
-- 09 baseline ancestry: NOT CHECKED
-- Start-SHA ancestry check: NOT_RUN
-- Branch/worktree: `wt/desktop-mouse-camera` / `../wt-desktop-mouse-camera`
-- 16/17 dependency: NONE
+- Input `POST_PLAN_BASE_SHA`: `b78cff6dba292ffdab9bc5cd58830c56bff9ee3f`
+- 09 baseline ancestry: PASS — `baseline/optional-sdk-v1^{commit}` resolved to
+  `175ecff7613c15d5afd39327e957885c6eed4e50` and is an ancestor of the input SHA.
+- Start-SHA ancestry check: PASS — the implementation checkpoint is a descendant of the exact input SHA.
+- Branch/worktree: `wt/desktop-mouse-camera` / `/home/beelink/wt-desktop-mouse-camera`
+- Clean start: PASS at the exact input SHA. Interrupted Agent A/B output was subsequently audited by the main agent;
+  valid code was retained/reworked, incomplete overlap was removed, and the untracked `NUL` file was confirmed as a
+  Windows command/redirect diagnostic artifact and deleted.
+- 16/17 dependency: NONE; neither branch was imported or modified.
+- Implementation checkpoint: `3cbaa26b1db1a33793c1deb37e2c6510f4678242`
 
 ### Implemented
-- NOT STARTED
+- Added a local non-passive wheel adapter with pixel/line/page normalization, finite validation, symmetric clamp,
+  continuous exponential zoom scale, owner gating, handled-only `preventDefault`, and idempotent disposal.
+- Added mutually exclusive tool, middle-mouse navigation, and touch ownership in `WorkspaceInputController`.
+- Added middle-only orbit, frozen-at-down Shift+middle pan, left-only mouse modeling start, right/multi-button reservation,
+  owner-priority routing, middle-bit-loss handling, and branch-local `connectDesktopWheelCamera` composition.
+- Hardened normalized pointer capture/cancel behavior for blur, disconnect, lost capture, callback failure, and
+  `setPointerCapture` acquisition failure; every failure path performs best-effort normalized cancel and DOM release.
+- Hardened touch terminal/preemption cleanup without changing Pencil/pen modeling semantics.
+- Added an actual Windows Chrome/Edge headless-browser harness driven through CDP. This is explicitly classified as
+  synthetic automation and is not represented as physical mouse/trackpad evidence.
 
 ### Canonical mapping delivered
-- Middle drag orbit: NOT STARTED
-- Shift + middle drag pan: NOT STARTED
-- Wheel/trackpad scroll zoom: NOT STARTED
-- Left modeling preserved: NOT STARTED
-- Right button reserved: NOT STARTED
+- Middle drag orbit: IMPLEMENTED / AUTOMATED PASS
+- Shift + middle drag pan: IMPLEMENTED / AUTOMATED PASS; mode is frozen at gesture start
+- Wheel/trackpad scroll zoom: IMPLEMENTED / SYNTHETIC WHEEL AUTOMATION PASS; physical trackpad NOT_RUN
+- Left modeling preserved: PASS in unit, integration, full regression, Chrome, and Edge automation
+- Right button reserved: PASS; browser context-menu default remained reachable in Chrome/Edge automation
 
 ### Files created or modified
-- NONE
+- `src/input/mouse/index.ts`
+- `src/input/mouse/wheelZoomAdapter.ts`
+- `src/input/surface/normalizedInputSurface.ts`
+- `src/app/composition/workspace-input.ts`
+- `src/tools/basic/gesture.ts`
+- `tests/input/mouse/wheelZoomAdapter.test.ts`
+- `tests/input/normalizedInput.test.ts`
+- `tests/app/composition/workspace-input.test.ts`
+- `tests/tools/basic/gesture-mouse-routing.test.ts`
+- `tests/integration/desktop-mouse-camera.integration.test.ts`
+- `tests/e2e/desktop-mouse-camera.browser.test.ts`
+- `scripts/verify-desktop-mouse.mjs`
+- `scripts/verify-desktop-mouse-windows-cdp-proxy.ps1`
+- `docs/validation/desktop-mouse/browser-harness.html`
+- `docs/validation/desktop-mouse/browser-harness.ts`
+- `docs/validation/desktop-mouse/current-browser-status.json`
+- `docs/workplan/18_DESKTOP_MOUSE_CAMERA.md` (`RESULT` only)
 
 ### Public and local API
-- Public contract changes: NONE PLANNED
-- Local mouse/wheel adapter: NOT STARTED
+- Public contract changes: NONE
+- Local mouse/wheel adapter: `createWheelZoomAdapter` in `src/input/mouse/**`
+- Local composition seam: `connectDesktopWheelCamera` in `src/app/composition/workspace-input.ts`
+- Raw `WheelEvent` remains inside the local adapter and is never converted into `PointerSample`.
 
 ### Tests / validation
-- Unit: NOT RUN
-- Integration: NOT RUN
-- Canonical typecheck/test/build: NOT RUN
-- Core-only regression: NOT RUN
-- Optional regression where present: NOT RUN
+- Focused unit/integration: PASS — 6 files, 43 tests, including normalized middle-bit loss, callback failure,
+  DOM capture acquisition rollback, left/right/Pencil routing, wheel semantics, and browser-evidence boundary.
+- `npm run ci`: PASS — typecheck, 137 test files / 679 tests, production build, baseline artifact limits.
+- `npm run verify:core`: PASS — core-only typecheck/tests/build/artifact limits.
+- `VITEST_MAX_WORKERS=8 npm run verify:optional`: PASS — core physical-removal suite, 16 combinations,
+  semantic Optional validation, and full production build. An earlier unconstrained retry hit only the pre-existing
+  5-second `tests/mesh/internal/budget.test.ts` timeout under concurrent host load; the focused budget test then passed
+  in 2.203 seconds before the constrained canonical rerun passed.
+- `npm run verify:ipad`: automated fixture PASS; physical device NOT_RUN and release-readiness BLOCKED, as required.
+- `git diff --check`: PASS
+- Added-line secret/injection scan: PASS; no findings.
+- Independent final Hermes review: PASS — no security concerns or blocking logic errors after the capture rollback and
+  verifier cleanup fixes.
 
 ### Browser validation
-- Windows Chrome mouse: NOT RUN
-- Windows Edge mouse: NOT RUN
-- Precision trackpad: NOT RUN
+- Candidate commit: `3cbaa26b1db1a33793c1deb37e2c6510f4678242`
+- Evidence: `docs/validation/desktop-mouse/current-browser-status.json`
+- Windows Chrome `151.0.7922.76`: SYNTHETIC_CDP_AUTOMATION PASS for orbit, frozen Shift-pan, wheel zoom,
+  capture/release, middle-bit loss, page-scroll suppression, left modeling, right/context-menu reservation,
+  pen/touch regressions, blur and disposal; page exceptions 0.
+- Windows Edge `151.0.4129.72`: same SYNTHETIC_CDP_AUTOMATION checks PASS; page exceptions 0.
+- Physical Windows Chrome/Edge mouse smoke: NOT_RUN — CDP injection does not satisfy the physical mouse gate.
+- Precision trackpad: NOT_RUN
 
 ### Physical iPad external pointer evidence
-- Magic Keyboard trackpad: NOT RUN
-- External mouse: NOT RUN
-- Claim: NONE
+- Magic Keyboard trackpad: NOT_RUN
+- External mouse: NOT_RUN
+- Apple Pencil physical regression: NOT_RUN in this workstream
+- Claim: NONE — no physical iPad mouse/trackpad/Pencil PASS is asserted.
 
 ### 16/17 combination evidence
-- Basic primitive + camera E2E: NOT RUN; not a standalone 18 start gate
-- Guided retopology + desktop input: NOT RUN; not a standalone 18 acceptance dependency
+- Basic primitive + camera E2E: NOT_RUN; 16 was not part of this independent input baseline and this is not a standalone
+  18 start gate.
+- Guided retopology + desktop input: NOT_RUN; 17 is not a standalone 18 acceptance dependency.
 
 ### Requested contract changes
 - NONE
 
 ### Integration notes
-- NONE
+- Workstream 19 Phase A must instantiate `connectDesktopWheelCamera(viewportElement, workspaceInputController,
+  orbitCameraController, requestRender)` alongside the shared normalized-input connection.
+- Store its returned `Disposable` with the input connection; dispose it before any viewport/input-surface document
+  replacement and during workspace disposal, then instantiate exactly one replacement connection for the new element.
+- Add a production-composition E2E proving initialization, document replacement, and disposal leave one active wheel
+  listener, route wheel to the same camera/render callback, and never outlive the old workspace. The shared
+  `CoreWorkspace` composition file was intentionally not modified because it is reserved to workstream 19.
 
 ### Known limitations
-- Implementation and validation have not started.
+- Physical Windows mouse and precision-trackpad smoke are NOT_RUN, so the workstream remains
+  `READY_WITH_EXTERNAL_EVIDENCE` rather than `COMPLETE` despite actual Chrome/Edge browser-engine automation passing.
+- Physical iPad external mouse/trackpad and Apple Pencil evidence are NOT_RUN; no iPad external-pointer support claim is
+  made.
+- Shared production `CoreWorkspace` instantiation/disposal is deferred to workstream 19 as required; this branch ships
+  the tested local composition seam and explicit integration instructions.
 
 ### Final disposition
-- Final local branch tip: NOT_SET
-- Pushed `origin/wt/desktop-mouse-camera` tip: NOT_SET
-- Local/remote tip equality: NOT_CHECKED
-- Branch push: NOT PERFORMED
+- Final local branch tip: RESULT metadata commit (resolved after commit; not self-recorded)
+- Pushed `origin/wt/desktop-mouse-camera` tip: RESULT metadata commit after non-force push
+- Local/remote tip equality: verify after push
+- Branch push: PENDING FINAL RESULT COMMIT
 - Main merge: NOT PERFORMED
 - Tag: NOT CREATED — prohibited for this workstream
