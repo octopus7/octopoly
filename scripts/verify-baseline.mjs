@@ -68,7 +68,7 @@ if (failures.length === 0) {
     const html = await readFile(indexPath, "utf8");
     check(/<title>OctoPoly<\/title>/.test(html), "Built document title must be exactly OctoPoly.");
     check(html.includes("OctoPoly"), "Built shell must retain a visible OctoPoly fallback.");
-    check(html.includes('name="octopoly-build" content="bootstrap-v1"'), "Build marker is missing.");
+    check(html.includes('name="octopoly-build" content="rebuild-v1"'), "Build marker is missing.");
 
     const assetReferences = [...html.matchAll(/(?:src|href)="([^"?#]+\.(?:js|css))"/g)].map(
       (match) => match[1],

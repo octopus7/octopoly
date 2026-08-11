@@ -1,1 +1,0 @@
-export { createNormalizedInputSurfaceFactory } from "./normalizedInputSurface";

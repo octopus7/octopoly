@@ -1,9 +1,10 @@
-import "./app/bootstrap.css";
+import "./styles.css";
+import { mountShell } from "./shell";
 
-import { mountCoreWorkspace, renderEmergencyShell } from "./app/bootstrap";
+const root = document.querySelector<HTMLElement>("#app");
 
-const root = document.getElementById("app") ?? document.body.appendChild(document.createElement("div"));
+if (!root) {
+  throw new Error("OctoPoly app root was not found.");
+}
 
-void mountCoreWorkspace(root).catch((error: unknown) => {
-  renderEmergencyShell(root, error);
-});
+mountShell(root);
