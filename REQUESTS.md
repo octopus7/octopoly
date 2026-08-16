@@ -37,4 +37,5 @@
 - Canvas keyboard vertex selection과 adaptive-precision 좌표 live announcement, camera-projected X/Y/Z gizmo axis, mesh-scale-aware pointer/keyboard 이동, current-mode/Escape menu dismissal, shell listener teardown 및 panel-over-gizmo stacking contract를 추가했다.
 - 최종 CI에서 typecheck, **17 test files / 158 tests**, production build, artifact 검증 및 `git diff --check`를 통과했다.
 - 실제 desktop browser와 production `dist` preview에서 cube→Facial 전환, 전체 기본 마스크 framing, 눈·입 opening, duplicate/rename/select, pointer·keyboard vertex 선택과 adaptive 좌표 announcement, camera-projected X/Y/Z 이동, zoom 후 gizmo 재투영, autosave, million-offset·tiny-scale OBJ framing, extreme Float32 bounds import rejection 및 기존 workspace 보존, `200×400` portrait framing, panel input stacking, reload recovery, same-mode/Escape 메뉴 닫힘 및 JavaScript 오류 0건을 확인했다.
+- 2026-08-17 `main` commit `9d7f0b3`을 push했고 GitHub Actions CI run `31954809330`이 성공했다. Cloudflare production이 `index-Cz9816yW.js`로 전환된 뒤 <https://octopoly.pages.dev/>에서 Facial 진입, 기본 마스크·opening·panel 및 console 오류 0건을 재확인했다.
 - Responsive CSS는 구현했으나 browser tool의 CSS viewport가 1280px로 고정되어 physical iPad/mobile 검증은 `NOT_RUN`이다.
