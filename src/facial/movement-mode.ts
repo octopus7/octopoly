@@ -1,0 +1,71 @@
+export type VertexMovementMode = "gizmo" | "view-plane" | "constrained-plane";
+export type WorldPlane = "xy" | "yz" | "xz";
+
+export interface VertexMovementModeState {
+  readonly mode: VertexMovementMode;
+  readonly enabledConstrainedPlanes: readonly WorldPlane[];
+  readonly activeConstrainedPlane: WorldPlane;
+}
+
+export type VertexMovementModeAction =
+  | {
+      readonly type: "set-mode";
+      readonly mode: VertexMovementMode;
+    }
+  | {
+      readonly type: "set-constrained-plane-enabled";
+      readonly plane: WorldPlane;
+      readonly enabled: boolean;
+    }
+  | {
+      readonly type: "select-constrained-plane";
+      readonly plane: WorldPlane;
+    };
+
+export const WORLD_PLANES: readonly WorldPlane[] = ["xy", "yz", "xz"];
+
+export function createVertexMovementModeState(): VertexMovementModeState {
+  return {
+    mode: "gizmo",
+    enabledConstrainedPlanes: [...WORLD_PLANES],
+    activeConstrainedPlane: "xy",
+  };
+}
+
+export function vertexMovementModeReducer(
+  state: VertexMovementModeState,
+  action: VertexMovementModeAction,
+): VertexMovementModeState {
+  if (action.type === "set-mode") {
+    return { ...state, mode: action.mode };
+  }
+  if (action.type === "select-constrained-plane") {
+    return state.enabledConstrainedPlanes.includes(action.plane)
+      ? { ...state, activeConstrainedPlane: action.plane }
+      : state;
+  }
+
+  const isEnabled = state.enabledConstrainedPlanes.includes(action.plane);
+  if (action.enabled === isEnabled) return state;
+  if (!action.enabled && state.enabledConstrainedPlanes.length === 1) return state;
+
+  const enabledConstrainedPlanes = action.enabled
+    ? WORLD_PLANES.filter((plane) => (
+        plane === action.plane || state.enabledConstrainedPlanes.includes(plane)
+      ))
+    : state.enabledConstrainedPlanes.filter((plane) => plane !== action.plane);
+
+  const activeConstrainedPlane = action.plane === state.activeConstrainedPlane && !action.enabled
+    ? (enabledConstrainedPlanes[0] ?? state.activeConstrainedPlane)
+    : state.activeConstrainedPlane;
+
+  return { ...state, enabledConstrainedPlanes, activeConstrainedPlane };
+}
+
+export function getConstrainedPlaneSelectorPlanes(
+  state: VertexMovementModeState,
+): readonly WorldPlane[] {
+  return state.enabledConstrainedPlanes.length === 1
+    ? []
+    : state.enabledConstrainedPlanes;
+}

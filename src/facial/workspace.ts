@@ -155,6 +155,35 @@ export function replaceBaseMesh(
 }
 
 export type VertexAxis = "x" | "y" | "z";
+export type VertexDelta = readonly [number, number, number];
+
+export function moveVertexByDelta(
+  workspace: FacialWorkspace,
+  meshId: string,
+  vertexIndex: number,
+  delta: VertexDelta,
+): FacialWorkspace {
+  if (!Number.isInteger(vertexIndex) || vertexIndex < 0 || !delta.every(Number.isFinite)) return workspace;
+  if (delta.every((value) => value === 0)) return workspace;
+  const positionIndex = vertexIndex * 3;
+  const targetMesh = workspace.meshes.find((mesh) => mesh.id === meshId);
+  if (!targetMesh) return workspace;
+  const positions = [...targetMesh.geometry.positions];
+  for (let axis = 0; axis < 3; axis += 1) {
+    const current = positions[positionIndex + axis];
+    if (current === undefined) return workspace;
+    const nextCoordinate = current + delta[axis]!;
+    if (!Number.isFinite(nextCoordinate) || !Number.isFinite(Math.fround(nextCoordinate))) return workspace;
+    positions[positionIndex + axis] = nextCoordinate;
+  }
+  const geometry = { ...targetMesh.geometry, positions };
+  if (!isValidMeshGeometry(geometry)) return workspace;
+  return {
+    ...workspace,
+    meshes: workspace.meshes.map((mesh) =>
+      mesh.id === meshId ? { ...mesh, geometry } : mesh),
+  };
+}
 
 export function moveVertex(
   workspace: FacialWorkspace,
@@ -164,23 +193,9 @@ export function moveVertex(
   delta: number,
 ): FacialWorkspace {
   const axisOffset: Record<VertexAxis, number> = { x: 0, y: 1, z: 2 };
-  if (!Number.isInteger(vertexIndex) || vertexIndex < 0 || !Number.isFinite(delta)) return workspace;
-  const positionIndex = vertexIndex * 3 + axisOffset[axis];
-  const targetMesh = workspace.meshes.find((mesh) => mesh.id === meshId);
-  if (!targetMesh) return workspace;
-  const current = targetMesh.geometry.positions[positionIndex];
-  if (current === undefined) return workspace;
-  const nextCoordinate = current + delta;
-  if (!Number.isFinite(nextCoordinate) || !Number.isFinite(Math.fround(nextCoordinate))) return workspace;
-  const positions = [...targetMesh.geometry.positions];
-  positions[positionIndex] = nextCoordinate;
-  const geometry = { ...targetMesh.geometry, positions };
-  if (!isValidMeshGeometry(geometry)) return workspace;
-  return {
-    ...workspace,
-    meshes: workspace.meshes.map((mesh) =>
-      mesh.id === meshId ? { ...mesh, geometry } : mesh),
-  };
+  const vector: [number, number, number] = [0, 0, 0];
+  vector[axisOffset[axis]] = delta;
+  return moveVertexByDelta(workspace, meshId, vertexIndex, vector);
 }
 
 export function selectMesh(workspace: FacialWorkspace, meshId: string): FacialWorkspace {
@@ -223,6 +238,17 @@ export function duplicateBaseMesh(workspace: FacialWorkspace, copyId: string): F
     ...workspace,
     activeMeshId: copy.id,
     meshes: [...workspace.meshes, copy],
+  };
+}
+
+export function deleteMesh(workspace: FacialWorkspace, meshId: string): FacialWorkspace {
+  if (meshId === "base") return workspace;
+  const target = workspace.meshes.find((mesh) => mesh.id === meshId);
+  if (!target || target.kind !== "copy") return workspace;
+  return {
+    ...workspace,
+    activeMeshId: workspace.activeMeshId === meshId ? "base" : workspace.activeMeshId,
+    meshes: workspace.meshes.filter((mesh) => mesh.id !== meshId),
   };
 }
 

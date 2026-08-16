@@ -63,6 +63,145 @@ describe("OctoPoly shell", () => {
     expect(menu?.getAttribute("aria-label")).toBe("OctoPoly 앱 메뉴");
   });
 
+  it("renders Modes and Controls Help as an accessible tab interface", () => {
+    const root = document.createElement("div");
+
+    mountShell(root);
+
+    const tablist = root.querySelector<HTMLElement>('[role="tablist"]');
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const panels = [...root.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
+    expect(tablist?.getAttribute("aria-label")).toBe("App menu sections");
+    expect(tabs.map((tab) => tab.textContent?.trim())).toEqual(["Modes", "Controls Help"]);
+    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["true", "false"]);
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([0, -1]);
+    expect(panels).toHaveLength(2);
+    expect(panels.map((panel) => panel.getAttribute("aria-labelledby"))).toEqual(tabs.map((tab) => tab.id));
+    expect(tabs.map((tab) => tab.getAttribute("aria-controls"))).toEqual(panels.map((panel) => panel.id));
+    expect(panels.map((panel) => panel.tabIndex)).toEqual([0, 0]);
+    expect(panels.map((panel) => panel.hidden)).toEqual([false, true]);
+  });
+
+  it("activates a menu tab when it is clicked", () => {
+    const root = document.createElement("div");
+
+    mountShell(root);
+
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    const panels = [...root.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
+    tabs[1]?.click();
+
+    expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+    expect(tabs.map((tab) => tab.tabIndex)).toEqual([-1, 0]);
+    expect(panels.map((panel) => panel.hidden)).toEqual([true, false]);
+  });
+
+  it("cycles through menu tabs with ArrowLeft and ArrowRight", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+
+    try {
+      mountShell(root);
+      const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+      tabs[0]?.focus();
+
+      tabs[0]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(document.activeElement).toBe(tabs[1]);
+      expect(tabs.map((tab) => tab.getAttribute("aria-selected"))).toEqual(["false", "true"]);
+
+      tabs[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      expect(document.activeElement).toBe(tabs[0]);
+
+      tabs[0]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
+      expect(document.activeElement).toBe(tabs[1]);
+    } finally {
+      root.remove();
+    }
+  });
+
+  it("jumps to the first and last menu tabs with Home and End", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+
+    try {
+      mountShell(root);
+      const tabs = [...root.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+      tabs[0]?.focus();
+
+      tabs[0]?.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+      expect(document.activeElement).toBe(tabs[1]);
+      expect(tabs[1]?.getAttribute("aria-selected")).toBe("true");
+
+      tabs[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true }));
+      expect(document.activeElement).toBe(tabs[0]);
+      expect(tabs[0]?.getAttribute("aria-selected")).toBe("true");
+    } finally {
+      root.remove();
+    }
+  });
+
+  it("shows keyboard and mouse controls for the default desktop capability profile", () => {
+    const root = document.createElement("div");
+
+    mountShell(root);
+
+    const help = root.querySelector<HTMLElement>(".controls-help-list");
+    const items = [...(help?.querySelectorAll("li") ?? [])].map((item) => item.textContent?.replace(/\s+/g, " ").trim());
+    expect(help?.dataset.inputProfile).toBe("desktop");
+    expect(items).toEqual([
+      "Left drag — Orbit",
+      "Shift + left drag — Pan",
+      "Wheel — Zoom",
+      "Click / Arrow keys — Select vertex",
+      "F — Focus selected vertex",
+      "X / Y / Z gizmo or plane handle — Move selected vertex",
+    ]);
+    expect(root.textContent).not.toContain("One-finger drag");
+    expect(root.textContent).not.toContain("Focus button");
+  });
+
+  it("shows touch controls when touch, coarse pointer, and hover-none capabilities are all present", () => {
+    const root = document.createElement("div");
+    const originalTouchPoints = Object.getOwnPropertyDescriptor(window.navigator, "maxTouchPoints");
+    const originalMatchMedia = Object.getOwnPropertyDescriptor(window, "matchMedia");
+    Object.defineProperty(window.navigator, "maxTouchPoints", { configurable: true, value: 5 });
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        matches: query === "(pointer: coarse)" || query === "(hover: none)",
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      } satisfies MediaQueryList)),
+    });
+
+    try {
+      mountShell(root);
+      const help = root.querySelector<HTMLElement>(".controls-help-list");
+      const items = [...(help?.querySelectorAll("li") ?? [])].map((item) => item.textContent?.replace(/\s+/g, " ").trim());
+      expect(help?.dataset.inputProfile).toBe("touch");
+      expect(items).toEqual([
+        "One-finger drag — Orbit",
+        "Two-finger drag — Pan",
+        "Pinch — Zoom",
+        "Tap — Select vertex",
+        "Focus button in panel — Focus selected vertex",
+        "X / Y / Z gizmo or plane handle — Move selected vertex",
+      ]);
+      expect(root.textContent).not.toContain("Left drag");
+      expect(root.textContent).not.toContain("Arrow keys");
+    } finally {
+      if (originalTouchPoints) Object.defineProperty(window.navigator, "maxTouchPoints", originalTouchPoints);
+      else Reflect.deleteProperty(window.navigator, "maxTouchPoints");
+      if (originalMatchMedia) Object.defineProperty(window, "matchMedia", originalMatchMedia);
+      else Reflect.deleteProperty(window, "matchMedia");
+    }
+  });
+
   it("renders the mode taxonomy with only Facial available and no initial selection", () => {
     const root = document.createElement("div");
 
@@ -167,10 +306,11 @@ describe("OctoPoly shell", () => {
     const shell = mountShell(root);
     const menuToggle = root.querySelector<HTMLButtonElement>(".app-menu-toggle")!;
     const menu = root.querySelector<HTMLElement>(".app-menu")!;
+    const facialButton = root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!;
     menuToggle.click();
-    root.querySelector<HTMLButtonElement>('[data-mode="facial"]')?.focus();
+    facialButton.focus();
 
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    facialButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
 
     expect(menu.hidden).toBe(true);
     expect(menuToggle.getAttribute("aria-expanded")).toBe("false");

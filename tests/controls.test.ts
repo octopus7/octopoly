@@ -9,6 +9,7 @@ function pointerEvent(
   pointerType: "mouse" | "touch",
   x: number,
   y: number,
+  shiftKey = false,
 ): PointerEvent {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
@@ -17,6 +18,7 @@ function pointerEvent(
     clientX: { value: x },
     clientY: { value: y },
     button: { value: 0 },
+    shiftKey: { value: shiftKey },
   });
   return event as PointerEvent;
 }
@@ -35,13 +37,31 @@ describe("camera controls", () => {
     const detach = attachCameraControls(canvas, camera, invalidate);
     const initialYaw = camera.state().yaw;
     const initialPitch = camera.state().pitch;
+    const initialTarget = camera.state().target;
 
     canvas.dispatchEvent(pointerEvent("pointerdown", 1, "mouse", 20, 20));
     canvas.dispatchEvent(pointerEvent("pointermove", 1, "mouse", 60, 35));
 
     expect(camera.state().yaw).not.toBe(initialYaw);
     expect(camera.state().pitch).toBeLessThan(initialPitch);
+    expect(camera.state().target).toEqual(initialTarget);
     expect(invalidate).toHaveBeenCalledOnce();
+    detach();
+  });
+
+  it("pans with Shift plus a primary mouse drag instead of orbiting", () => {
+    const canvas = createCanvas();
+    Object.defineProperty(canvas, "clientHeight", { value: 400 });
+    const camera = new OrbitCamera();
+    const detach = attachCameraControls(canvas, camera, vi.fn());
+    const initial = camera.state();
+
+    canvas.dispatchEvent(pointerEvent("pointerdown", 1, "mouse", 20, 20, true));
+    canvas.dispatchEvent(pointerEvent("pointermove", 1, "mouse", 60, 35, true));
+
+    expect(camera.state().yaw).toBe(initial.yaw);
+    expect(camera.state().pitch).toBe(initial.pitch);
+    expect(camera.state().target).not.toEqual(initial.target);
     detach();
   });
 
@@ -82,6 +102,22 @@ describe("camera controls", () => {
     canvas.dispatchEvent(pointerEvent("pointermove", 2, "touch", 200, 50));
 
     expect(camera.state().distance).toBeLessThan(initialDistance);
+    detach();
+  });
+
+  it("pans with the centroid of a two-finger touch drag", () => {
+    const canvas = createCanvas();
+    Object.defineProperty(canvas, "clientHeight", { value: 400 });
+    const camera = new OrbitCamera();
+    const detach = attachCameraControls(canvas, camera, vi.fn());
+    const initialTarget = camera.state().target;
+
+    canvas.dispatchEvent(pointerEvent("pointerdown", 1, "touch", 50, 50));
+    canvas.dispatchEvent(pointerEvent("pointerdown", 2, "touch", 150, 50));
+    canvas.dispatchEvent(pointerEvent("pointermove", 1, "touch", 70, 70));
+    canvas.dispatchEvent(pointerEvent("pointermove", 2, "touch", 170, 70));
+
+    expect(camera.state().target).not.toEqual(initialTarget);
     detach();
   });
 });

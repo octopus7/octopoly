@@ -8,12 +8,14 @@ import type { FacialViewportScene } from "../src/facial/scene";
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
+  failWrites = false;
 
   getItem(key: string): string | null {
     return this.values.get(key) ?? null;
   }
 
   setItem(key: string, value: string): void {
+    if (this.failWrites) throw new DOMException("quota", "QuotaExceededError");
     this.values.set(key, value);
   }
 }
@@ -115,6 +117,88 @@ describe("facial runtime composition", () => {
     expect(root.querySelector('[data-mesh-id="copy-1"]')).toBeNull();
   });
 
+  it("keeps a failed rename dialog open and focused without changing the mesh", () => {
+    const root = document.createElement("div");
+    root.className = "viewport";
+    document.body.append(root);
+    const storage = new MemoryStorage();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      startViewport: () => ({
+        setScene: vi.fn(),
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+      onError,
+    });
+    root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.click();
+    storage.failWrites = true;
+    const trigger = root.querySelector<HTMLButtonElement>('[data-action="rename-mesh"]')!;
+    trigger.click();
+    const input = root.querySelector<HTMLInputElement>('[data-mesh-dialog-input]')!;
+    input.value = "Smile";
+
+    root.querySelector<HTMLButtonElement>('[data-dialog-action="save"]')?.click();
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: "FacialPersistenceError" }));
+    expect(root.querySelector<HTMLElement>(".facial-mesh-dialog-backdrop")?.hidden).toBe(false);
+    expect(document.activeElement).toBe(input);
+    expect(root.querySelector('[data-mesh-id="copy-1"]')?.textContent).toBe("Base Mask Copy 1");
+
+    input.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    }));
+    expect(root.querySelector<HTMLElement>(".facial-mesh-dialog-backdrop")?.hidden).toBe(true);
+    expect(document.activeElement).toBe(trigger);
+    runtime.dispose();
+    root.remove();
+  });
+
+  it("keeps a failed delete dialog open and focused without removing the mesh", () => {
+    const root = document.createElement("div");
+    root.className = "viewport";
+    document.body.append(root);
+    const storage = new MemoryStorage();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      startViewport: () => ({
+        setScene: vi.fn(),
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+      onError,
+    });
+    root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.click();
+    storage.failWrites = true;
+    root.querySelector<HTMLButtonElement>('[data-action="delete-mesh"]')?.click();
+    const deleteButton = root.querySelector<HTMLButtonElement>('[data-dialog-action="delete"]')!;
+
+    deleteButton.click();
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: "FacialPersistenceError" }));
+    expect(root.querySelector<HTMLElement>(".facial-mesh-dialog-backdrop")?.hidden).toBe(false);
+    expect(document.activeElement).toBe(deleteButton);
+    expect(root.querySelector('[data-mesh-id="copy-1"]')).not.toBeNull();
+    runtime.dispose();
+    root.remove();
+  });
+
   it("picks a vertex from a canvas tap and shows the projected gizmo", () => {
     const root = document.createElement("div");
     const canvas = document.createElement("canvas");
@@ -191,6 +275,106 @@ describe("facial runtime composition", () => {
     }));
     expect(status.textContent).toContain("X");
     expect(status.textContent).not.toBe(beforeMove);
+  });
+
+  it("focuses the selected vertex with the F key", () => {
+    const root = document.createElement("div");
+    const canvas = document.createElement("canvas");
+    root.append(canvas);
+    const focusVertex = vi.fn();
+    startFacialRuntime({
+      canvas,
+      panelContainer: root,
+      overlayContainer: root,
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      startViewport: () => ({
+        setScene: vi.fn(),
+        projectVertex: vi.fn(() => ({ x: 120, y: 80 })),
+        pickVertex: vi.fn(() => 2),
+        focusVertex,
+        dispose: vi.fn(),
+      }),
+    });
+    canvas.dispatchEvent(pointerEvent("pointerdown", 40, 60));
+    canvas.dispatchEvent(pointerEvent("pointerup", 40, 60));
+    const focusEvent = new KeyboardEvent("keydown", {
+      key: "f",
+      bubbles: true,
+      cancelable: true,
+    });
+
+    canvas.dispatchEvent(focusEvent);
+
+    expect(focusEvent.defaultPrevented).toBe(true);
+    expect(focusVertex).toHaveBeenCalledWith(2);
+  });
+
+  it("moves the selected vertex through the active constrained plane handle", () => {
+    const root = document.createElement("div");
+    const canvas = document.createElement("canvas");
+    root.append(canvas);
+    const setScene = vi.fn();
+    const modelDeltaForPlaneDrag = vi.fn(() => [0.25, -0.5, 0] as const);
+    startFacialRuntime({
+      canvas,
+      panelContainer: root,
+      overlayContainer: root,
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => ({ x: 120, y: 80 })),
+        pickVertex: vi.fn(() => 2),
+        modelDeltaForPlaneDrag,
+        dispose: vi.fn(),
+      }),
+    });
+    canvas.dispatchEvent(pointerEvent("pointerdown", 40, 60));
+    canvas.dispatchEvent(pointerEvent("pointerup", 40, 60));
+    root.querySelector<HTMLButtonElement>('[data-movement-mode="constrained-plane"]')?.click();
+    const planeHandle = root.querySelector<HTMLButtonElement>(".vertex-gizmo__plane-handle")!;
+
+    planeHandle.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 120, clientY: 80 }));
+    planeHandle.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 140, clientY: 90 }));
+
+    expect(modelDeltaForPlaneDrag).toHaveBeenCalledWith(
+      2,
+      "xy",
+      { x: 120, y: 80 },
+      { x: 140, y: 90 },
+    );
+    expect(setScene).toHaveBeenLastCalledWith(expect.objectContaining({ selectedVertex: 2 }));
+  });
+
+  it("deletes a copied mesh only after confirming the destructive dialog", () => {
+    const root = document.createElement("div");
+    const canvas = document.createElement("canvas");
+    const setScene = vi.fn();
+    startFacialRuntime({
+      canvas,
+      panelContainer: root,
+      overlayContainer: root,
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+    });
+    root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.click();
+
+    root.querySelector<HTMLButtonElement>('[data-action="delete-mesh"]')?.click();
+    expect(setScene).toHaveBeenLastCalledWith(expect.objectContaining({ meshId: "copy-1" }));
+    root.querySelector<HTMLButtonElement>('[data-dialog-action="delete"]')?.click();
+
+    expect(root.querySelectorAll(".facial-mesh-row")).toHaveLength(1);
+    expect(setScene).toHaveBeenLastCalledWith(expect.objectContaining({ meshId: "base" }));
   });
 
   it("rejects a tap whose scene changed after pointer-down", () => {

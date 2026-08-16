@@ -68,7 +68,7 @@ canvas:active {
 
 .app-menu-anchor {
   position: absolute;
-  z-index: 1;
+  z-index: 5;
   top: max(1rem, env(safe-area-inset-top));
   left: max(1rem, env(safe-area-inset-left));
   display: grid;
@@ -93,6 +93,7 @@ canvas:active {
 }
 
 .app-menu-toggle:focus-visible,
+.app-menu-tab:focus-visible,
 .mode-button:focus-visible {
   outline: 2px solid #8ec5ff;
   outline-offset: 2px;
@@ -107,7 +108,7 @@ canvas:active {
 }
 
 .app-menu {
-  width: min(17rem, calc(100vw - max(2rem, env(safe-area-inset-left) + env(safe-area-inset-right))));
+  width: min(24rem, calc(100vw - max(2rem, env(safe-area-inset-left) + env(safe-area-inset-right))));
   padding: 0.55rem;
   border: 1px solid #334155;
   border-radius: 0.8rem;
@@ -117,6 +118,46 @@ canvas:active {
 }
 
 .app-menu[hidden] {
+  display: none;
+}
+
+.app-menu-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  padding: 0.15rem;
+  border-radius: 0.65rem;
+  background: rgb(25 34 47 / 72%);
+}
+
+.app-menu-tab {
+  min-height: 2.75rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  color: #9bacc0;
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.app-menu-tab:hover,
+.app-menu-tab[aria-selected="true"] {
+  border-color: #52657b;
+  color: #f4f7fb;
+  background: rgb(51 76 104 / 72%);
+}
+
+.app-menu-panel {
+  max-height: calc(100dvh - 9rem);
+  padding-top: 0.45rem;
+  overflow-y: auto;
+}
+
+.app-menu-panel[hidden] {
   display: none;
 }
 
@@ -199,6 +240,30 @@ canvas:active {
   font-size: 0.65rem;
   font-weight: 700;
   white-space: nowrap;
+}
+
+.controls-help-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.controls-help-list li {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 0.5rem;
+  color: #c8d4e3;
+  background: rgb(25 34 47 / 45%);
+  font-size: 0.76rem;
+}
+
+.controls-help-list kbd {
+  color: #f4f7fb;
+  font: inherit;
+  font-weight: 650;
 }
 
 .controls {
@@ -293,7 +358,7 @@ canvas:active {
 
 .facial-panel-layer {
   position: absolute;
-  z-index: 4;
+  z-index: 6;
   top: max(1rem, env(safe-area-inset-top));
   right: max(1rem, env(safe-area-inset-right));
   width: min(19rem, calc(100vw - 2rem));
@@ -319,8 +384,90 @@ canvas:active {
   font-size: 0.9rem;
 }
 
+.movement-controls {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.movement-mode-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.movement-mode-buttons button {
+  min-width: 0;
+  padding-inline: 0.35rem;
+  font-size: 0.72rem;
+}
+
+.movement-plane-options {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  margin: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #3d4d61;
+  border-radius: 0.55rem;
+}
+
+.movement-plane-options[hidden] {
+  display: none;
+}
+
+.movement-plane-options legend {
+  padding: 0 0.25rem;
+  color: #9bacc0;
+  font-size: 0.68rem;
+}
+
+.movement-plane-options label {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-size: 0.72rem;
+}
+
+.movement-plane-options input {
+  min-height: auto;
+}
+
+.movement-plane-selector {
+  position: absolute;
+  top: 50%;
+  left: max(0.75rem, env(safe-area-inset-left));
+  display: grid;
+  gap: 0.4rem;
+  pointer-events: auto;
+  transform: translateY(-50%);
+}
+
+.movement-plane-selector[hidden] {
+  display: none;
+}
+
+.movement-plane-selector button {
+  width: 2.8rem;
+  height: 2.4rem;
+  border: 1px solid #52657b;
+  border-radius: 0.6rem;
+  color: #c8d4e3;
+  background: rgb(11 16 23 / 88%);
+  font: 700 0.7rem/1 sans-serif;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.movement-plane-selector button[aria-pressed="true"] {
+  border-color: #8ec5ff;
+  color: #fff;
+  background: rgb(51 76 104 / 92%);
+}
+
 .facial-panel button,
-.facial-panel input {
+.facial-panel input,
+.facial-mesh-dialog button,
+.facial-mesh-dialog input {
   min-height: 2.35rem;
   border: 1px solid #52657b;
   border-radius: 0.5rem;
@@ -329,24 +476,29 @@ canvas:active {
   font: inherit;
 }
 
-.facial-panel button {
+.facial-panel button,
+.facial-mesh-dialog button {
   padding: 0.45rem 0.65rem;
   cursor: pointer;
 }
 
-.facial-panel input {
+.facial-panel input,
+.facial-mesh-dialog input {
   min-width: 0;
   padding: 0.4rem 0.55rem;
 }
 
 .facial-panel button:hover,
-.facial-panel button[aria-pressed="true"] {
+.facial-panel button[aria-pressed="true"],
+.facial-mesh-dialog button:hover {
   border-color: #8ec5ff;
   background: rgb(51 76 104 / 88%);
 }
 
 .facial-panel button:focus-visible,
 .facial-panel input:focus-visible,
+.facial-mesh-dialog button:focus-visible,
+.facial-mesh-dialog input:focus-visible,
 .vertex-gizmo__handle:focus-visible {
   outline: 2px solid #8ec5ff;
   outline-offset: 2px;
@@ -359,8 +511,85 @@ canvas:active {
 
 .facial-mesh-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 0.35rem;
+  align-items: center;
+}
+
+.facial-mesh-row__select {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.facial-mesh-row__action {
+  display: grid;
+  width: 2.35rem;
+  min-width: 2.35rem;
+  padding: 0;
+  place-items: center;
+}
+
+.facial-mesh-row__action svg {
+  width: 1rem;
+  height: 1rem;
+  fill: currentcolor;
+}
+
+.facial-mesh-dialog-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  padding: 1rem;
+  background: rgb(4 8 14 / 68%);
+  pointer-events: auto;
+  place-items: center;
+}
+
+.facial-mesh-dialog-backdrop[hidden],
+.facial-mesh-dialog[hidden] {
+  display: none;
+}
+
+.facial-mesh-dialog {
+  display: grid;
+  width: min(23rem, calc(100vw - 2rem));
+  gap: 1rem;
+  padding: 1.1rem;
+  border: 1px solid #52657b;
+  border-radius: 0.8rem;
+  background: #151e2a;
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 45%);
+}
+
+.facial-mesh-dialog h3,
+.facial-mesh-dialog p {
+  margin: 0;
+}
+
+.facial-mesh-dialog label {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.facial-mesh-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.facial-mesh-dialog button.facial-mesh-dialog__delete {
+  border-color: #ff5667;
+  color: #fff;
+  background: #b92338;
+}
+
+.facial-mesh-dialog button.facial-mesh-dialog__delete:hover,
+.facial-mesh-dialog button.facial-mesh-dialog__delete:focus-visible {
+  border-color: #ff8a96;
+  background: #d12a42;
 }
 
 .viewport-overlay {
@@ -384,8 +613,34 @@ canvas:active {
   display: none;
 }
 
+.vertex-gizmo__axis-line {
+  position: absolute;
+  z-index: 0;
+  top: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: currentcolor;
+  opacity: 0.72;
+  pointer-events: none;
+  transform-origin: 0 50%;
+}
+
+.vertex-gizmo__axis-line--x {
+  color: #ff6978;
+}
+
+.vertex-gizmo__axis-line--y {
+  color: #65d7a4;
+}
+
+.vertex-gizmo__axis-line--z {
+  color: #6eb7ff;
+}
+
 .vertex-gizmo__handle {
   position: absolute;
+  z-index: 1;
   display: grid;
   width: 2rem;
   height: 2rem;
@@ -404,6 +659,30 @@ canvas:active {
 }
 
 .vertex-gizmo__handle:active {
+  cursor: grabbing;
+}
+
+.vertex-gizmo__plane-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 0;
+  min-width: 2.8rem;
+  height: 2rem;
+  padding: 0 0.5rem;
+  border: 2px solid #d5e6f8;
+  border-radius: 999px;
+  color: #f4f7fb;
+  background: rgb(24 34 48 / 94%);
+  box-shadow: 0 0.25rem 0.7rem rgb(0 0 0 / 45%);
+  font: 700 0.65rem/1 sans-serif;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  transform: translate(-50%, -50%);
+}
+
+.vertex-gizmo__plane-handle:active {
   cursor: grabbing;
 }
 

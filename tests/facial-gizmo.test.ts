@@ -42,6 +42,45 @@ describe("facial gizmo math", () => {
     expect(gizmo.element.hidden).toBe(true);
   });
 
+  it("draws a projected decorative line from the vertex to each axis bubble", () => {
+    const container = document.createElement("div");
+    const gizmo = mountVertexGizmo(container, { onMove: () => undefined });
+
+    gizmo.show({ x: 120, y: 80 }, {
+      x: { x: 0, y: 1 },
+      y: { x: -1, y: 0 },
+      z: { x: 1, y: -1 },
+    });
+
+    const lines = [...gizmo.element.querySelectorAll<HTMLElement>(".vertex-gizmo__axis-line")];
+    expect(lines.map((line) => line.dataset.axisLine)).toEqual(["x", "y", "z"]);
+    expect(lines.every((line) => line.getAttribute("aria-hidden") === "true")).toBe(true);
+    expect(lines[0]?.style.transform).toContain(`${Math.PI / 2}`);
+    expect(lines[0]?.style.width).toBe("20px");
+  });
+
+  it("owns plane drag gestures from a central selected-vertex handle", () => {
+    const container = document.createElement("div");
+    const onPlaneMove = vi.fn();
+    const gizmo = mountVertexGizmo(container, {
+      onMove: () => undefined,
+      onPlaneMove,
+    });
+    gizmo.setDragPlane("xy");
+    gizmo.show({ x: 120, y: 80 });
+    const planeHandle = gizmo.element.querySelector<HTMLButtonElement>(".vertex-gizmo__plane-handle")!;
+
+    planeHandle.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 120, clientY: 80 }));
+    planeHandle.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 140, clientY: 90 }));
+    planeHandle.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 140, clientY: 90 }));
+
+    expect(planeHandle.hidden).toBe(false);
+    expect(planeHandle.textContent).toBe("XY");
+    expect([...gizmo.element.querySelectorAll<HTMLElement>("[data-axis]")]
+      .every((handle) => handle.hidden)).toBe(true);
+    expect(onPlaneMove).toHaveBeenCalledWith("xy", { x: 120, y: 80 }, { x: 140, y: 90 });
+  });
+
   it("updates pointer and keyboard movement to the active mesh scale", () => {
     const container = document.createElement("div");
     const onMove = vi.fn();

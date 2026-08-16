@@ -1,13 +1,16 @@
 import { loadFacialWorkspace, saveFacialWorkspace } from "./storage";
 import {
+  deleteMesh as deleteWorkspaceMesh,
   duplicateBaseMesh,
   moveVertex as moveWorkspaceVertex,
+  moveVertexByDelta as moveWorkspaceVertexByDelta,
   renameMesh,
   replaceBaseMesh,
   selectMesh,
   type FacialWorkspace,
   type MeshGeometry,
   type VertexAxis,
+  type VertexDelta,
 } from "./workspace";
 
 interface ControllerStorage {
@@ -26,6 +29,7 @@ export interface FacialController {
   readonly selectedVertex: number | null;
   readonly sceneRevision: number;
   duplicateBase(): void;
+  deleteMesh(meshId: string): void;
   selectVertex(meshId: string, sceneRevision: number, vertexIndex: number | null): void;
   selectMesh(meshId: string): void;
   renameMesh(meshId: string, name: string): void;
@@ -36,6 +40,12 @@ export interface FacialController {
     vertexIndex: number,
     axis: VertexAxis,
     delta: number,
+  ): void;
+  moveVertexByDelta(
+    meshId: string,
+    sceneRevision: number,
+    vertexIndex: number,
+    delta: VertexDelta,
   ): void;
   dispose(): void;
 }
@@ -87,6 +97,12 @@ export function createFacialController(options: FacialControllerOptions): Facial
       if (next === workspace) return;
       commit(next, null, sceneRevision + 1, null);
     },
+    deleteMesh: (meshId) => {
+      if (disposed) return;
+      const next = deleteWorkspaceMesh(workspace, meshId);
+      if (next === workspace) return;
+      commit(next, null, sceneRevision + 1, null);
+    },
     selectVertex: (meshId, requestedRevision, vertexIndex) => {
       if (disposed) return;
       if (workspace.activeMeshId !== meshId || requestedRevision !== sceneRevision) return;
@@ -129,6 +145,17 @@ export function createFacialController(options: FacialControllerOptions): Facial
         || selectedRevision !== sceneRevision
         || selectedVertex !== vertexIndex) return;
       const next = moveWorkspaceVertex(workspace, meshId, vertexIndex, axis, delta);
+      if (next === workspace) return;
+      const nextRevision = sceneRevision + 1;
+      commit(next, selectedVertex, nextRevision, nextRevision);
+    },
+    moveVertexByDelta: (meshId, requestedRevision, vertexIndex, delta) => {
+      if (disposed) return;
+      if (workspace.activeMeshId !== meshId
+        || requestedRevision !== sceneRevision
+        || selectedRevision !== sceneRevision
+        || selectedVertex !== vertexIndex) return;
+      const next = moveWorkspaceVertexByDelta(workspace, meshId, vertexIndex, delta);
       if (next === workspace) return;
       const nextRevision = sceneRevision + 1;
       commit(next, selectedVertex, nextRevision, nextRevision);

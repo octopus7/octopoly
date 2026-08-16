@@ -20,6 +20,35 @@ const WORKSPACE_MODES: ReadonlyArray<{
   { mode: "paint", name: "Paint", koreanName: "페인트", available: false },
 ];
 
+type ControlsProfile = "desktop" | "touch";
+
+const CONTROL_HELP: Readonly<Record<ControlsProfile, ReadonlyArray<readonly [input: string, action: string]>>> = {
+  desktop: [
+    ["Left drag", "Orbit"],
+    ["Shift + left drag", "Pan"],
+    ["Wheel", "Zoom"],
+    ["Click / Arrow keys", "Select vertex"],
+    ["F", "Focus selected vertex"],
+    ["X / Y / Z gizmo or plane handle", "Move selected vertex"],
+  ],
+  touch: [
+    ["One-finger drag", "Orbit"],
+    ["Two-finger drag", "Pan"],
+    ["Pinch", "Zoom"],
+    ["Tap", "Select vertex"],
+    ["Focus button in panel", "Focus selected vertex"],
+    ["X / Y / Z gizmo or plane handle", "Move selected vertex"],
+  ],
+};
+
+function controlsProfile(document: Document): ControlsProfile {
+  const view = document.defaultView;
+  if (!view || view.navigator.maxTouchPoints <= 0 || typeof view.matchMedia !== "function") return "desktop";
+  return view.matchMedia("(pointer: coarse)").matches && view.matchMedia("(hover: none)").matches
+    ? "touch"
+    : "desktop";
+}
+
 function attachFullscreenToggle(button: HTMLButtonElement, document: Document): () => void {
   const target = document.documentElement;
   const supported = typeof target.requestFullscreen === "function"
@@ -76,6 +105,42 @@ function attachAppMenuToggle(button: HTMLButtonElement, menu: HTMLElement): () =
     button.removeEventListener("click", onClick);
     button.ownerDocument.removeEventListener("keydown", onKeyDown);
   };
+}
+
+function attachAppMenuTabs(
+  tabs: readonly HTMLButtonElement[],
+  panels: readonly HTMLElement[],
+): () => void {
+  const activate = (activeIndex: number): void => {
+    tabs.forEach((tab, index) => {
+      const selected = index === activeIndex;
+      tab.setAttribute("aria-selected", String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+      panels[index]!.hidden = !selected;
+    });
+  };
+  const disposers = tabs.map((tab, index) => {
+    const onClick = (): void => activate(index);
+    const onKeyDown = (event: KeyboardEvent): void => {
+      let nextIndex: number;
+      if (event.key === "Home") nextIndex = 0;
+      else if (event.key === "End") nextIndex = tabs.length - 1;
+      else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        const direction = event.key === "ArrowRight" ? 1 : -1;
+        nextIndex = (index + direction + tabs.length) % tabs.length;
+      } else return;
+      event.preventDefault();
+      activate(nextIndex);
+      tabs[nextIndex]?.focus();
+    };
+    tab.addEventListener("click", onClick);
+    tab.addEventListener("keydown", onKeyDown);
+    return () => {
+      tab.removeEventListener("click", onClick);
+      tab.removeEventListener("keydown", onKeyDown);
+    };
+  });
+  return () => disposers.forEach((dispose) => dispose());
 }
 
 function attachModeSelector(
@@ -147,6 +212,11 @@ export function mountShell(root: HTMLElement): WorkspaceElements {
     `;
   }).join("");
 
+  const inputProfile = controlsProfile(root.ownerDocument);
+  const controlsHelp = CONTROL_HELP[inputProfile]
+    .map(([input, action]) => `<li><kbd>${input}</kbd> <span>— ${action}</span></li>`)
+    .join("");
+
   root.innerHTML = `
     <main class="workspace" aria-labelledby="octopoly-title">
       <h1 id="octopoly-title" class="visually-hidden">OctoPoly</h1>
@@ -159,10 +229,19 @@ export function mountShell(root: HTMLElement): WorkspaceElements {
             <img class="wordmark" src="/assets/octopoly-wordmark.png" alt="" draggable="false" />
           </button>
           <nav id="octopoly-app-menu" class="app-menu" aria-label="OctoPoly 앱 메뉴" hidden>
-            <section class="app-menu-section" aria-labelledby="work-mode-heading">
-              <h2 id="work-mode-heading" class="app-menu-heading">작업 모드</h2>
-              <div class="app-menu-items">${modeButtons}</div>
-            </section>
+            <div class="app-menu-tabs" role="tablist" aria-label="App menu sections">
+              <button id="app-menu-tab-modes" class="app-menu-tab" type="button" role="tab" aria-selected="true" aria-controls="app-menu-panel-modes" tabindex="0">Modes</button>
+              <button id="app-menu-tab-controls" class="app-menu-tab" type="button" role="tab" aria-selected="false" aria-controls="app-menu-panel-controls" tabindex="-1">Controls Help</button>
+            </div>
+            <div id="app-menu-panel-modes" class="app-menu-panel" role="tabpanel" aria-labelledby="app-menu-tab-modes" tabindex="0">
+              <section class="app-menu-section" aria-labelledby="work-mode-heading">
+                <h2 id="work-mode-heading" class="app-menu-heading">작업 모드</h2>
+                <div class="app-menu-items">${modeButtons}</div>
+              </section>
+            </div>
+            <div id="app-menu-panel-controls" class="app-menu-panel" role="tabpanel" aria-labelledby="app-menu-tab-controls" tabindex="0" hidden>
+              <ul class="controls-help-list" data-input-profile="${inputProfile}">${controlsHelp}</ul>
+            </div>
           </nav>
         </div>
         <p class="controls">드래그: 회전 · 휠/핀치: 줌</p>
@@ -185,6 +264,8 @@ export function mountShell(root: HTMLElement): WorkspaceElements {
   const overlayContainer = root.querySelector<HTMLElement>(".viewport-overlay");
   const appMenuToggle = root.querySelector<HTMLButtonElement>(".app-menu-toggle");
   const appMenu = root.querySelector<HTMLElement>(".app-menu");
+  const appMenuTabs = [...root.querySelectorAll<HTMLButtonElement>('.app-menu [role="tab"]')];
+  const appMenuPanels = [...root.querySelectorAll<HTMLElement>('.app-menu [role="tabpanel"]')];
   const workspaceModeButtons = [...root.querySelectorAll<HTMLButtonElement>(".mode-button")];
   if (
     !(canvas instanceof HTMLCanvasElement)
@@ -194,6 +275,8 @@ export function mountShell(root: HTMLElement): WorkspaceElements {
     || !overlayContainer
     || !appMenuToggle
     || !appMenu
+    || appMenuTabs.length !== 2
+    || appMenuPanels.length !== appMenuTabs.length
     || workspaceModeButtons.length !== WORKSPACE_MODES.length
   ) {
     throw new Error("OctoPoly workspace could not be created.");
@@ -201,6 +284,7 @@ export function mountShell(root: HTMLElement): WorkspaceElements {
 
   const disposers = [
     attachAppMenuToggle(appMenuToggle, appMenu),
+    attachAppMenuTabs(appMenuTabs, appMenuPanels),
     attachModeSelector(workspaceModeButtons, root.ownerDocument, appMenuToggle, appMenu),
     attachFullscreenToggle(fullscreenToggle, root.ownerDocument),
   ];

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createFacialController } from "../src/facial/controller";
+import { createFacialController, type FacialController } from "../src/facial/controller";
 import { createFacialSession } from "../src/facial/session";
 import { FACIAL_WORKSPACE_STORAGE_KEY } from "../src/facial/storage";
 
@@ -174,6 +174,54 @@ describe("facial mode session", () => {
     expect(controller.workspace.meshes).toHaveLength(2);
   });
 
+  it("invalidates a pending import before deleting a copy", async () => {
+    const storage = new MemoryStorage();
+    const controller = createFacialController({
+      storage,
+      nextCopyId: () => "copy-1",
+      onChange: vi.fn(),
+    });
+    controller.duplicateBase();
+    let resolveText!: (source: string) => void;
+    const parseObjText = vi.fn(() => ({
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    }));
+    const session = createFacialSession({ controller, parseObjText });
+    const pending = session.importObj({
+      text: () => new Promise<string>((resolve) => { resolveText = resolve; }),
+    } as unknown as File);
+
+    session.deleteMesh("copy-1");
+    resolveText("late import");
+    await pending;
+
+    expect(parseObjText).not.toHaveBeenCalled();
+    expect(controller.workspace.meshes.map((mesh) => mesh.id)).toEqual(["base"]);
+  });
+
+  it("ignores deletion after disposal", () => {
+    const storage = new MemoryStorage();
+    const controller = createFacialController({
+      storage,
+      nextCopyId: () => "copy-1",
+      onChange: vi.fn(),
+    });
+    controller.duplicateBase();
+    const session = createFacialSession({
+      controller,
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+    });
+    const before = controller.workspace;
+    const savedBefore = storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY);
+
+    session.dispose();
+    session.deleteMesh("copy-1");
+
+    expect(controller.workspace).toBe(before);
+    expect(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(savedBefore);
+  });
+
   it("delegates base duplication to the workspace controller", () => {
     const storage = new MemoryStorage();
     const controller = createFacialController({
@@ -246,5 +294,27 @@ describe("facial mode session", () => {
 
     expect(controller.selectedVertex).toBe(0);
     expect(controller.workspace.meshes[0]?.geometry.positions[0]).toBe(before + 0.25);
+  });
+
+  it("delegates an atomic three-axis plane delta to the controller", () => {
+    const controller = {
+      workspace: { version: 1, activeMeshId: "base", meshes: [] },
+      selectedVertex: 0,
+      sceneRevision: 4,
+      duplicateBase: vi.fn(),
+      deleteMesh: vi.fn(),
+      selectMesh: vi.fn(),
+      renameMesh: vi.fn(),
+      replaceBase: vi.fn(),
+      selectVertex: vi.fn(),
+      moveVertex: vi.fn(),
+      moveVertexByDelta: vi.fn(),
+      dispose: vi.fn(),
+    } satisfies FacialController;
+    const session = createFacialSession({ controller, parseObjText: vi.fn() });
+
+    session.moveVertexByDelta("base", 4, 2, [0.25, -0.5, 0]);
+
+    expect(controller.moveVertexByDelta).toHaveBeenCalledWith("base", 4, 2, [0.25, -0.5, 0]);
   });
 });

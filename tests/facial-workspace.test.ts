@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   createDefaultFacialWorkspace,
   createPlaceholderMask,
+  deleteMesh,
   duplicateBaseMesh,
   isValidMeshGeometry,
   moveVertex,
+  moveVertexByDelta,
   renameMesh,
   replaceBaseMesh,
   selectMesh,
@@ -90,6 +92,53 @@ describe("facial workspace", () => {
     expect(original.meshes).toHaveLength(1);
   });
 
+  it("deletes an active copied mesh and returns activity to the base", () => {
+    const workspace = duplicateBaseMesh(createDefaultFacialWorkspace(), "copy-1");
+
+    const deleted = deleteMesh(workspace, "copy-1");
+
+    expect(deleted.meshes.map((mesh) => mesh.id)).toEqual(["base"]);
+    expect(deleted.activeMeshId).toBe("base");
+    expect(workspace.meshes).toHaveLength(2);
+  });
+
+  it("keeps another active copy active when deleting a different copy", () => {
+    const firstCopy = duplicateBaseMesh(createDefaultFacialWorkspace(), "copy-1");
+    const secondCopy = duplicateBaseMesh(firstCopy, "copy-2");
+
+    const deleted = deleteMesh(secondCopy, "copy-1");
+
+    expect(deleted.meshes.map((mesh) => mesh.id)).toEqual(["base", "copy-2"]);
+    expect(deleted.activeMeshId).toBe("copy-2");
+  });
+
+  it("rejects deletion of an unknown mesh id", () => {
+    const workspace = createDefaultFacialWorkspace();
+
+    expect(deleteMesh(workspace, "missing")).toBe(workspace);
+  });
+
+  it("rejects deletion by the reserved base id even if its kind is malformed", () => {
+    const workspace = createDefaultFacialWorkspace();
+    const malformed = {
+      ...workspace,
+      meshes: workspace.meshes.map((mesh) => ({ ...mesh, kind: "copy" as const })),
+    };
+
+    expect(deleteMesh(malformed, "base")).toBe(malformed);
+  });
+
+  it("rejects deletion of a base-kind mesh even if its id is malformed", () => {
+    const workspace = createDefaultFacialWorkspace();
+    const malformed = {
+      ...workspace,
+      activeMeshId: "root",
+      meshes: workspace.meshes.map((mesh) => ({ ...mesh, id: "root" })),
+    };
+
+    expect(deleteMesh(malformed, "root")).toBe(malformed);
+  });
+
   it.each(["", "   ", "base"])("rejects invalid duplicate mesh id %j", (copyId) => {
     const workspace = createDefaultFacialWorkspace();
 
@@ -168,6 +217,20 @@ describe("facial workspace", () => {
     expect(moved.meshes[0]?.geometry.positions[0]).toBe((originalPositions[0] ?? 0) + 0.5);
     expect(moved.meshes[0]?.geometry.positions.slice(1)).toEqual(originalPositions.slice(1));
     expect(workspace.meshes[0]?.geometry.positions).toEqual(originalPositions);
+  });
+
+  it("moves one vertex across a plane with one validated workspace update", () => {
+    const workspace = createDefaultFacialWorkspace();
+    const before = workspace.meshes[0]!.geometry.positions.slice(0, 3);
+
+    const moved = moveVertexByDelta(workspace, "base", 0, [0.25, -0.5, 0]);
+
+    expect(moved.meshes[0]!.geometry.positions.slice(0, 3)).toEqual([
+      before[0]! + 0.25,
+      before[1]! - 0.5,
+      before[2],
+    ]);
+    expect(workspace.meshes[0]!.geometry.positions.slice(0, 3)).toEqual(before);
   });
 
   it("ignores a vertex move that overflows Float32", () => {

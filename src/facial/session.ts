@@ -1,5 +1,5 @@
 import type { FacialController } from "./controller";
-import type { MeshGeometry, VertexAxis } from "./workspace";
+import type { MeshGeometry, VertexAxis, VertexDelta } from "./workspace";
 
 export interface FacialSessionOptions {
   readonly controller: FacialController;
@@ -9,6 +9,7 @@ export interface FacialSessionOptions {
 export interface FacialSession {
   importObj(file: File): Promise<void>;
   duplicateBase(): void;
+  deleteMesh(meshId: string): void;
   selectMesh(meshId: string): void;
   renameMesh(meshId: string, name: string): void;
   selectVertex(meshId: string, sceneRevision: number, vertexIndex: number | null): void;
@@ -18,6 +19,12 @@ export interface FacialSession {
     vertexIndex: number,
     axis: VertexAxis,
     delta: number,
+  ): void;
+  moveVertexByDelta(
+    meshId: string,
+    sceneRevision: number,
+    vertexIndex: number,
+    delta: VertexDelta,
   ): void;
   dispose(): void;
 }
@@ -44,6 +51,11 @@ export function createFacialSession(options: FacialSessionOptions): FacialSessio
       importRevision += 1;
       options.controller.duplicateBase();
     },
+    deleteMesh: (meshId) => {
+      if (disposed) return;
+      importRevision += 1;
+      options.controller.deleteMesh(meshId);
+    },
     selectMesh: (meshId) => {
       if (disposed) return;
       importRevision += 1;
@@ -63,6 +75,11 @@ export function createFacialSession(options: FacialSessionOptions): FacialSessio
       if (disposed) return;
       importRevision += 1;
       options.controller.moveVertex(meshId, sceneRevision, vertexIndex, axis, delta);
+    },
+    moveVertexByDelta: (meshId, sceneRevision, vertexIndex, delta) => {
+      if (disposed) return;
+      importRevision += 1;
+      options.controller.moveVertexByDelta(meshId, sceneRevision, vertexIndex, delta);
     },
     dispose: () => {
       if (disposed) return;

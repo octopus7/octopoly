@@ -27,16 +27,19 @@ export interface GizmoPosition {
 }
 
 export type GizmoAxisDirections = Readonly<Record<VertexAxis, AxisDirection>>;
+export type GizmoDragPlane = "view" | "xy" | "yz" | "xz";
 
 export interface VertexGizmo {
   readonly element: HTMLElement;
   show(position: GizmoPosition | null, directions?: GizmoAxisDirections): void;
+  setDragPlane(plane: GizmoDragPlane | null): void;
   setMovementScale(unitsPerPixel: number, keyboardStep: number): void;
   dispose(): void;
 }
 
 export interface VertexGizmoOptions {
   readonly onMove: (axis: VertexAxis, delta: number) => void;
+  readonly onPlaneMove?: (plane: GizmoDragPlane, from: GizmoPosition, to: GizmoPosition) => void;
   readonly unitsPerPixel?: number;
   readonly keyboardStep?: number;
 }
@@ -52,6 +55,7 @@ export function mountVertexGizmo(
   element.hidden = true;
   const detachHandleEvents: Array<() => void> = [];
   const handles = new Map<VertexAxis, HTMLButtonElement>();
+  const axisLines = new Map<VertexAxis, HTMLElement>();
   let directions: GizmoAxisDirections = {
     x: { x: 1, y: 0 },
     y: { x: 0, y: -1 },
@@ -59,8 +63,64 @@ export function mountVertexGizmo(
   };
   let unitsPerPixel = options.unitsPerPixel ?? 0.01;
   let keyboardStep = options.keyboardStep ?? 0.1;
+  const planeHandle = document.createElement("button");
+  planeHandle.type = "button";
+  planeHandle.className = "vertex-gizmo__plane-handle";
+  planeHandle.hidden = true;
+  let dragPlane: GizmoDragPlane | null = null;
+  let planePointerId: number | undefined;
+  let planePrevious: GizmoPosition | null = null;
+  const ownPlaneEvent = (event: PointerEvent): void => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  const onPlanePointerDown = (event: PointerEvent): void => {
+    ownPlaneEvent(event);
+    if (dragPlane === null || planePrevious !== null || event.isPrimary === false || event.button !== 0) return;
+    planePointerId = event.pointerId;
+    planePrevious = { x: event.clientX, y: event.clientY };
+    if (Number.isInteger(planePointerId)) planeHandle.setPointerCapture?.(planePointerId!);
+  };
+  const onPlanePointerMove = (event: PointerEvent): void => {
+    if (dragPlane === null || planePrevious === null
+      || (planePointerId !== undefined && event.pointerId !== planePointerId)) return;
+    ownPlaneEvent(event);
+    const next = { x: event.clientX, y: event.clientY };
+    options.onPlaneMove?.(dragPlane, planePrevious, next);
+    planePrevious = next;
+  };
+  const releasePlanePointer = (event: PointerEvent): void => {
+    if (planePrevious === null || (planePointerId !== undefined && event.pointerId !== planePointerId)) return;
+    ownPlaneEvent(event);
+    if (Number.isInteger(planePointerId) && planeHandle.hasPointerCapture?.(planePointerId!)) {
+      planeHandle.releasePointerCapture?.(planePointerId!);
+    }
+    planePointerId = undefined;
+    planePrevious = null;
+  };
+  const losePlanePointer = (event: PointerEvent): void => {
+    if (planePointerId !== undefined && event.pointerId !== planePointerId) return;
+    planePointerId = undefined;
+    planePrevious = null;
+  };
+  planeHandle.addEventListener("pointerdown", onPlanePointerDown);
+  planeHandle.addEventListener("pointermove", onPlanePointerMove);
+  planeHandle.addEventListener("pointerup", releasePlanePointer);
+  planeHandle.addEventListener("pointercancel", releasePlanePointer);
+  planeHandle.addEventListener("lostpointercapture", losePlanePointer);
+  detachHandleEvents.push(() => {
+    planeHandle.removeEventListener("pointerdown", onPlanePointerDown);
+    planeHandle.removeEventListener("pointermove", onPlanePointerMove);
+    planeHandle.removeEventListener("pointerup", releasePlanePointer);
+    planeHandle.removeEventListener("pointercancel", releasePlanePointer);
+    planeHandle.removeEventListener("lostpointercapture", losePlanePointer);
+  });
 
   for (const axis of ["x", "y", "z"] as const) {
+    const axisLine = document.createElement("span");
+    axisLine.className = `vertex-gizmo__axis-line vertex-gizmo__axis-line--${axis}`;
+    axisLine.dataset.axisLine = axis;
+    axisLine.setAttribute("aria-hidden", "true");
     const handle = document.createElement("button");
     handle.type = "button";
     handle.dataset.axis = axis;
@@ -141,9 +201,11 @@ export function mountVertexGizmo(
       handle.removeEventListener("lostpointercapture", onLostPointerCapture);
       handle.removeEventListener("keydown", onKeyDown);
     });
+    axisLines.set(axis, axisLine);
     handles.set(axis, handle);
-    element.append(handle);
+    element.append(axisLine, handle);
   }
+  element.append(planeHandle);
   container.append(element);
 
   return {
@@ -157,12 +219,30 @@ export function mountVertexGizmo(
           const direction = directions[axis];
           const length = Math.hypot(direction.x, direction.y) || 1;
           const handle = handles.get(axis);
+          const axisLine = axisLines.get(axis);
+          const normalizedX = direction.x / length;
+          const normalizedY = direction.y / length;
           if (handle) {
-            handle.style.left = `${direction.x / length * 36}px`;
-            handle.style.top = `${direction.y / length * 36}px`;
+            handle.style.left = `${normalizedX * 36}px`;
+            handle.style.top = `${normalizedY * 36}px`;
+          }
+          if (axisLine) {
+            axisLine.style.width = "20px";
+            axisLine.style.transform = `rotate(${Math.atan2(normalizedY, normalizedX)}rad)`;
           }
         }
       }
+    },
+    setDragPlane: (plane) => {
+      dragPlane = plane;
+      planeHandle.hidden = plane === null;
+      if (plane !== null) {
+        const label = plane === "view" ? "VIEW" : plane.toUpperCase();
+        planeHandle.textContent = label;
+        planeHandle.setAttribute("aria-label", `${label} 평면에서 정점 이동`);
+      }
+      for (const handle of handles.values()) handle.hidden = plane !== null;
+      for (const axisLine of axisLines.values()) axisLine.hidden = plane !== null;
     },
     setMovementScale: (nextUnitsPerPixel, nextKeyboardStep) => {
       if (Number.isFinite(nextUnitsPerPixel) && nextUnitsPerPixel > 0) {

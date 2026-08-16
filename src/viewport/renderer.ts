@@ -72,9 +72,17 @@ export interface ViewportScene {
   readonly color?: readonly [number, number, number];
 }
 
+export type ViewportDragPlane = "view" | "xy" | "yz" | "xz";
+
+export interface ViewportPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
 interface PreparedScene {
   readonly positions: readonly number[];
   readonly renderPositions: readonly number[];
+  readonly renderScale: number;
   readonly editable: boolean;
   readonly color: readonly [number, number, number];
   readonly vertices: Float32Array;
@@ -230,6 +238,7 @@ function prepareScene(gl: WebGL2RenderingContext, scene: ViewportScene): Prepare
   return {
     positions,
     renderPositions,
+    renderScale,
     editable: scene.editable,
     color,
     vertices,
@@ -277,6 +286,33 @@ function shouldReframe(previous: SceneBounds, next: SceneBounds): boolean {
   return centerShift > Math.max(previous.radius, next.radius, Number.EPSILON) * 0.25
     || scaleRatio > 1.5
     || scaleRatio < 2 / 3;
+}
+
+type Vec3 = readonly [number, number, number];
+
+function dot(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function intersectPlane(
+  origin: Vec3,
+  direction: Vec3,
+  planePoint: Vec3,
+  planeNormal: Vec3,
+): Vec3 | null {
+  const denominator = dot(direction, planeNormal);
+  if (!Number.isFinite(denominator) || Math.abs(denominator) < 1e-6) return null;
+  const distance = dot([
+    planePoint[0] - origin[0],
+    planePoint[1] - origin[1],
+    planePoint[2] - origin[2],
+  ], planeNormal) / denominator;
+  if (!Number.isFinite(distance) || distance < 0) return null;
+  return [
+    origin[0] + direction[0] * distance,
+    origin[1] + direction[1] * distance,
+    origin[2] + direction[2] * distance,
+  ];
 }
 
 export class MeshViewportController {
@@ -430,6 +466,57 @@ export class MeshViewportController {
     return projected ? { x: projected.x + bounds.left, y: projected.y + bounds.top, depth: projected.depth } : null;
   }
 
+  focusVertex(index: number): void {
+    this.#assertActive();
+    if (!Number.isInteger(index) || index < 0 || index >= this.#scene.positions.length / 3) {
+      throw new RangeError(`Vertex index ${String(index)} is outside the mesh.`);
+    }
+    const offset = index * 3;
+    this.#camera.focus([
+      this.#scene.renderPositions[offset]!,
+      this.#scene.renderPositions[offset + 1]!,
+      this.#scene.renderPositions[offset + 2]!,
+    ]);
+    this.#notifyViewChange();
+  }
+
+  modelDeltaForPlaneDrag(
+    index: number,
+    plane: ViewportDragPlane,
+    from: ViewportPoint,
+    to: ViewportPoint,
+  ): Vec3 | null {
+    this.#assertActive();
+    if (!Number.isInteger(index) || index < 0 || index >= this.#scene.positions.length / 3) {
+      throw new RangeError(`Vertex index ${String(index)} is outside the mesh.`);
+    }
+    if (![from.x, from.y, to.x, to.y].every(Number.isFinite)) return null;
+    const bounds = this.#canvas.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return null;
+    const fromRay = this.#camera.ray(from.x - bounds.left, from.y - bounds.top, bounds.width, bounds.height);
+    const toRay = this.#camera.ray(to.x - bounds.left, to.y - bounds.top, bounds.width, bounds.height);
+    if (!fromRay || !toRay) return null;
+    const offset = index * 3;
+    const planePoint: Vec3 = [
+      this.#scene.renderPositions[offset]!,
+      this.#scene.renderPositions[offset + 1]!,
+      this.#scene.renderPositions[offset + 2]!,
+    ];
+    const planeNormal: Vec3 = plane === "view"
+      ? this.#camera.viewDirection()
+      : plane === "xy" ? [0, 0, 1]
+      : plane === "yz" ? [1, 0, 0]
+      : [0, 1, 0];
+    const fromPoint = intersectPlane(fromRay.origin, fromRay.direction, planePoint, planeNormal);
+    const toPoint = intersectPlane(toRay.origin, toRay.direction, planePoint, planeNormal);
+    if (!fromPoint || !toPoint) return null;
+    return [
+      (toPoint[0] - fromPoint[0]) * this.#scene.renderScale,
+      (toPoint[1] - fromPoint[1]) * this.#scene.renderScale,
+      (toPoint[2] - fromPoint[2]) * this.#scene.renderScale,
+    ];
+  }
+
   projectAxis(index: number, axis: "x" | "y" | "z"): ProjectedPosition | null {
     this.#assertActive();
     const origin = this.projectVertex(index);
@@ -537,13 +624,18 @@ export class MeshViewportController {
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#edgeBuffer);
       gl.drawElements(gl.LINES, this.#scene.edgeIndices.length, this.#scene.indexType, 0);
 
-      this.#setStyle(VERTEX_COLOR, 0, 8 * devicePixelRatio, true);
-      gl.drawArrays(gl.POINTS, 0, this.#scene.positions.length / 3);
-      if (this.#selectedVertex !== null) {
-        this.#setStyle(SELECTED_VERTEX_COLOR, 0, 13 * devicePixelRatio, true);
-        gl.drawArrays(gl.POINTS, this.#selectedVertex, 1);
+      gl.disable(gl.DEPTH_TEST);
+      try {
+        this.#setStyle(VERTEX_COLOR, 0, 8 * devicePixelRatio, true);
+        gl.drawArrays(gl.POINTS, 0, this.#scene.positions.length / 3);
+        if (this.#selectedVertex !== null) {
+          this.#setStyle(SELECTED_VERTEX_COLOR, 0, 13 * devicePixelRatio, true);
+          gl.drawArrays(gl.POINTS, this.#selectedVertex, 1);
+        }
+      } finally {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LESS);
       }
-      gl.depthFunc(gl.LESS);
     } finally {
       gl.useProgram(null);
     }

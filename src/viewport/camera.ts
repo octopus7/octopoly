@@ -2,6 +2,12 @@ export interface CameraState {
   readonly yaw: number;
   readonly pitch: number;
   readonly distance: number;
+  readonly target: readonly [number, number, number];
+}
+
+export interface CameraRay {
+  readonly origin: readonly [number, number, number];
+  readonly direction: readonly [number, number, number];
 }
 
 const MIN_PITCH = -Math.PI / 2 + 0.05;
@@ -28,12 +34,74 @@ export class OrbitCamera {
   #framingRadius: number | null = null;
 
   state(): CameraState {
-    return { yaw: this.#yaw, pitch: this.#pitch, distance: this.#distance };
+    return {
+      yaw: this.#yaw,
+      pitch: this.#pitch,
+      distance: this.#distance,
+      target: [...this.#target],
+    };
   }
 
   orbit(deltaX: number, deltaY: number): void {
     this.#yaw -= deltaX * 0.008;
     this.#pitch = clamp(this.#pitch - deltaY * 0.008, MIN_PITCH, MAX_PITCH);
+  }
+
+  pan(deltaX: number, deltaY: number, viewportHeight: number): void {
+    if (![deltaX, deltaY, viewportHeight].every(Number.isFinite) || viewportHeight <= 0) return;
+    const unitsPerPixel = 2 * this.#distance * Math.tan(Math.PI / 8) / viewportHeight;
+    const right: Vec3 = [Math.cos(this.#yaw), 0, -Math.sin(this.#yaw)];
+    const up: Vec3 = [
+      -Math.sin(this.#pitch) * Math.sin(this.#yaw),
+      Math.cos(this.#pitch),
+      -Math.sin(this.#pitch) * Math.cos(this.#yaw),
+    ];
+    this.#target = [
+      this.#target[0] - right[0] * deltaX * unitsPerPixel + up[0] * deltaY * unitsPerPixel,
+      this.#target[1] - right[1] * deltaX * unitsPerPixel + up[1] * deltaY * unitsPerPixel,
+      this.#target[2] - right[2] * deltaX * unitsPerPixel + up[2] * deltaY * unitsPerPixel,
+    ];
+  }
+
+  focus(target: Vec3): void {
+    if (!target.every(Number.isFinite)) return;
+    this.#target = [...target] as unknown as Vec3;
+  }
+
+  viewDirection(): Vec3 {
+    return normalize([
+      -Math.cos(this.#pitch) * Math.sin(this.#yaw),
+      -Math.sin(this.#pitch),
+      -Math.cos(this.#pitch) * Math.cos(this.#yaw),
+    ]);
+  }
+
+  ray(viewportX: number, viewportY: number, width: number, height: number): CameraRay | null {
+    if (![viewportX, viewportY, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null;
+    const horizontal = this.#distance * Math.cos(this.#pitch);
+    const origin: Vec3 = [
+      this.#target[0] + horizontal * Math.sin(this.#yaw),
+      this.#target[1] + this.#distance * Math.sin(this.#pitch),
+      this.#target[2] + horizontal * Math.cos(this.#yaw),
+    ];
+    const right: Vec3 = [Math.cos(this.#yaw), 0, -Math.sin(this.#yaw)];
+    const up: Vec3 = [
+      -Math.sin(this.#pitch) * Math.sin(this.#yaw),
+      Math.cos(this.#pitch),
+      -Math.sin(this.#pitch) * Math.cos(this.#yaw),
+    ];
+    const forward = this.viewDirection();
+    const tangent = Math.tan(Math.PI / 8);
+    const horizontalScale = (viewportX / width * 2 - 1) * tangent * width / height;
+    const verticalScale = (1 - viewportY / height * 2) * tangent;
+    return {
+      origin,
+      direction: normalize([
+        forward[0] + right[0] * horizontalScale + up[0] * verticalScale,
+        forward[1] + right[1] * horizontalScale + up[1] * verticalScale,
+        forward[2] + right[2] * horizontalScale + up[2] * verticalScale,
+      ]),
+    };
   }
 
   zoomByWheel(deltaY: number): void {

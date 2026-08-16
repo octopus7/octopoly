@@ -7,6 +7,8 @@ type FakeWebGL = WebGL2RenderingContext & {
   depthFunc: ReturnType<typeof vi.fn>;
   drawArrays: ReturnType<typeof vi.fn>;
   drawElements: ReturnType<typeof vi.fn>;
+  disable: ReturnType<typeof vi.fn>;
+  enable: ReturnType<typeof vi.fn>;
   deleteBuffer: ReturnType<typeof vi.fn>;
   deleteProgram: ReturnType<typeof vi.fn>;
   deleteVertexArray: ReturnType<typeof vi.fn>;
@@ -55,10 +57,10 @@ function createFakeWebGL(): FakeWebGL {
     deleteShader: noop,
     deleteVertexArray: vi.fn(),
     depthFunc: vi.fn(),
-    disable: noop,
+    disable: vi.fn(),
     drawArrays: vi.fn(),
     drawElements: vi.fn(),
-    enable: noop,
+    enable: vi.fn(),
     enableVertexAttribArray: noop,
     getAttribLocation: vi.fn((_program: WebGLProgram, name: string) => name === "aPosition" ? 0 : 1),
     getProgramInfoLog: vi.fn(() => ""),
@@ -208,6 +210,27 @@ describe("mesh viewport renderer", () => {
     controller.dispose();
   });
 
+  it("renders normal and selected vertex handles without face depth occlusion", () => {
+    const { canvas, flushFrame, gl } = createHarness();
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+    controller.setSelectedVertex(1);
+
+    flushFrame();
+
+    const depthDisableIndex = gl.disable.mock.calls.findIndex((call) => call[0] === gl.DEPTH_TEST);
+    expect(depthDisableIndex).toBeGreaterThanOrEqual(0);
+    const depthDisableOrder = gl.disable.mock.invocationCallOrder[depthDisableIndex]!;
+    const pointDrawOrders = gl.drawArrays.mock.invocationCallOrder;
+    const restoredDepthOrder = gl.enable.mock.invocationCallOrder.at(-1)!;
+    expect(pointDrawOrders).toHaveLength(2);
+    expect(depthDisableOrder).toBeLessThan(pointDrawOrders[0]!);
+    expect(restoredDepthOrder).toBeGreaterThan(pointDrawOrders[1]!);
+    controller.dispose();
+  });
+
   it("returns from the unlit fragment path before evaluating mesh normals", () => {
     const { canvas, gl } = createHarness();
     const controller = renderer.startMeshViewport(canvas, {
@@ -282,6 +305,72 @@ describe("mesh viewport renderer", () => {
     expect(projected?.y).toBeGreaterThanOrEqual(20);
     expect(controller.pickVertex(projected!.x, projected!.y, 1)).toBe(2);
     controller.dispose();
+  });
+
+  it("focuses a vertex at the viewport center without changing the scene", () => {
+    const { canvas } = createHarness();
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+
+    controller.focusVertex(0);
+
+    const projected = controller.projectVertex(0)!;
+    expect(projected.x).toBeCloseTo(210);
+    expect(projected.y).toBeCloseTo(120);
+    controller.dispose();
+  });
+
+  it("maps a screen drag onto a constrained world plane", () => {
+    const { canvas } = createHarness();
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+    controller.focusVertex(0);
+    const start = controller.projectVertex(0)!;
+
+    const delta = controller.modelDeltaForPlaneDrag(
+      0,
+      "xy",
+      { x: start.x, y: start.y },
+      { x: start.x + 20, y: start.y + 10 },
+    )!;
+
+    expect(delta[2]).toBeCloseTo(0);
+    expect(Math.hypot(...delta)).toBeGreaterThan(0);
+    controller.dispose();
+  });
+
+  it("scales plane drag deltas back into the active model coordinate scale", () => {
+    const regularHarness = createHarness();
+    const regular = renderer.startMeshViewport(regularHarness.canvas, {
+      geometry: { positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+    const tinyHarness = createHarness();
+    const tiny = renderer.startMeshViewport(tinyHarness.canvas, {
+      geometry: { positions: [0, 0, 0, 0.001, 0, 0, 0, 0.001, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+    regular.focusVertex(0);
+    tiny.focusVertex(0);
+    const regularStart = regular.projectVertex(0)!;
+    const tinyStart = tiny.projectVertex(0)!;
+
+    const regularDelta = regular.modelDeltaForPlaneDrag(0, "view", regularStart, {
+      x: regularStart.x + 20,
+      y: regularStart.y,
+    })!;
+    const tinyDelta = tiny.modelDeltaForPlaneDrag(0, "view", tinyStart, {
+      x: tinyStart.x + 20,
+      y: tinyStart.y,
+    })!;
+
+    expect(Math.hypot(...tinyDelta) / Math.hypot(...regularDelta)).toBeCloseTo(0.001);
+    regular.dispose();
+    tiny.dispose();
   });
 
   it("frames translated and large geometry around its bounds", () => {

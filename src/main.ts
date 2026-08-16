@@ -40,6 +40,9 @@ mountOctoPolyApp(root, {
       projectVertex: (vertexIndex) => viewport.projectVertex(vertexIndex),
       projectAxis: (vertexIndex, axis) => viewport.projectAxis(vertexIndex, axis),
       pickVertex: (x, y, radius) => viewport.pickVertex(x, y, radius),
+      focusVertex: (vertexIndex) => viewport.focusVertex(vertexIndex),
+      modelDeltaForPlaneDrag: (vertexIndex, plane, from, to) =>
+        viewport.modelDeltaForPlaneDrag(vertexIndex, plane, from, to),
       subscribeViewChange: (listener) => viewport.subscribeViewChange(listener),
       dispose: () => viewport.dispose(),
     };

@@ -1,5 +1,6 @@
 import { createFacialController } from "./controller";
-import { mountVertexGizmo, type GizmoAxisDirections, type VertexGizmo } from "./gizmo";
+import { mountVertexGizmo, type GizmoAxisDirections, type GizmoDragPlane, type GizmoPosition, type VertexGizmo } from "./gizmo";
+import { mountMovementControls, type MovementControls } from "./movement-controls";
 import { mountFacialPanel, type FacialPanel } from "./panel";
 import { attachVertexPicker } from "./picker";
 import { createFacialScene, type FacialViewportScene } from "./scene";
@@ -21,6 +22,13 @@ export interface FacialViewportPort {
   projectVertex(vertexIndex: number): ScreenPoint | null;
   projectAxis?(vertexIndex: number, axis: "x" | "y" | "z"): ScreenPoint | null;
   pickVertex(x: number, y: number, radius?: number): number | null;
+  focusVertex?(vertexIndex: number): void;
+  modelDeltaForPlaneDrag?(
+    vertexIndex: number,
+    plane: GizmoDragPlane,
+    from: GizmoPosition,
+    to: GizmoPosition,
+  ): readonly [number, number, number] | null;
   subscribeViewChange?(listener: () => void): () => void;
   dispose(): void;
 }
@@ -68,6 +76,7 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
   let viewport: FacialViewportPort | undefined;
   let panel: FacialPanel | undefined;
   let gizmo: VertexGizmo | undefined;
+  let movementControls: MovementControls | undefined;
   let session: FacialSession | undefined;
   let detachPicker: (() => void) | undefined;
   let detachKeyboard: (() => void) | undefined;
@@ -119,18 +128,20 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
     disposeSafely(detachViewChange);
     disposeSafely(detachKeyboard);
     disposeSafely(detachPicker);
+    disposeSafely(movementControls ? () => movementControls?.dispose() : undefined);
     disposeSafely(gizmo ? () => gizmo?.dispose() : undefined);
     disposeSafely(panel ? () => panel?.dispose() : undefined);
     disposeSafely(session ? () => session?.dispose() : undefined);
     disposeSafely(() => controller.dispose());
     disposeSafely(viewport ? () => viewport?.dispose() : undefined);
   };
-  const runCommand = (command: () => void): void => {
+  const runCommand = (command: () => void): boolean => {
     try {
       command();
+      return true;
     } catch (error) {
-      panel?.render(controller.workspace, controller.selectedVertex);
       options.onError?.(error);
+      return false;
     }
   };
 
@@ -150,6 +161,11 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
       onDuplicate: () => runCommand(() => session?.duplicateBase()),
       onSelectMesh: (meshId) => runCommand(() => session?.selectMesh(meshId)),
       onRenameMesh: (meshId, name) => runCommand(() => session?.renameMesh(meshId, name)),
+      onDeleteMesh: (meshId) => runCommand(() => session?.deleteMesh(meshId)),
+      onFocusSelected: () => {
+        const selectedVertex = controller.selectedVertex;
+        if (selectedVertex !== null) viewport?.focusVertex?.(selectedVertex);
+      },
     });
     gizmo = mountVertexGizmo(options.overlayContainer, {
       onMove: (axis, delta) => {
@@ -161,6 +177,28 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
             axis,
             delta,
           ));
+      },
+      onPlaneMove: (plane, from, to) => {
+        const selectedVertex = controller.selectedVertex;
+        if (selectedVertex === null) return;
+        const delta = viewport?.modelDeltaForPlaneDrag?.(selectedVertex, plane, from, to);
+        if (!delta) return;
+        const meshId = controller.workspace.activeMeshId;
+        const sceneRevision = controller.sceneRevision;
+        runCommand(() => session?.moveVertexByDelta(
+            meshId,
+            sceneRevision,
+            selectedVertex,
+            delta,
+          ));
+      },
+    });
+    movementControls = mountMovementControls(panel.element, options.overlayContainer, {
+      onChange: (state) => {
+        const plane: GizmoDragPlane | null = state.mode === "gizmo"
+          ? null
+          : state.mode === "view-plane" ? "view" : state.activeConstrainedPlane;
+        gizmo?.setDragPlane(plane);
       },
     });
     detachViewChange = viewport.subscribeViewChange?.(updateGizmo);
@@ -176,6 +214,12 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
       sceneRevision: controller.sceneRevision,
     }));
     const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key.toLowerCase() === "f" && controller.selectedVertex !== null) {
+        event.preventDefault();
+        event.stopPropagation();
+        viewport?.focusVertex?.(controller.selectedVertex);
+        return;
+      }
       const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
       if (direction === 0) return;
       const activeMesh = controller.workspace.meshes.find(

@@ -44,6 +44,49 @@ describe("OctoPoly app composition", () => {
     expect(disposeFacial).toHaveBeenCalledOnce();
   });
 
+  it("closes a mesh dialog on Escape without changing an open app menu", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const app = mountOctoPolyApp(root, {
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      startCube: vi.fn(() => vi.fn()),
+      startViewport: vi.fn(() => ({
+        setScene: vi.fn(),
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      })),
+    });
+
+    try {
+      root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!.click();
+      root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')!.click();
+      const menuToggle = root.querySelector<HTMLButtonElement>(".app-menu-toggle")!;
+      const menu = root.querySelector<HTMLElement>(".app-menu")!;
+      menuToggle.click();
+      const trigger = root.querySelector<HTMLButtonElement>('[data-action="rename-mesh"]')!;
+      trigger.click();
+      const input = root.querySelector<HTMLInputElement>('[data-mesh-dialog-input]')!;
+      expect(document.activeElement).toBe(input);
+
+      input.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      }));
+
+      expect(root.querySelector<HTMLElement>(".facial-mesh-dialog-backdrop")?.hidden).toBe(true);
+      expect(document.activeElement).toBe(trigger);
+      expect(menuToggle.getAttribute("aria-expanded")).toBe("true");
+      expect(menu.hidden).toBe(false);
+    } finally {
+      app.dispose();
+      root.remove();
+    }
+  });
+
   it("restores the cube and permits retry after Facial startup fails", () => {
     const root = document.createElement("div");
     const cubeDisposers = [vi.fn(), vi.fn()];
