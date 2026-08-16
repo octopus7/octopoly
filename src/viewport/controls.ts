@@ -32,7 +32,10 @@ export function attachCameraControls(
     const after = [...pointers.values()];
 
     if (pointers.size === 1) {
-      camera.orbit(next.x - previous.x, next.y - previous.y);
+      const deltaY = event.pointerType === "touch"
+        ? previous.y - next.y
+        : next.y - previous.y;
+      camera.orbit(next.x - previous.x, deltaY);
     } else if (before.length >= 2 && after.length >= 2) {
       const previousDistance = distance(before[0]!, before[1]!);
       const nextDistance = distance(after[0]!, after[1]!);

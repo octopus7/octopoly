@@ -34,12 +34,40 @@ describe("camera controls", () => {
     const invalidate = vi.fn();
     const detach = attachCameraControls(canvas, camera, invalidate);
     const initialYaw = camera.state().yaw;
+    const initialPitch = camera.state().pitch;
 
     canvas.dispatchEvent(pointerEvent("pointerdown", 1, "mouse", 20, 20));
     canvas.dispatchEvent(pointerEvent("pointermove", 1, "mouse", 60, 35));
 
     expect(camera.state().yaw).not.toBe(initialYaw);
+    expect(camera.state().pitch).toBeLessThan(initialPitch);
     expect(invalidate).toHaveBeenCalledOnce();
+    detach();
+  });
+
+  it("keeps the horizontal orbit direction for one-finger touch drag", () => {
+    const canvas = createCanvas();
+    const camera = new OrbitCamera();
+    const detach = attachCameraControls(canvas, camera, vi.fn());
+    const initialYaw = camera.state().yaw;
+
+    canvas.dispatchEvent(pointerEvent("pointerdown", 1, "touch", 50, 50));
+    canvas.dispatchEvent(pointerEvent("pointermove", 1, "touch", 80, 50));
+
+    expect(camera.state().yaw).toBeLessThan(initialYaw);
+    detach();
+  });
+
+  it("reverses the vertical orbit direction for one-finger touch drag", () => {
+    const canvas = createCanvas();
+    const camera = new OrbitCamera();
+    const detach = attachCameraControls(canvas, camera, vi.fn());
+    const initialPitch = camera.state().pitch;
+
+    canvas.dispatchEvent(pointerEvent("pointerdown", 1, "touch", 50, 50));
+    canvas.dispatchEvent(pointerEvent("pointermove", 1, "touch", 50, 80));
+
+    expect(camera.state().pitch).toBeGreaterThan(initialPitch);
     detach();
   });
 
