@@ -28,4 +28,15 @@ describe("OrbitCamera", () => {
     camera.zoomByWheel(100_000);
     expect(camera.state().distance).toBe(14);
   });
+
+  it("expands its distance to fit large geometry without shrinking the default framing", () => {
+    const camera = new OrbitCamera();
+    const initial = camera.state().distance;
+
+    camera.fitRadius(1);
+    expect(camera.state().distance).toBe(initial);
+
+    camera.fitRadius(4);
+    expect(camera.state().distance).toBeGreaterThan(9);
+  });
 });

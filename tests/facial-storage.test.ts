@@ -41,6 +41,16 @@ describe("facial workspace storage", () => {
     expect(loadFacialWorkspace(storage)).toEqual(createDefaultFacialWorkspace());
   });
 
+  it("falls back when reading storage throws", () => {
+    const storage = {
+      getItem: () => {
+        throw new DOMException("denied", "SecurityError");
+      },
+    };
+
+    expect(loadFacialWorkspace(storage)).toEqual(createDefaultFacialWorkspace());
+  });
+
   it("falls back when saved workspace structure is invalid", () => {
     const storage = new MemoryStorage();
     storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, JSON.stringify({
@@ -48,6 +58,28 @@ describe("facial workspace storage", () => {
       activeMeshId: "missing",
       meshes: [],
     }));
+
+    expect(loadFacialWorkspace(storage)).toEqual(createDefaultFacialWorkspace());
+  });
+
+  it("falls back when a saved coordinate overflows Float32", () => {
+    const storage = new MemoryStorage();
+    const workspace = createDefaultFacialWorkspace();
+    const invalid = structuredClone(workspace);
+    invalid.meshes[0]!.geometry.positions[0] = Number.MAX_VALUE;
+    storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, JSON.stringify(invalid));
+
+    expect(loadFacialWorkspace(storage)).toEqual(createDefaultFacialWorkspace());
+  });
+
+  it.each([
+    ["id", "renamed-base"],
+    ["name", "Renamed Base"],
+  ] as const)("falls back when the saved base %s is not canonical", (property, value) => {
+    const storage = new MemoryStorage();
+    const invalid = structuredClone(createDefaultFacialWorkspace());
+    Object.assign(invalid.meshes[0]!, { [property]: value });
+    storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, JSON.stringify(invalid));
 
     expect(loadFacialWorkspace(storage)).toEqual(createDefaultFacialWorkspace());
   });

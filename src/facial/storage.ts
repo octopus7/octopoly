@@ -1,4 +1,9 @@
-import { createDefaultFacialWorkspace, type FacialWorkspace } from "./workspace";
+import {
+  createDefaultFacialWorkspace,
+  isValidMeshGeometry,
+  type FacialWorkspace,
+  type MeshGeometry,
+} from "./workspace";
 
 export const FACIAL_WORKSPACE_STORAGE_KEY = "octopoly:facial-workspace:v1";
 
@@ -22,23 +27,22 @@ function isFacialWorkspace(value: unknown): value is FacialWorkspace {
   for (const mesh of value.meshes) {
     if (!isRecord(mesh) || typeof mesh.id !== "string" || typeof mesh.name !== "string") return false;
     if (mesh.kind !== "base" && mesh.kind !== "copy") return false;
-    if (mesh.kind === "base") baseCount += 1;
+    if (!mesh.id.trim() || !mesh.name.trim()) return false;
+    if (mesh.kind === "base") {
+      if (mesh.id !== "base" || mesh.name !== "Base Mask") return false;
+      baseCount += 1;
+    }
     if (ids.has(mesh.id) || !isRecord(mesh.geometry)) return false;
     ids.add(mesh.id);
-    const { positions, indices } = mesh.geometry;
-    if (!Array.isArray(positions) || positions.length < 9 || positions.length % 3 !== 0) return false;
-    if (!positions.every((coordinate) => typeof coordinate === "number" && Number.isFinite(coordinate))) return false;
-    if (!Array.isArray(indices) || indices.length < 3 || indices.length % 3 !== 0) return false;
-    const vertexCount = positions.length / 3;
-    if (!indices.every((index) => Number.isInteger(index) && index >= 0 && index < vertexCount)) return false;
+    if (!isValidMeshGeometry(mesh.geometry as unknown as MeshGeometry)) return false;
   }
   return baseCount === 1 && ids.has(value.activeMeshId);
 }
 
 export function loadFacialWorkspace(storage: ReadStorage): FacialWorkspace {
-  const serialized = storage.getItem(FACIAL_WORKSPACE_STORAGE_KEY);
-  if (!serialized) return createDefaultFacialWorkspace();
   try {
+    const serialized = storage.getItem(FACIAL_WORKSPACE_STORAGE_KEY);
+    if (!serialized) return createDefaultFacialWorkspace();
     const parsed: unknown = JSON.parse(serialized);
     return isFacialWorkspace(parsed) ? parsed : createDefaultFacialWorkspace();
   } catch {

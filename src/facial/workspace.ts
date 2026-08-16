@@ -18,6 +18,78 @@ export interface FacialWorkspace {
   readonly meshes: FacialMesh[];
 }
 
+export function isValidMeshGeometry(geometry: MeshGeometry): boolean {
+  if (!Array.isArray(geometry.positions)
+    || geometry.positions.length < 9
+    || geometry.positions.length % 3 !== 0
+    || !Array.isArray(geometry.indices)
+    || geometry.indices.length < 3
+    || geometry.indices.length % 3 !== 0) return false;
+  for (let index = 0; index < geometry.positions.length; index += 1) {
+    const coordinate = geometry.positions[index];
+    if (typeof coordinate !== "number"
+      || !Number.isFinite(coordinate)
+      || !Number.isFinite(Math.fround(coordinate))) return false;
+  }
+  const minimum = [geometry.positions[0]!, geometry.positions[1]!, geometry.positions[2]!];
+  const maximum = [...minimum];
+  for (let offset = 0; offset < geometry.positions.length; offset += 3) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      minimum[axis] = Math.min(minimum[axis]!, geometry.positions[offset + axis]!);
+      maximum[axis] = Math.max(maximum[axis]!, geometry.positions[offset + axis]!);
+    }
+  }
+  const center = minimum.map((coordinate, axis) => (coordinate + maximum[axis]!) / 2);
+  let radius = 0;
+  for (let offset = 0; offset < geometry.positions.length; offset += 3) {
+    radius = Math.max(radius, Math.hypot(
+      geometry.positions[offset]! - center[0]!,
+      geometry.positions[offset + 1]! - center[1]!,
+      geometry.positions[offset + 2]! - center[2]!,
+    ));
+  }
+  const requiredFrameDistance = radius * 1.1 / Math.sin(Math.PI / 8);
+  if (!Number.isFinite(Math.fround(requiredFrameDistance))) return false;
+  const vertexCount = geometry.positions.length / 3;
+  for (let index = 0; index < geometry.indices.length; index += 1) {
+    const vertexIndex = geometry.indices[index];
+    if (typeof vertexIndex !== "number"
+      || !Number.isInteger(vertexIndex)
+      || vertexIndex < 0
+      || vertexIndex >= vertexCount) return false;
+  }
+  const accumulatedNormals = new Float32Array(geometry.positions.length);
+  for (let index = 0; index < geometry.indices.length; index += 3) {
+    const a = geometry.indices[index]! * 3;
+    const b = geometry.indices[index + 1]! * 3;
+    const c = geometry.indices[index + 2]! * 3;
+    const ab = [
+      geometry.positions[b]! - geometry.positions[a]!,
+      geometry.positions[b + 1]! - geometry.positions[a + 1]!,
+      geometry.positions[b + 2]! - geometry.positions[a + 2]!,
+    ] as const;
+    const ac = [
+      geometry.positions[c]! - geometry.positions[a]!,
+      geometry.positions[c + 1]! - geometry.positions[a + 1]!,
+      geometry.positions[c + 2]! - geometry.positions[a + 2]!,
+    ] as const;
+    const normal = [
+      ab[1] * ac[2] - ab[2] * ac[1],
+      ab[2] * ac[0] - ab[0] * ac[2],
+      ab[0] * ac[1] - ab[1] * ac[0],
+    ] as const;
+    if (normal.some((component) => !Number.isFinite(Math.fround(component)))) return false;
+    for (const vertexOffset of [a, b, c]) {
+      for (let component = 0; component < 3; component += 1) {
+        const next = accumulatedNormals[vertexOffset + component]! + normal[component]!;
+        if (!Number.isFinite(Math.fround(next))) return false;
+        accumulatedNormals[vertexOffset + component] = next;
+      }
+    }
+  }
+  return true;
+}
+
 export function createPlaceholderMask(): MeshGeometry {
   const positions: number[] = [];
   const indices: number[] = [];
@@ -63,16 +135,16 @@ export function createPlaceholderMask(): MeshGeometry {
 }
 
 export function replaceBaseMesh(
-  _workspace: FacialWorkspace,
+  workspace: FacialWorkspace,
   geometry: MeshGeometry,
-  name: string,
 ): FacialWorkspace {
+  if (!isValidMeshGeometry(geometry)) return workspace;
   return {
     version: 1,
     activeMeshId: "base",
     meshes: [{
       id: "base",
-      name: name.trim(),
+      name: "Base Mask",
       kind: "base",
       geometry: {
         positions: [...geometry.positions],
@@ -92,24 +164,27 @@ export function moveVertex(
   delta: number,
 ): FacialWorkspace {
   const axisOffset: Record<VertexAxis, number> = { x: 0, y: 1, z: 2 };
+  if (!Number.isInteger(vertexIndex) || vertexIndex < 0 || !Number.isFinite(delta)) return workspace;
   const positionIndex = vertexIndex * 3 + axisOffset[axis];
+  const targetMesh = workspace.meshes.find((mesh) => mesh.id === meshId);
+  if (!targetMesh) return workspace;
+  const current = targetMesh.geometry.positions[positionIndex];
+  if (current === undefined) return workspace;
+  const nextCoordinate = current + delta;
+  if (!Number.isFinite(nextCoordinate) || !Number.isFinite(Math.fround(nextCoordinate))) return workspace;
+  const positions = [...targetMesh.geometry.positions];
+  positions[positionIndex] = nextCoordinate;
+  const geometry = { ...targetMesh.geometry, positions };
+  if (!isValidMeshGeometry(geometry)) return workspace;
   return {
     ...workspace,
-    meshes: workspace.meshes.map((mesh) => {
-      if (mesh.id !== meshId || positionIndex < 0 || positionIndex >= mesh.geometry.positions.length) {
-        return mesh;
-      }
-      const positions = [...mesh.geometry.positions];
-      positions[positionIndex] = (positions[positionIndex] ?? 0) + delta;
-      return {
-        ...mesh,
-        geometry: { ...mesh.geometry, positions },
-      };
-    }),
+    meshes: workspace.meshes.map((mesh) =>
+      mesh.id === meshId ? { ...mesh, geometry } : mesh),
   };
 }
 
 export function selectMesh(workspace: FacialWorkspace, meshId: string): FacialWorkspace {
+  if (workspace.activeMeshId === meshId) return workspace;
   return workspace.meshes.some((mesh) => mesh.id === meshId)
     ? { ...workspace, activeMeshId: meshId }
     : workspace;
@@ -120,14 +195,18 @@ export function renameMesh(
   meshId: string,
   name: string,
 ): FacialWorkspace {
+  const trimmedName = name.trim();
+  const target = workspace.meshes.find((mesh) => mesh.id === meshId && mesh.kind === "copy");
+  if (!trimmedName || !target || target.name === trimmedName) return workspace;
   return {
     ...workspace,
     meshes: workspace.meshes.map((mesh) =>
-      mesh.id === meshId && mesh.kind === "copy" ? { ...mesh, name: name.trim() } : mesh),
+      mesh.id === meshId ? { ...mesh, name: trimmedName } : mesh),
   };
 }
 
 export function duplicateBaseMesh(workspace: FacialWorkspace, copyId: string): FacialWorkspace {
+  if (!copyId.trim() || workspace.meshes.some((mesh) => mesh.id === copyId)) return workspace;
   const baseMesh = workspace.meshes.find((mesh) => mesh.kind === "base");
   if (!baseMesh) throw new Error("복제할 base mesh가 없습니다.");
   const copyNumber = workspace.meshes.filter((mesh) => mesh.kind === "copy").length + 1;

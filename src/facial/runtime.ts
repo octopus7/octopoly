@@ -1,0 +1,213 @@
+import { createFacialController } from "./controller";
+import { mountVertexGizmo, type GizmoAxisDirections, type VertexGizmo } from "./gizmo";
+import { mountFacialPanel, type FacialPanel } from "./panel";
+import { attachVertexPicker } from "./picker";
+import { createFacialScene, type FacialViewportScene } from "./scene";
+import { createFacialSession, type FacialSession } from "./session";
+import type { MeshGeometry } from "./workspace";
+
+interface RuntimeStorage {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+}
+
+interface ScreenPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface FacialViewportPort {
+  setScene(scene: FacialViewportScene): void;
+  projectVertex(vertexIndex: number): ScreenPoint | null;
+  projectAxis?(vertexIndex: number, axis: "x" | "y" | "z"): ScreenPoint | null;
+  pickVertex(x: number, y: number, radius?: number): number | null;
+  subscribeViewChange?(listener: () => void): () => void;
+  dispose(): void;
+}
+
+export interface FacialRuntimeOptions {
+  readonly canvas: HTMLCanvasElement;
+  readonly panelContainer: HTMLElement;
+  readonly overlayContainer: HTMLElement;
+  readonly storage: RuntimeStorage;
+  readonly nextCopyId: () => string;
+  readonly parseObjText: (source: string) => MeshGeometry;
+  readonly startViewport: (
+    canvas: HTMLCanvasElement,
+    initialScene: FacialViewportScene,
+  ) => FacialViewportPort;
+  readonly onError?: (error: unknown) => void;
+}
+
+export interface FacialRuntime {
+  dispose(): void;
+}
+
+function geometryRadius(positions: readonly number[]): number {
+  const minimum = [positions[0]!, positions[1]!, positions[2]!];
+  const maximum = [...minimum];
+  for (let offset = 0; offset < positions.length; offset += 3) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      minimum[axis] = Math.min(minimum[axis]!, positions[offset + axis]!);
+      maximum[axis] = Math.max(maximum[axis]!, positions[offset + axis]!);
+    }
+  }
+  const center = minimum.map((value, axis) => (value + maximum[axis]!) / 2);
+  let radius = 0;
+  for (let offset = 0; offset < positions.length; offset += 3) {
+    radius = Math.max(radius, Math.hypot(
+      positions[offset]! - center[0]!,
+      positions[offset + 1]! - center[1]!,
+      positions[offset + 2]! - center[2]!,
+    ));
+  }
+  return radius;
+}
+
+export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime {
+  let viewport: FacialViewportPort | undefined;
+  let panel: FacialPanel | undefined;
+  let gizmo: VertexGizmo | undefined;
+  let session: FacialSession | undefined;
+  let detachPicker: (() => void) | undefined;
+  let detachKeyboard: (() => void) | undefined;
+  let detachViewChange: (() => void) | undefined;
+  let disposed = false;
+
+  const updateGizmo = (): void => {
+    const selectedVertex = controller.selectedVertex;
+    if (selectedVertex === null) {
+      gizmo?.show(null);
+      return;
+    }
+    const activeMesh = controller.workspace.meshes.find(
+      (mesh) => mesh.id === controller.workspace.activeMeshId,
+    );
+    if (activeMesh) {
+      const radius = geometryRadius(activeMesh.geometry.positions);
+      const modelScale = radius > 0 ? radius : 1;
+      gizmo?.setMovementScale(modelScale / 300, modelScale / 30);
+    }
+    const directions = viewport?.projectAxis
+      ? Object.fromEntries((["x", "y", "z"] as const).map((axis) => [
+          axis,
+          viewport!.projectAxis!(selectedVertex, axis) ?? { x: 0, y: 0 },
+        ])) as unknown as GizmoAxisDirections
+      : undefined;
+    gizmo?.show(viewport?.projectVertex(selectedVertex) ?? null, directions);
+  };
+
+  const controller = createFacialController({
+    storage: options.storage,
+    nextCopyId: options.nextCopyId,
+    onChange: (workspace, selectedVertex) => {
+      const scene = createFacialScene(workspace, selectedVertex, controller.sceneRevision);
+      viewport?.setScene(scene);
+      panel?.render(workspace, selectedVertex);
+      updateGizmo();
+    },
+  });
+
+  const disposeSafely = (dispose: (() => void) | undefined): void => {
+    try {
+      dispose?.();
+    } catch {
+      // Continue releasing the remaining independently-owned resources.
+    }
+  };
+  const cleanup = (): void => {
+    disposeSafely(detachViewChange);
+    disposeSafely(detachKeyboard);
+    disposeSafely(detachPicker);
+    disposeSafely(gizmo ? () => gizmo?.dispose() : undefined);
+    disposeSafely(panel ? () => panel?.dispose() : undefined);
+    disposeSafely(session ? () => session?.dispose() : undefined);
+    disposeSafely(() => controller.dispose());
+    disposeSafely(viewport ? () => viewport?.dispose() : undefined);
+  };
+  const runCommand = (command: () => void): void => {
+    try {
+      command();
+    } catch (error) {
+      panel?.render(controller.workspace, controller.selectedVertex);
+      options.onError?.(error);
+    }
+  };
+
+  try {
+    viewport = options.startViewport(
+      options.canvas,
+      createFacialScene(controller.workspace, controller.selectedVertex, controller.sceneRevision),
+    );
+    session = createFacialSession({
+      controller,
+      parseObjText: options.parseObjText,
+    });
+    panel = mountFacialPanel(options.panelContainer, {
+      onImport: (file) => {
+        void session?.importObj(file).catch((error: unknown) => options.onError?.(error));
+      },
+      onDuplicate: () => runCommand(() => session?.duplicateBase()),
+      onSelectMesh: (meshId) => runCommand(() => session?.selectMesh(meshId)),
+      onRenameMesh: (meshId, name) => runCommand(() => session?.renameMesh(meshId, name)),
+    });
+    gizmo = mountVertexGizmo(options.overlayContainer, {
+      onMove: (axis, delta) => {
+        if (controller.selectedVertex === null) return;
+        runCommand(() => session?.moveVertex(
+            controller.workspace.activeMeshId,
+            controller.sceneRevision,
+            controller.selectedVertex!,
+            axis,
+            delta,
+          ));
+      },
+    });
+    detachViewChange = viewport.subscribeViewChange?.(updateGizmo);
+    detachPicker = attachVertexPicker(options.canvas, ({ x, y }, gesture) => {
+      if (!gesture) return;
+      runCommand(() => session?.selectVertex(
+          gesture.meshId,
+          gesture.sceneRevision,
+          viewport?.pickVertex(x, y, 12) ?? null,
+        ));
+    }, () => ({
+      meshId: controller.workspace.activeMeshId,
+      sceneRevision: controller.sceneRevision,
+    }));
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const direction = event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+      if (direction === 0) return;
+      const activeMesh = controller.workspace.meshes.find(
+        (mesh) => mesh.id === controller.workspace.activeMeshId,
+      );
+      const vertexCount = (activeMesh?.geometry.positions.length ?? 0) / 3;
+      if (vertexCount <= 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const current = controller.selectedVertex;
+      const next = current === null
+        ? direction > 0 ? 0 : vertexCount - 1
+        : (current + direction + vertexCount) % vertexCount;
+      runCommand(() => session?.selectVertex(
+          controller.workspace.activeMeshId,
+          controller.sceneRevision,
+          next,
+        ));
+    };
+    options.canvas.addEventListener("keydown", onKeyDown);
+    detachKeyboard = () => options.canvas.removeEventListener("keydown", onKeyDown);
+    panel.render(controller.workspace, controller.selectedVertex);
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+
+  return {
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      cleanup();
+    },
+  };
+}
