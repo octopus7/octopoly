@@ -12,3 +12,9 @@
 - 한 손가락 touch drag의 Y delta만 반전해 상하 orbit 방향을 사용자 요청과 맞췄다.
 - 좌우 touch yaw, 기존 mouse drag의 상하 방향, 두 손가락 pinch zoom은 그대로 유지했다.
 - 회귀 테스트를 RED→GREEN으로 확인하고 전체 CI의 typecheck, 7 tests, production build와 artifact 검증을 통과했다.
+
+## 브라우저 전체 화면 토글 버튼 | 시작: 2026-08-16 20:28:26 KST | 종료: 2026-08-16 20:34:53 KST | 소요: 7분
+
+- 하단 `기본 큐브` 상태칩 옆에 동일한 32px 높이의 32×32px 정사각형 전체 화면 토글 버튼을 overlay로 추가했다.
+- Fullscreen API 진입·해제와 `fullscreenchange`를 연결하고 `aria-label`, `aria-pressed`, title을 현재 상태에 맞게 동기화했다. API 미지원 환경에서는 버튼을 숨기고 요청 거부 시 앱 동작을 유지한다.
+- RED→GREEN shell 테스트, 전체 CI 8 tests, production build와 artifact 검증을 통과했다. 실제 브라우저에서 진입·해제, 동일 높이 실측, JavaScript 오류 0건을 확인했다.
