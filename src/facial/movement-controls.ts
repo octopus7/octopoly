@@ -24,15 +24,33 @@ const MODE_LABELS: Readonly<Record<VertexMovementMode, string>> = {
   "constrained-plane": "제한 평면",
 };
 
+let movementControlsSequence = 0;
+
 export function mountMovementControls(
   panel: HTMLElement,
   overlay: HTMLElement,
   options: MovementControlsOptions,
 ): MovementControls {
   const document = panel.ownerDocument;
+  const toolStrip = panel.matches(".facial-tool-strip")
+    ? panel
+    : panel.querySelector<HTMLElement>(".facial-tool-strip") ?? panel;
   const element = document.createElement("section");
   element.className = "movement-controls";
   element.setAttribute("aria-label", "버텍스 이동 모드");
+
+  const trigger = document.createElement("button");
+  trigger.type = "button";
+  trigger.className = "facial-tool-button movement-controls__toggle";
+  trigger.dataset.action = "toggle-movement-controls";
+  trigger.setAttribute("aria-expanded", "false");
+  const popover = document.createElement("div");
+  popover.id = `movement-controls-popover-${++movementControlsSequence}`;
+  popover.className = "movement-controls__popover";
+  popover.hidden = true;
+  popover.setAttribute("aria-label", "버텍스 이동 모드");
+  trigger.setAttribute("aria-controls", popover.id);
+  trigger.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 2v20M2 12h20M12 2l-3 3m3-3 3 3M22 12l-3-3m3 3-3 3M12 22l-3-3m3 3 3-3M2 12l3-3m-3 3 3 3" /></svg>';
 
   const modeGroup = document.createElement("div");
   modeGroup.className = "movement-mode-buttons";
@@ -58,6 +76,9 @@ export function mountMovementControls(
 
   const publish = (): void => options.onChange(currentState);
   const render = (): void => {
+    const activeLabel = MODE_LABELS[currentState.mode];
+    trigger.setAttribute("aria-label", `버텍스 이동 도구: ${activeLabel}`);
+    trigger.title = `버텍스 이동 도구: ${activeLabel}`;
     for (const [mode, button] of modeButtons) {
       button.setAttribute("aria-pressed", String(currentState.mode === mode));
     }
@@ -124,10 +145,37 @@ export function mountMovementControls(
     planeOptions.append(label);
   }
 
-  element.append(modeGroup, planeOptions);
-  const heading = panel.querySelector("h2");
-  if (heading) heading.after(element);
-  else panel.prepend(element);
+  const setOpen = (open: boolean, restoreFocus = false): void => {
+    trigger.setAttribute("aria-expanded", String(open));
+    popover.hidden = !open;
+    if (restoreFocus) trigger.focus();
+  };
+  const handleToggle = (): void => {
+    const open = popover.hidden !== false;
+    setOpen(open);
+    if (open) {
+      const CustomEventConstructor = document.defaultView?.CustomEvent ?? CustomEvent;
+      document.dispatchEvent(new CustomEventConstructor("facial:tool-popover-open", {
+        detail: popover,
+      }));
+    }
+  };
+  const handlePopoverKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape" || popover.hidden) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setOpen(false, true);
+  };
+  const handleOtherToolPopover = (event: Event): void => {
+    if ((event as CustomEvent<HTMLElement>).detail !== popover) setOpen(false);
+  };
+  trigger.addEventListener("click", handleToggle);
+  element.addEventListener("keydown", handlePopoverKeydown);
+  document.addEventListener("facial:tool-popover-open", handleOtherToolPopover);
+
+  popover.append(modeGroup, planeOptions);
+  element.append(trigger, popover);
+  toolStrip.insertBefore(element, toolStrip.querySelector(".facial-mesh-drawer-toggle"));
   overlay.append(selector);
   render();
   publish();
@@ -143,6 +191,9 @@ export function mountMovementControls(
       disposed = true;
       for (const dispose of modeDisposers) dispose();
       for (const dispose of planeDisposers) dispose();
+      trigger.removeEventListener("click", handleToggle);
+      element.removeEventListener("keydown", handlePopoverKeydown);
+      document.removeEventListener("facial:tool-popover-open", handleOtherToolPopover);
       element.remove();
       selector.remove();
     },

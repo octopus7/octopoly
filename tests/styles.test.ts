@@ -24,8 +24,55 @@ describe("application stacking order", () => {
     expect(zIndexFor(".facial-panel-layer")).toBeGreaterThan(zIndexFor(".viewport-overlay"));
   });
 
-  it("keeps the app menu above the vertex gizmo overlay on narrow layouts", () => {
+  it("keeps the app menu above the Facial layer when their open panels overlap", () => {
+    expect(zIndexFor(".app-menu-anchor")).toBeGreaterThan(zIndexFor(".facial-panel-layer"));
     expect(zIndexFor(".app-menu-anchor")).toBeGreaterThan(zIndexFor(".viewport-overlay"));
+  });
+
+  it("uses a full non-blocking Facial layer with an independently sliding right drawer", () => {
+    expect(declarationFor(".facial-panel-layer", "inset")).toBe("0");
+    expect(declarationFor(".facial-panel-layer", "width")).toBe("100%");
+    expect(declarationFor(".facial-panel-layer", "pointer-events")).toBe("none");
+    expect(declarationFor(".facial-mesh-drawer", "position")).toBe("absolute");
+    expect(declarationFor(".facial-mesh-drawer", "transform")).toContain("translateX");
+    expect(declarationFor(".facial-mesh-drawer", "pointer-events")).toBe("none");
+    expect(declarationFor('.facial-mesh-drawer[data-open="true"]', "transform")).toBe("translateX(0)");
+    expect(declarationFor('.facial-mesh-drawer[data-open="true"]', "pointer-events")).toBe("auto");
+  });
+
+  it("keeps the compact Facial tool strip and selection card reachable above the viewport", () => {
+    expect(declarationFor(".facial-tool-strip", "position")).toBe("absolute");
+    expect(declarationFor(".facial-tool-strip", "pointer-events")).toBe("auto");
+    expect(declarationFor(".facial-tool-button", "width")).toBe("2.75rem");
+    expect(declarationFor(".facial-tool-button", "min-width")).toBe("2.75rem");
+    expect(declarationFor(".facial-tool-button", "height")).toBe("2.75rem");
+    expect(declarationFor(".facial-tool-button", "min-height")).toBe("2.75rem");
+    expect(declarationFor(".facial-selection-card", "position")).toBe("absolute");
+    expect(declarationFor(".facial-selection-card", "max-width")).toContain("rem");
+  });
+
+  it("lays out one compact action group without exposing hidden mesh actions", () => {
+    expect(declarationFor(".facial-mesh-row__actions", "display")).toBe("flex");
+    expect(declarationFor('.facial-mesh-row__actions[hidden]', "display")).toBe("none");
+  });
+
+  it("keeps all movement mode labels on one line", () => {
+    expect(declarationFor(".movement-mode-buttons button", "white-space")).toBe("nowrap");
+  });
+
+  it("includes safe-area-aware narrow layouts for the drawer, top strip, and compact selection", () => {
+    const mobile = stylesheet.match(/@media \(max-width: 520px\)\s*\{([\s\S]*)\}\s*$/)?.[1] ?? "";
+    expect(mobile).toContain(".facial-mesh-drawer");
+    expect(mobile).toContain("env(safe-area-inset-right)");
+    expect(mobile).toContain(".facial-tool-strip");
+    expect(mobile).toContain(".facial-selection-card");
+    expect(mobile).toMatch(/max-height:\s*min\(/);
+  });
+
+  it("places the narrow Facial tool strip below the logo menu trigger", () => {
+    const mobile = stylesheet.match(/@media \(max-width: 520px\)\s*\{([\s\S]*)\}\s*$/)?.[1] ?? "";
+    const toolStrip = mobile.match(/\.facial-tool-strip\s*\{([^}]*)\}/)?.[1] ?? "";
+    expect(toolStrip).toContain("top: max(5.25rem, calc(env(safe-area-inset-top) + 4.25rem))");
   });
 
   it("lays out scalable tabs and a scrollable menu panel", () => {

@@ -68,7 +68,7 @@ canvas:active {
 
 .app-menu-anchor {
   position: absolute;
-  z-index: 5;
+  z-index: 7;
   top: max(1rem, env(safe-area-inset-top));
   left: max(1rem, env(safe-area-inset-left));
   display: grid;
@@ -359,34 +359,146 @@ canvas:active {
 .facial-panel-layer {
   position: absolute;
   z-index: 6;
-  top: max(1rem, env(safe-area-inset-top));
-  right: max(1rem, env(safe-area-inset-right));
-  width: min(19rem, calc(100vw - 2rem));
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
   pointer-events: none;
 }
 
 .facial-panel {
-  display: grid;
-  max-height: calc(100dvh - 6rem);
-  gap: 0.75rem;
-  padding: 0.9rem;
-  overflow: auto;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.facial-tool-strip {
+  position: absolute;
+  z-index: 3;
+  top: max(1rem, env(safe-area-inset-top));
+  left: 50%;
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  padding: 0.35rem;
+  border: 1px solid #3d4d61;
+  border-radius: 0.75rem;
+  background: rgb(11 16 23 / 88%);
+  box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 25%);
+  pointer-events: auto;
+  backdrop-filter: blur(12px);
+  transform: translateX(-50%);
+}
+
+.facial-selection-card,
+.facial-mesh-drawer,
+.facial-file-menu,
+.movement-controls__popover {
   border: 1px solid #3d4d61;
   border-radius: 0.85rem;
-  background: rgb(11 16 23 / 88%);
+  background: rgb(11 16 23 / 92%);
   box-shadow: 0 0.8rem 2rem rgb(0 0 0 / 28%);
-  pointer-events: auto;
   backdrop-filter: blur(12px);
 }
 
-.facial-panel h2 {
+.facial-selection-card {
+  position: absolute;
+  z-index: 1;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(4rem, calc(env(safe-area-inset-bottom) + 3rem));
+  display: grid;
+  max-width: 19rem;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  pointer-events: auto;
+}
+
+.facial-selection-card h2,
+.facial-mesh-drawer h2,
+.facial-file-menu h2 {
   margin: 0;
   font-size: 0.9rem;
 }
 
-.movement-controls {
+.facial-selection-summary {
+  margin: 0;
+  color: #c8d4e3;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.facial-mesh-drawer {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  bottom: 0;
   display: grid;
+  width: min(21rem, calc(100vw - max(1rem, env(safe-area-inset-left))));
+  align-content: start;
+  gap: 0.75rem;
+  padding: max(4.75rem, calc(env(safe-area-inset-top) + 4rem)) max(1rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) 1rem;
+  overflow-y: auto;
+  pointer-events: none;
+  transform: translateX(calc(100% + 1rem));
+  transition: transform 180ms ease;
+}
+
+.facial-mesh-drawer[data-open="true"] {
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.facial-file-menu {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  left: 50%;
+  display: grid;
+  width: min(14rem, calc(100vw - 1.5rem));
   gap: 0.55rem;
+  padding: 0.75rem;
+  transform: translateX(-50%);
+}
+
+.facial-file-menu[hidden],
+.movement-controls__popover[hidden],
+.facial-mesh-row__actions[hidden] {
+  display: none;
+}
+
+.facial-tool-button {
+  display: grid;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0.4rem;
+  place-items: center;
+}
+
+.facial-tool-button svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.movement-controls {
+  position: relative;
+}
+
+.movement-controls__popover {
+  position: absolute;
+  top: calc(100% + 0.8rem);
+  left: 50%;
+  display: grid;
+  width: min(19rem, calc(100vw - 2rem));
+  gap: 0.55rem;
+  padding: 0.75rem;
+  transform: translateX(-50%);
 }
 
 .movement-mode-buttons {
@@ -399,6 +511,7 @@ canvas:active {
   min-width: 0;
   padding-inline: 0.35rem;
   font-size: 0.72rem;
+  white-space: nowrap;
 }
 
 .movement-plane-options {
@@ -511,9 +624,14 @@ canvas:active {
 
 .facial-mesh-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 0.35rem;
   align-items: center;
+}
+
+.facial-mesh-row__actions {
+  display: flex;
+  gap: 0.35rem;
 }
 
 .facial-mesh-row__select {
@@ -708,14 +826,42 @@ canvas:active {
   }
 
   .facial-panel-layer {
-    top: auto;
-    right: 0.75rem;
-    bottom: calc(max(3.75rem, env(safe-area-inset-bottom) + 3.25rem));
-    left: 0.75rem;
-    width: auto;
+    inset: 0;
+    width: 100%;
+    height: 100%;
   }
 
-  .facial-panel {
-    max-height: min(44dvh, 24rem);
+  .facial-tool-strip {
+    top: max(5.25rem, calc(env(safe-area-inset-top) + 4.25rem));
+  }
+
+  .facial-tool-button {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    height: 2.75rem;
+    min-height: 2.75rem;
+  }
+
+  .facial-selection-card {
+    right: max(0.75rem, env(safe-area-inset-right));
+    bottom: max(3.75rem, calc(env(safe-area-inset-bottom) + 3rem));
+    width: min(17rem, calc(100vw - max(1.5rem, env(safe-area-inset-left) + env(safe-area-inset-right))));
+    max-height: min(28dvh, 11rem);
+    padding: 0.65rem;
+    overflow-y: auto;
+  }
+
+  .facial-mesh-drawer {
+    width: min(19rem, calc(100vw - max(3.5rem, env(safe-area-inset-left) + 3rem)));
+    max-height: 100dvh;
+    padding:
+      max(9.5rem, calc(env(safe-area-inset-top) + 8.5rem))
+      max(0.75rem, env(safe-area-inset-right))
+      max(0.75rem, env(safe-area-inset-bottom))
+      0.75rem;
+  }
+
+  .movement-controls__popover {
+    width: min(19rem, calc(100vw - 1.5rem));
   }
 }

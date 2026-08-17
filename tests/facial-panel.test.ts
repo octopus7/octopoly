@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDefaultFacialWorkspace, deleteMesh, duplicateBaseMesh, moveVertex, renameMesh } from "../src/facial/workspace";
+import { createDefaultFacialWorkspace, deleteMesh, duplicateBaseMesh, moveVertex, renameMesh, selectMesh } from "../src/facial/workspace";
 import { mountFacialPanel } from "../src/facial/panel";
 
 describe("facial workspace panel", () => {
-  it("renders import, duplication, and mesh controls without export", () => {
+  it("separates selection, top tools, and the right mesh drawer", () => {
     const container = document.createElement("div");
     const panel = mountFacialPanel(container, {
       onImport: vi.fn(),
@@ -15,12 +15,198 @@ describe("facial workspace panel", () => {
 
     panel.render(createDefaultFacialWorkspace(), null);
 
-    expect(container.querySelector(".facial-panel")?.getAttribute("aria-label")).toBe("페이셜 작업");
-    expect(container.querySelector<HTMLInputElement>('input[type="file"]')?.accept).toContain(".obj");
-    expect(container.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.textContent).toContain("Base 복제");
-    expect(container.querySelector('section[aria-label="메시 목록"]')).not.toBeNull();
-    expect(container.querySelector('[data-mesh-id="base"]')?.textContent).toContain("Base Mask");
-    expect(container.textContent).not.toContain("내보내기");
+    const selection = container.querySelector<HTMLElement>('.facial-selection-card[aria-label="선택 및 보기"]');
+    const toolbar = container.querySelector<HTMLElement>('.facial-tool-strip[aria-label="페이셜 도구"]');
+    const drawer = container.querySelector<HTMLElement>('.facial-mesh-drawer[aria-label="메시 관리"]');
+    const fileMenu = toolbar?.querySelector<HTMLElement>('.facial-file-menu[aria-label="파일"]');
+    expect(selection?.querySelector("h2")?.textContent).toBe("선택 및 보기");
+    expect(toolbar).not.toBeNull();
+    expect(fileMenu).not.toBeNull();
+    expect(drawer?.querySelector("h2")?.textContent).toBe("메시 관리");
+    expect(drawer?.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.textContent).toContain("Base 복제");
+    expect(drawer?.querySelector('section[aria-label="메시 목록"]')).not.toBeNull();
+    expect(drawer?.querySelector('[data-mesh-id="base"]')?.textContent).toContain("Base Mask");
+    expect(selection?.querySelector('input[type="file"], [data-action="duplicate"], .facial-mesh-list')).toBeNull();
+  });
+
+  it("keeps the mesh drawer closed until toggled and closes it on Escape with focus restoration", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const panel = mountFacialPanel(container, {
+      onImport: vi.fn(),
+      onDuplicate: vi.fn(),
+      onSelectMesh: vi.fn(),
+      onRenameMesh: vi.fn(),
+    });
+    panel.render(createDefaultFacialWorkspace(), null);
+    const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-mesh-drawer"]')!;
+    const drawer = container.querySelector<HTMLElement>(".facial-mesh-drawer")!;
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-controls")).toBe(drawer.id);
+    expect(toggle.getAttribute("aria-label")).toContain("메시 관리");
+    expect(toggle.title).toContain("메시 관리");
+    expect(drawer.dataset.open).toBe("false");
+    expect(drawer.getAttribute("aria-hidden")).toBe("true");
+    expect(drawer.hasAttribute("inert")).toBe(true);
+
+    toggle.click();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(drawer.dataset.open).toBe("true");
+    expect(drawer.hasAttribute("inert")).toBe(false);
+
+    const duplicate = drawer.querySelector<HTMLButtonElement>('[data-action="duplicate"]')!;
+    duplicate.focus();
+    duplicate.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    }));
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(drawer.dataset.open).toBe("false");
+    expect(document.activeElement).toBe(toggle);
+
+    panel.dispose();
+    container.remove();
+  });
+
+  it("closes only the open mesh drawer when Escape bubbles from its focused trigger", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const panel = mountFacialPanel(container, {
+      onImport: vi.fn(),
+      onDuplicate: vi.fn(),
+      onSelectMesh: vi.fn(),
+      onRenameMesh: vi.fn(),
+    });
+    const drawerToggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-mesh-drawer"]')!;
+    const drawer = container.querySelector<HTMLElement>(".facial-mesh-drawer")!;
+    const fileToggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!;
+    const fileMenu = container.querySelector<HTMLElement>(".facial-file-menu")!;
+    const backgroundKeydown = vi.fn();
+    document.addEventListener("keydown", backgroundKeydown);
+
+    try {
+      fileToggle.click();
+      drawerToggle.focus();
+      drawerToggle.click();
+      const escape = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      });
+
+      drawerToggle.dispatchEvent(escape);
+
+      expect(drawer.dataset.open).toBe("false");
+      expect(drawerToggle.getAttribute("aria-expanded")).toBe("false");
+      expect(document.activeElement).toBe(drawerToggle);
+      expect(fileMenu.hidden).toBe(false);
+      expect(fileToggle.getAttribute("aria-expanded")).toBe("true");
+      expect(escape.defaultPrevented).toBe(true);
+      expect(backgroundKeydown).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("keydown", backgroundKeydown);
+      panel.dispose();
+      container.remove();
+    }
+  });
+
+  it("keeps the File menu collapsed, opens the OBJ picker, resets same-file selection, and restores focus on Escape", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const onImport = vi.fn();
+    const panel = mountFacialPanel(container, {
+      onImport,
+      onDuplicate: vi.fn(),
+      onSelectMesh: vi.fn(),
+      onRenameMesh: vi.fn(),
+    });
+    const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!;
+    const menu = container.querySelector<HTMLElement>(".facial-file-menu")!;
+    const input = menu.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const importAction = menu.querySelector<HTMLButtonElement>('[data-action="import-obj"]')!;
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-controls")).toBe(menu.id);
+    expect(toggle.getAttribute("aria-label")).toBe("파일 메뉴");
+    expect(toggle.title).toBe("파일 메뉴");
+    expect(menu.hidden).toBe(true);
+    expect(menu.querySelector("h2")?.textContent).toBe("파일");
+    expect(importAction.textContent).toBe("OBJ 가져오기");
+    expect(container.textContent).not.toMatch(/Export|내보내기/);
+
+    toggle.click();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(menu.hidden).toBe(false);
+    const pickerClick = vi.spyOn(input, "click");
+    importAction.click();
+    expect(pickerClick).toHaveBeenCalledOnce();
+
+    const file = new File(["v 0 0 0"], "mask.obj", { type: "text/plain" });
+    const setValue = vi.fn();
+    Object.defineProperties(input, {
+      files: { configurable: true, value: [file] },
+      value: { configurable: true, get: () => "mask.obj", set: setValue },
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(onImport).toHaveBeenCalledWith(file);
+    expect(setValue).toHaveBeenCalledWith("");
+
+    importAction.focus();
+    importAction.dispatchEvent(new KeyboardEvent("keydown", {
+      key: "Escape",
+      bubbles: true,
+      cancelable: true,
+    }));
+    expect(menu.hidden).toBe(true);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(toggle);
+
+    panel.dispose();
+    container.remove();
+  });
+
+  it("closes only the open File menu when Escape bubbles from its focused trigger", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const panel = mountFacialPanel(container, {
+      onImport: vi.fn(),
+      onDuplicate: vi.fn(),
+      onSelectMesh: vi.fn(),
+      onRenameMesh: vi.fn(),
+    });
+    const fileToggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!;
+    const fileMenu = container.querySelector<HTMLElement>(".facial-file-menu")!;
+    const drawerToggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-mesh-drawer"]')!;
+    const drawer = container.querySelector<HTMLElement>(".facial-mesh-drawer")!;
+    const backgroundKeydown = vi.fn();
+    document.addEventListener("keydown", backgroundKeydown);
+
+    try {
+      drawerToggle.click();
+      fileToggle.focus();
+      fileToggle.click();
+      const escape = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      });
+
+      fileToggle.dispatchEvent(escape);
+
+      expect(fileMenu.hidden).toBe(true);
+      expect(fileToggle.getAttribute("aria-expanded")).toBe("false");
+      expect(document.activeElement).toBe(fileToggle);
+      expect(drawer.dataset.open).toBe("true");
+      expect(drawerToggle.getAttribute("aria-expanded")).toBe("true");
+      expect(escape.defaultPrevented).toBe(true);
+      expect(backgroundKeydown).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("keydown", backgroundKeydown);
+      panel.dispose();
+      container.remove();
+    }
   });
 
   it("announces the selected vertex through a polite live region", () => {
@@ -36,6 +222,31 @@ describe("facial workspace panel", () => {
 
     const announcement = container.querySelector<HTMLElement>('.facial-selection-status[aria-live="polite"]');
     expect(announcement?.textContent).toMatch(/^정점 5 선택됨\. 좌표 X -?\d+\.\d{6}, Y -?\d+\.\d{6}, Z -?\d+\.\d{6}$/);
+  });
+
+  it("shows compact selection status and enables Focus only for a selected vertex", () => {
+    const container = document.createElement("div");
+    const onFocusSelected = vi.fn();
+    const panel = mountFacialPanel(container, {
+      onImport: vi.fn(),
+      onDuplicate: vi.fn(),
+      onSelectMesh: vi.fn(),
+      onRenameMesh: vi.fn(),
+      onFocusSelected,
+    });
+    const card = container.querySelector<HTMLElement>(".facial-selection-card")!;
+    const visibleStatus = card.querySelector<HTMLElement>(".facial-selection-summary")!;
+    const focusButton = card.querySelector<HTMLButtonElement>('[data-action="focus-selected"]')!;
+
+    panel.render(createDefaultFacialWorkspace(), null);
+    expect(visibleStatus.textContent).toBe("선택 정점 없음");
+    expect(focusButton.disabled).toBe(true);
+
+    panel.render(createDefaultFacialWorkspace(), 2);
+    expect(visibleStatus.textContent).toMatch(/^정점 3 · X -?\d+\.\d{6} · Y -?\d+\.\d{6} · Z -?\d+\.\d{6}$/);
+    expect(focusButton.disabled).toBe(false);
+    focusButton.click();
+    expect(onFocusSelected).toHaveBeenCalledOnce();
   });
 
   it("announces small model-scale coordinate changes without rounding them away", () => {
@@ -110,31 +321,130 @@ describe("facial workspace panel", () => {
     expect(onSelectMesh).toHaveBeenCalledWith("base");
   });
 
-  it("renders each copy as one compact row with accessible icon actions while the base has none", () => {
+  it("focuses the logical replacement after a focused inactive mesh is selected synchronously", () => {
     const container = document.createElement("div");
+    const focusSentinel = document.createElement("button");
+    document.body.append(container, focusSentinel);
+    let workspace = duplicateBaseMesh(createDefaultFacialWorkspace(), "copy-1");
+    let panel: ReturnType<typeof mountFacialPanel>;
+    panel = mountFacialPanel(container, {
+      onImport: vi.fn(),
+      onDuplicate: vi.fn(),
+      onSelectMesh: (meshId) => {
+        workspace = selectMesh(workspace, meshId);
+        panel.render(workspace, null);
+      },
+      onRenameMesh: vi.fn(),
+    });
+    panel.render(workspace, null);
+    const staleBase = container.querySelector<HTMLButtonElement>('[data-mesh-id="base"]')!;
+    staleBase.focus();
+
+    staleBase.click();
+
+    const replacementBase = [...container.querySelectorAll<HTMLButtonElement>(".facial-mesh-row__select")]
+      .find((button) => button.dataset.meshId === "base")!;
+    expect(replacementBase).not.toBe(staleBase);
+    expect(replacementBase.getAttribute("aria-pressed")).toBe("true");
+    expect(document.activeElement).toBe(replacementBase);
+
+    focusSentinel.focus();
+    const inactiveCopy = [...container.querySelectorAll<HTMLButtonElement>(".facial-mesh-row__select")]
+      .find((button) => button.dataset.meshId === "copy-1")!;
+    inactiveCopy.click();
+    expect(document.activeElement).toBe(focusSentinel);
+
+    panel.dispose();
+    container.remove();
+    focusSentinel.remove();
+  });
+
+  it("reveals actions only after a selected copy row is clicked again", () => {
+    const container = document.createElement("div");
+    let workspace = duplicateBaseMesh(
+      duplicateBaseMesh(createDefaultFacialWorkspace(), "copy-1"),
+      "copy-2",
+    );
+    let panel: ReturnType<typeof mountFacialPanel>;
+    const onSelectMesh = vi.fn((meshId: string) => {
+      workspace = selectMesh(workspace, meshId);
+      panel.render(workspace, null);
+    });
+    panel = mountFacialPanel(container, {
+      onImport: vi.fn(),
+      onDuplicate: vi.fn(),
+      onSelectMesh,
+      onRenameMesh: vi.fn(),
+    });
+    panel.render(workspace, null);
+
+    const rows = container.querySelectorAll(".facial-mesh-row");
+    const baseRow = rows[0]!;
+    expect(rows).toHaveLength(3);
+    expect(baseRow.querySelector('[data-mesh-id="base"]')?.textContent).toBe("Base Mask");
+    expect(baseRow.querySelector(".facial-mesh-row__actions")).toBeNull();
+    expect([...container.querySelectorAll<HTMLElement>(".facial-mesh-row__actions")]
+      .every((actions) => actions.hidden)).toBe(true);
+
+    const initialCopy = container.querySelector<HTMLButtonElement>('[data-mesh-id="copy-2"]')!;
+    const initialActions = initialCopy.closest(".facial-mesh-row")!
+      .querySelector<HTMLElement>(".facial-mesh-row__actions")!;
+    expect(initialCopy.getAttribute("aria-expanded")).toBe("false");
+    expect(initialCopy.getAttribute("aria-controls")).toBe(initialActions.id);
+
+    initialCopy.click();
+    expect(onSelectMesh).not.toHaveBeenCalled();
+    let visibleActions = [...container.querySelectorAll<HTMLElement>(".facial-mesh-row__actions")]
+      .filter((actions) => !actions.hidden);
+    expect(visibleActions).toHaveLength(1);
+    expect(container.querySelector('[data-mesh-id="copy-2"]')?.getAttribute("aria-expanded")).toBe("true");
+    expect(visibleActions[0]?.closest(".facial-mesh-row")?.querySelector("[data-mesh-id]")?.getAttribute("data-mesh-id"))
+      .toBe("copy-2");
+    expect(visibleActions[0]?.querySelector('[aria-label="Base Mask Copy 2 이름 변경"] svg[aria-hidden="true"]')).not.toBeNull();
+
+    container.querySelector<HTMLButtonElement>('[data-mesh-id="copy-1"]')?.click();
+    expect(onSelectMesh).toHaveBeenCalledOnce();
+    expect(onSelectMesh).toHaveBeenLastCalledWith("copy-1");
+    expect([...container.querySelectorAll<HTMLElement>(".facial-mesh-row__actions")]
+      .every((actions) => actions.hidden)).toBe(true);
+
+    container.querySelector<HTMLButtonElement>('[data-mesh-id="copy-1"]')?.click();
+    expect(onSelectMesh).toHaveBeenCalledOnce();
+    visibleActions = [...container.querySelectorAll<HTMLElement>(".facial-mesh-row__actions")]
+      .filter((actions) => !actions.hidden);
+    expect(visibleActions).toHaveLength(1);
+    expect(container.querySelector('[data-mesh-id="copy-1"]')?.getAttribute("aria-expanded")).toBe("true");
+    expect(visibleActions[0]?.querySelector('[aria-label="Base Mask Copy 1 삭제"]')).not.toBeNull();
+
+    container.querySelector<HTMLButtonElement>('[data-mesh-id="copy-1"]')?.click();
+    expect(onSelectMesh).toHaveBeenCalledOnce();
+    expect([...container.querySelectorAll<HTMLElement>(".facial-mesh-row__actions")]
+      .every((actions) => actions.hidden)).toBe(true);
+  });
+
+  it("uses one opaque ARIA action-group ID for a persisted mesh ID containing whitespace", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
     const panel = mountFacialPanel(container, {
       onImport: vi.fn(),
       onDuplicate: vi.fn(),
       onSelectMesh: vi.fn(),
       onRenameMesh: vi.fn(),
     });
-    panel.render(duplicateBaseMesh(createDefaultFacialWorkspace(), "copy-1"), null);
+    panel.render(duplicateBaseMesh(createDefaultFacialWorkspace(), "persisted copy id"), null);
+    const copyButton = [...container.querySelectorAll<HTMLButtonElement>(".facial-mesh-row__select")]
+      .find((button) => button.dataset.meshId === "persisted copy id")!;
+    const controls = copyButton.getAttribute("aria-controls")!;
 
-    const rows = container.querySelectorAll(".facial-mesh-row");
-    const baseRow = rows[0]!;
-    const copyRow = rows[1]!;
-    expect(rows).toHaveLength(2);
-    expect(baseRow.querySelector('[data-mesh-id="base"]')?.textContent).toBe("Base Mask");
-    expect(baseRow.querySelectorAll('[data-action="rename-mesh"], [data-action="delete-mesh"]')).toHaveLength(0);
-    expect(copyRow.querySelector('[data-mesh-id="copy-1"]')?.textContent).toBe("Base Mask Copy 1");
-    expect(copyRow.querySelector("input")).toBeNull();
+    expect(copyButton.dataset.meshId).toBe("persisted copy id");
+    expect(controls).not.toMatch(/\s/);
+    expect(document.getElementById(controls)).toBe(
+      copyButton.closest(".facial-mesh-row")?.querySelector(".facial-mesh-row__actions"),
+    );
+    expect(container.querySelectorAll(`#${controls}`)).toHaveLength(1);
 
-    const renameButton = copyRow.querySelector<HTMLButtonElement>('[data-action="rename-mesh"]');
-    const deleteButton = copyRow.querySelector<HTMLButtonElement>('[data-action="delete-mesh"]');
-    expect(renameButton?.getAttribute("aria-label")).toBe("Base Mask Copy 1 이름 변경");
-    expect(deleteButton?.getAttribute("aria-label")).toBe("Base Mask Copy 1 삭제");
-    expect(renameButton?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
-    expect(deleteButton?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+    panel.dispose();
+    container.remove();
   });
 
   it("opens an accessible rename dialog with the current name focused", () => {

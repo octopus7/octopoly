@@ -89,6 +89,8 @@ function closeAppMenu(button: HTMLButtonElement, menu: HTMLElement): void {
 }
 
 function attachAppMenuToggle(button: HTMLButtonElement, menu: HTMLElement): () => void {
+  const anchor = button.parentElement;
+  if (!anchor) throw new Error("App menu anchor is missing.");
   const onClick = (): void => {
     const expanded = button.getAttribute("aria-expanded") === "true";
     button.setAttribute("aria-expanded", String(!expanded));
@@ -97,13 +99,14 @@ function attachAppMenuToggle(button: HTMLButtonElement, menu: HTMLElement): () =
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== "Escape" || menu.hidden) return;
     event.preventDefault();
+    event.stopPropagation();
     closeAppMenu(button, menu);
   };
   button.addEventListener("click", onClick);
-  button.ownerDocument.addEventListener("keydown", onKeyDown);
+  anchor.addEventListener("keydown", onKeyDown);
   return () => {
     button.removeEventListener("click", onClick);
-    button.ownerDocument.removeEventListener("keydown", onKeyDown);
+    anchor.removeEventListener("keydown", onKeyDown);
   };
 }
 

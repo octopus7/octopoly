@@ -1,5 +1,7 @@
 import type { FacialWorkspace } from "./workspace";
 
+let facialPanelSequence = 0;
+
 function formatCoordinate(value: number): string {
   const absolute = Math.abs(value);
   return absolute !== 0 && (absolute < 0.000_001 || absolute >= 1_000_000_000)
@@ -27,18 +29,90 @@ export function mountFacialPanel(
   callbacks: FacialPanelCallbacks,
 ): FacialPanel {
   const document = container.ownerDocument;
+  const panelId = ++facialPanelSequence;
   const modalRoot = container.closest<HTMLElement>(".viewport") ?? container;
   const element = document.createElement("aside");
   element.className = "facial-panel";
   element.setAttribute("aria-label", "페이셜 작업");
 
+  const toolStrip = document.createElement("div");
+  toolStrip.className = "facial-tool-strip";
+  toolStrip.setAttribute("role", "toolbar");
+  toolStrip.setAttribute("aria-label", "페이셜 도구");
+  const fileMenu = document.createElement("section");
+  fileMenu.className = "facial-file-menu";
+  fileMenu.setAttribute("aria-label", "파일");
+  fileMenu.id = `facial-file-menu-${panelId}`;
+  fileMenu.hidden = true;
+  const fileHeading = document.createElement("h2");
+  fileHeading.textContent = "파일";
+  const fileMenuToggle = document.createElement("button");
+  fileMenuToggle.type = "button";
+  fileMenuToggle.className = "facial-tool-button facial-file-menu-toggle";
+  fileMenuToggle.dataset.action = "toggle-file-menu";
+  fileMenuToggle.setAttribute("aria-label", "파일 메뉴");
+  fileMenuToggle.title = "파일 메뉴";
+  fileMenuToggle.setAttribute("aria-expanded", "false");
+  fileMenuToggle.setAttribute("aria-controls", fileMenu.id);
+  fileMenuToggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 3h10l6 6v12H4V3Zm9 1v6h6M8 15h8M8 18h6" /></svg>';
+
+  const selectionCard = document.createElement("section");
+  selectionCard.className = "facial-selection-card";
+  selectionCard.setAttribute("aria-label", "선택 및 보기");
   const heading = document.createElement("h2");
-  heading.textContent = "페이셜 작업";
+  heading.textContent = "선택 및 보기";
+
+  const meshDrawer = document.createElement("aside");
+  meshDrawer.className = "facial-mesh-drawer";
+  meshDrawer.setAttribute("aria-label", "메시 관리");
+  meshDrawer.id = `facial-mesh-drawer-${panelId}`;
+  meshDrawer.dataset.open = "false";
+  meshDrawer.setAttribute("aria-hidden", "true");
+  meshDrawer.setAttribute("inert", "");
+  const meshHeading = document.createElement("h2");
+  meshHeading.textContent = "메시 관리";
+  const meshDrawerToggle = document.createElement("button");
+  meshDrawerToggle.type = "button";
+  meshDrawerToggle.className = "facial-tool-button facial-mesh-drawer-toggle";
+  meshDrawerToggle.dataset.action = "toggle-mesh-drawer";
+  meshDrawerToggle.setAttribute("aria-label", "메시 관리 열기");
+  meshDrawerToggle.title = "메시 관리 열기";
+  meshDrawerToggle.setAttribute("aria-expanded", "false");
+  meshDrawerToggle.setAttribute("aria-controls", meshDrawer.id);
+  meshDrawerToggle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 5h16M4 12h16M4 19h16M16 5v14" /></svg>';
+  const setMeshDrawerOpen = (open: boolean, restoreFocus = false): void => {
+    meshDrawerToggle.setAttribute("aria-expanded", String(open));
+    meshDrawerToggle.setAttribute("aria-label", open ? "메시 관리 닫기" : "메시 관리 열기");
+    meshDrawerToggle.title = open ? "메시 관리 닫기" : "메시 관리 열기";
+    meshDrawer.dataset.open = String(open);
+    meshDrawer.setAttribute("aria-hidden", String(!open));
+    meshDrawer.toggleAttribute("inert", !open);
+    if (restoreFocus) meshDrawerToggle.focus();
+  };
+  const handleMeshDrawerToggle = (): void => {
+    setMeshDrawerOpen(meshDrawer.dataset.open !== "true");
+  };
+  const handleMeshDrawerKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape" || meshDrawer.dataset.open !== "true") return;
+    event.preventDefault();
+    event.stopPropagation();
+    setMeshDrawerOpen(false, true);
+  };
+  meshDrawerToggle.addEventListener("click", handleMeshDrawerToggle);
+  meshDrawerToggle.addEventListener("keydown", handleMeshDrawerKeydown);
+  meshDrawer.addEventListener("keydown", handleMeshDrawerKeydown);
 
   const importInput = document.createElement("input");
   importInput.type = "file";
   importInput.accept = ".obj,model/obj,text/plain";
   importInput.setAttribute("aria-label", "OBJ 가져오기");
+  importInput.hidden = true;
+  const importButton = document.createElement("button");
+  importButton.type = "button";
+  importButton.dataset.action = "import-obj";
+  importButton.textContent = "OBJ 가져오기";
+  const handleImportButton = (): void => importInput.click();
+  importButton.addEventListener("click", handleImportButton);
   const handleImport = (): void => {
     const file = importInput.files?.[0];
     try {
@@ -48,6 +122,34 @@ export function mountFacialPanel(
     }
   };
   importInput.addEventListener("change", handleImport);
+  const setFileMenuOpen = (open: boolean, restoreFocus = false): void => {
+    fileMenuToggle.setAttribute("aria-expanded", String(open));
+    fileMenu.hidden = !open;
+    if (restoreFocus) fileMenuToggle.focus();
+  };
+  const handleFileMenuToggle = (): void => {
+    const open = fileMenu.hidden !== false;
+    setFileMenuOpen(open);
+    if (open) {
+      const CustomEventConstructor = document.defaultView?.CustomEvent ?? CustomEvent;
+      document.dispatchEvent(new CustomEventConstructor("facial:tool-popover-open", {
+        detail: fileMenu,
+      }));
+    }
+  };
+  const handleFileMenuKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== "Escape" || fileMenu.hidden) return;
+    event.preventDefault();
+    event.stopPropagation();
+    setFileMenuOpen(false, true);
+  };
+  const handleOtherToolPopover = (event: Event): void => {
+    if ((event as CustomEvent<HTMLElement>).detail !== fileMenu) setFileMenuOpen(false);
+  };
+  fileMenuToggle.addEventListener("click", handleFileMenuToggle);
+  fileMenuToggle.addEventListener("keydown", handleFileMenuKeydown);
+  fileMenu.addEventListener("keydown", handleFileMenuKeydown);
+  document.addEventListener("facial:tool-popover-open", handleOtherToolPopover);
 
   const duplicateButton = document.createElement("button");
   duplicateButton.type = "button";
@@ -66,6 +168,8 @@ export function mountFacialPanel(
   meshList.className = "facial-mesh-list";
   meshList.setAttribute("aria-label", "메시 목록");
 
+  const selectionSummary = document.createElement("p");
+  selectionSummary.className = "facial-selection-summary";
   const selectionAnnouncement = document.createElement("p");
   selectionAnnouncement.className = "visually-hidden facial-selection-status";
   selectionAnnouncement.setAttribute("aria-live", "polite");
@@ -106,6 +210,17 @@ export function mountFacialPanel(
   let dialogSubmitting = false;
   const renameButtonsByMeshId = new Map<string, HTMLButtonElement>();
   let activeMeshButton: HTMLButtonElement | null = null;
+  let revealedMeshId: string | null = null;
+  let meshActionSequence = 0;
+  const syncRevealedActions = (): void => {
+    for (const actions of meshList.querySelectorAll<HTMLElement>(".facial-mesh-row__actions")) {
+      const revealed = actions.dataset.meshId === revealedMeshId;
+      actions.hidden = !revealed;
+      actions.closest(".facial-mesh-row")
+        ?.querySelector<HTMLButtonElement>(".facial-mesh-row__select")
+        ?.setAttribute("aria-expanded", String(revealed));
+    }
+  };
   const priorInertAttributes = new Map<HTMLElement, string | null>();
   const makeBackgroundInert = (): void => {
     if (priorInertAttributes.size > 0) return;
@@ -247,14 +362,11 @@ export function mountFacialPanel(
   renameInput.addEventListener("input", handleRenameInput);
   dialogBackdrop.addEventListener("keydown", handleDialogKeydown);
 
-  element.append(
-    heading,
-    importInput,
-    duplicateButton,
-    focusButton,
-    meshList,
-    selectionAnnouncement,
-  );
+  fileMenu.append(fileHeading, importButton, importInput);
+  toolStrip.append(fileMenuToggle, fileMenu, meshDrawerToggle);
+  selectionCard.append(heading, selectionSummary, focusButton, selectionAnnouncement);
+  meshDrawer.append(meshHeading, duplicateButton, meshList);
+  element.append(toolStrip, selectionCard, meshDrawer);
   container.append(element);
   modalRoot.append(dialogBackdrop);
 
@@ -262,14 +374,28 @@ export function mountFacialPanel(
     element,
     render: (workspace, selectedVertex) => {
       if (!dialogBackdrop.hidden && !dialogSubmitting) closeDialog(false);
+      if (revealedMeshId !== workspace.activeMeshId
+        || !workspace.meshes.some((mesh) => mesh.id === revealedMeshId && mesh.kind === "copy")) {
+        revealedMeshId = null;
+      }
       renameButtonsByMeshId.clear();
       activeMeshButton = null;
       const activeMesh = workspace.meshes.find((mesh) => mesh.id === workspace.activeMeshId);
       focusButton.disabled = selectedVertex === null;
       const positionOffset = selectedVertex === null ? -1 : selectedVertex * 3;
+      const coordinates = selectedVertex === null || !activeMesh
+        ? null
+        : [
+            formatCoordinate(activeMesh.geometry.positions[positionOffset]!),
+            formatCoordinate(activeMesh.geometry.positions[positionOffset + 1]!),
+            formatCoordinate(activeMesh.geometry.positions[positionOffset + 2]!),
+          ] as const;
+      selectionSummary.textContent = selectedVertex === null || !coordinates
+        ? "선택 정점 없음"
+        : `정점 ${selectedVertex + 1} · X ${coordinates[0]} · Y ${coordinates[1]} · Z ${coordinates[2]}`;
       selectionAnnouncement.textContent = selectedVertex === null || !activeMesh
         ? "선택된 정점 없음"
-        : `정점 ${selectedVertex + 1} 선택됨. 좌표 X ${formatCoordinate(activeMesh.geometry.positions[positionOffset]!)}, Y ${formatCoordinate(activeMesh.geometry.positions[positionOffset + 1]!)}, Z ${formatCoordinate(activeMesh.geometry.positions[positionOffset + 2]!)}`;
+        : `정점 ${selectedVertex + 1} 선택됨. 좌표 X ${coordinates![0]}, Y ${coordinates![1]}, Z ${coordinates![2]}`;
       meshList.replaceChildren(...workspace.meshes.map((mesh) => {
         const meshRow = document.createElement("div");
         meshRow.className = "facial-mesh-row";
@@ -278,11 +404,31 @@ export function mountFacialPanel(
         meshButton.dataset.meshId = mesh.id;
         meshButton.textContent = mesh.name;
         meshButton.className = "facial-mesh-row__select";
-        meshButton.setAttribute("aria-pressed", String(mesh.id === workspace.activeMeshId));
-        if (mesh.id === workspace.activeMeshId) activeMeshButton = meshButton;
-        meshButton.addEventListener("click", () => callbacks.onSelectMesh(mesh.id));
+        const selected = mesh.id === workspace.activeMeshId;
+        meshButton.setAttribute("aria-pressed", String(selected));
+        if (selected) activeMeshButton = meshButton;
+        meshButton.addEventListener("click", () => {
+          const restoreLogicalFocus = document.activeElement === meshButton;
+          revealedMeshId = selected && mesh.kind === "copy"
+            ? revealedMeshId === mesh.id ? null : mesh.id
+            : null;
+          if (!selected) callbacks.onSelectMesh(mesh.id);
+          syncRevealedActions();
+          if (restoreLogicalFocus) {
+            [...meshList.querySelectorAll<HTMLButtonElement>(".facial-mesh-row__select")]
+              .find((candidate) => candidate.dataset.meshId === mesh.id)
+              ?.focus();
+          }
+        });
         meshRow.append(meshButton);
         if (mesh.kind === "copy") {
+          const actionGroup = document.createElement("div");
+          actionGroup.className = "facial-mesh-row__actions";
+          actionGroup.dataset.meshId = mesh.id;
+          actionGroup.id = `facial-mesh-actions-${panelId}-${++meshActionSequence}`;
+          actionGroup.hidden = revealedMeshId !== mesh.id;
+          meshButton.setAttribute("aria-controls", actionGroup.id);
+          meshButton.setAttribute("aria-expanded", String(!actionGroup.hidden));
           const createActionButton = (action: string, label: string, path: string): HTMLButtonElement => {
             const button = document.createElement("button");
             button.type = "button";
@@ -316,14 +462,23 @@ export function mountFacialPanel(
           deleteButton.addEventListener("click", () => {
             openDeleteDialog(mesh.id, mesh.name, deleteButton);
           });
-          meshRow.append(renameButton, deleteButton);
+          actionGroup.append(renameButton, deleteButton);
+          meshRow.append(actionGroup);
         }
         return meshRow;
       }));
     },
     dispose: () => {
       importInput.removeEventListener("change", handleImport);
+      importButton.removeEventListener("click", handleImportButton);
+      fileMenuToggle.removeEventListener("click", handleFileMenuToggle);
+      fileMenuToggle.removeEventListener("keydown", handleFileMenuKeydown);
+      fileMenu.removeEventListener("keydown", handleFileMenuKeydown);
+      document.removeEventListener("facial:tool-popover-open", handleOtherToolPopover);
       duplicateButton.removeEventListener("click", callbacks.onDuplicate);
+      meshDrawerToggle.removeEventListener("click", handleMeshDrawerToggle);
+      meshDrawerToggle.removeEventListener("keydown", handleMeshDrawerKeydown);
+      meshDrawer.removeEventListener("keydown", handleMeshDrawerKeydown);
       focusButton.removeEventListener("click", handleFocusSelected);
       saveButton.removeEventListener("click", handleSave);
       cancelButton.removeEventListener("click", handleCancel);

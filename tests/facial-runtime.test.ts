@@ -80,11 +80,52 @@ describe("facial runtime composition", () => {
       },
     });
 
+    root.querySelector<HTMLButtonElement>('[data-action="toggle-mesh-drawer"]')?.click();
     root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.click();
 
     expect(initialScene?.meshId).toBe("base");
     expect(setScene).toHaveBeenLastCalledWith(expect.objectContaining({ meshId: "copy-1" }));
     expect(root.querySelector('[data-mesh-id="copy-1"]')).not.toBeNull();
+    expect(root.querySelector<HTMLElement>(".facial-mesh-row__actions")?.hidden).toBe(true);
+    expect(root.querySelector<HTMLElement>(".movement-controls__popover")?.hidden).toBe(true);
+    expect(root.querySelector(".movement-controls")?.parentElement?.classList.contains("facial-tool-strip")).toBe(true);
+
+    root.querySelector<HTMLButtonElement>('[data-mesh-id="copy-1"]')?.click();
+    expect(root.querySelector<HTMLElement>(".facial-mesh-row__actions")?.hidden).toBe(false);
+  });
+
+  it("keeps File and movement tool popovers from remaining open together", () => {
+    const root = document.createElement("div");
+    startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      startViewport: () => ({
+        setScene: vi.fn(),
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+    });
+    const fileToggle = root.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!;
+    const fileMenu = root.querySelector<HTMLElement>(".facial-file-menu")!;
+    const movementToggle = root.querySelector<HTMLButtonElement>('[data-action="toggle-movement-controls"]')!;
+    const movementPopover = root.querySelector<HTMLElement>(".movement-controls__popover")!;
+
+    fileToggle.click();
+    expect(fileMenu.hidden).toBe(false);
+    movementToggle.click();
+    expect(movementPopover.hidden).toBe(false);
+    expect(fileMenu.hidden).toBe(true);
+    expect(fileToggle.getAttribute("aria-expanded")).toBe("false");
+
+    fileToggle.click();
+    expect(fileMenu.hidden).toBe(false);
+    expect(movementPopover.hidden).toBe(true);
+    expect(movementToggle.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("routes a synchronous autosave failure through the runtime error callback", () => {
@@ -140,6 +181,7 @@ describe("facial runtime composition", () => {
     });
     root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.click();
     storage.failWrites = true;
+    root.querySelector<HTMLButtonElement>('[data-mesh-id="copy-1"]')?.click();
     const trigger = root.querySelector<HTMLButtonElement>('[data-action="rename-mesh"]')!;
     trigger.click();
     const input = root.querySelector<HTMLInputElement>('[data-mesh-dialog-input]')!;
@@ -186,6 +228,7 @@ describe("facial runtime composition", () => {
     });
     root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.click();
     storage.failWrites = true;
+    root.querySelector<HTMLButtonElement>('[data-mesh-id="copy-1"]')?.click();
     root.querySelector<HTMLButtonElement>('[data-action="delete-mesh"]')?.click();
     const deleteButton = root.querySelector<HTMLButtonElement>('[data-dialog-action="delete"]')!;
 
@@ -369,6 +412,7 @@ describe("facial runtime composition", () => {
     });
     root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')?.click();
 
+    root.querySelector<HTMLButtonElement>('[data-mesh-id="copy-1"]')?.click();
     root.querySelector<HTMLButtonElement>('[data-action="delete-mesh"]')?.click();
     expect(setScene).toHaveBeenLastCalledWith(expect.objectContaining({ meshId: "copy-1" }));
     root.querySelector<HTMLButtonElement>('[data-dialog-action="delete"]')?.click();

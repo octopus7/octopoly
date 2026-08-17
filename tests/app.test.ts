@@ -62,10 +62,12 @@ describe("OctoPoly app composition", () => {
 
     try {
       root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!.click();
+      root.querySelector<HTMLButtonElement>('[data-action="toggle-mesh-drawer"]')!.click();
       root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')!.click();
       const menuToggle = root.querySelector<HTMLButtonElement>(".app-menu-toggle")!;
       const menu = root.querySelector<HTMLElement>(".app-menu")!;
       menuToggle.click();
+      root.querySelector<HTMLButtonElement>('[data-mesh-id="copy-1"]')!.click();
       const trigger = root.querySelector<HTMLButtonElement>('[data-action="rename-mesh"]')!;
       trigger.click();
       const input = root.querySelector<HTMLInputElement>('[data-mesh-dialog-input]')!;
@@ -82,6 +84,55 @@ describe("OctoPoly app composition", () => {
       expect(menuToggle.getAttribute("aria-expanded")).toBe("true");
       expect(menu.hidden).toBe(false);
     } finally {
+      app.dispose();
+      root.remove();
+    }
+  });
+
+  it("closes only the app menu when Escape bubbles from its focused trigger", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const app = mountOctoPolyApp(root, {
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      startCube: vi.fn(() => vi.fn()),
+      startViewport: vi.fn(() => ({
+        setScene: vi.fn(),
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      })),
+    });
+    const backgroundKeydown = vi.fn();
+    document.addEventListener("keydown", backgroundKeydown);
+
+    try {
+      root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!.click();
+      const drawerToggle = root.querySelector<HTMLButtonElement>('[data-action="toggle-mesh-drawer"]')!;
+      const drawer = root.querySelector<HTMLElement>(".facial-mesh-drawer")!;
+      drawerToggle.click();
+      const menuToggle = root.querySelector<HTMLButtonElement>(".app-menu-toggle")!;
+      const menu = root.querySelector<HTMLElement>(".app-menu")!;
+      menuToggle.focus();
+      menuToggle.click();
+      const escape = new KeyboardEvent("keydown", {
+        key: "Escape",
+        bubbles: true,
+        cancelable: true,
+      });
+
+      menuToggle.dispatchEvent(escape);
+
+      expect(menu.hidden).toBe(true);
+      expect(menuToggle.getAttribute("aria-expanded")).toBe("false");
+      expect(document.activeElement).toBe(menuToggle);
+      expect(drawer.dataset.open).toBe("true");
+      expect(drawerToggle.getAttribute("aria-expanded")).toBe("true");
+      expect(escape.defaultPrevented).toBe(true);
+      expect(backgroundKeydown).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("keydown", backgroundKeydown);
       app.dispose();
       root.remove();
     }
