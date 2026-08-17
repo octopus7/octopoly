@@ -3,6 +3,7 @@ export type MeshKind = "base" | "copy";
 export interface MeshGeometry {
   readonly positions: number[];
   readonly indices: number[];
+  readonly uvs?: number[];
 }
 
 export interface FacialMesh {
@@ -25,6 +26,14 @@ export function isValidMeshGeometry(geometry: MeshGeometry): boolean {
     || !Array.isArray(geometry.indices)
     || geometry.indices.length < 3
     || geometry.indices.length % 3 !== 0) return false;
+  if (geometry.uvs !== undefined) {
+    if (!Array.isArray(geometry.uvs) || geometry.uvs.length !== geometry.positions.length / 3 * 2) return false;
+    for (const coordinate of geometry.uvs) {
+      if (typeof coordinate !== "number"
+        || !Number.isFinite(coordinate)
+        || !Number.isFinite(Math.fround(coordinate))) return false;
+    }
+  }
   for (let index = 0; index < geometry.positions.length; index += 1) {
     const coordinate = geometry.positions[index];
     if (typeof coordinate !== "number"
@@ -149,6 +158,7 @@ export function replaceBaseMesh(
       geometry: {
         positions: [...geometry.positions],
         indices: [...geometry.indices],
+        ...(geometry.uvs ? { uvs: [...geometry.uvs] } : {}),
       },
     }],
   };
@@ -232,6 +242,7 @@ export function duplicateBaseMesh(workspace: FacialWorkspace, copyId: string): F
     geometry: {
       positions: [...baseMesh.geometry.positions],
       indices: [...baseMesh.geometry.indices],
+      ...(baseMesh.geometry.uvs ? { uvs: [...baseMesh.geometry.uvs] } : {}),
     },
   };
   return {

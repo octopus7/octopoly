@@ -1,8 +1,8 @@
 # OctoPoly 후속 구현 로드맵
 
-이 문서는 아직 구현하지 않은 후속 기능의 순서와 제품 계약을 기록한다. 각 단계는 앞 단계와 현재 배포가 안정화된 뒤 별도 작업으로 착수하며, 이 문서에 적혔다는 이유만으로 미리 구현하지 않는다.
+이 문서는 구현된 `+1차`와 아직 구현하지 않은 후속 기능의 순서 및 제품 계약을 기록한다. 각 후속 단계는 앞 단계와 현재 배포가 안정화된 뒤 별도 작업으로 착수하며, 이 문서에 적혔다는 이유만으로 미리 구현하지 않는다.
 
-## +1차: 작업 모델 텍스처 로드 및 렌더링
+## +1차: 작업 모델 텍스처 로드 및 렌더링 (구현 완료)
 
 - 현재 작업 중인 모델에 texture image를 별도로 load하고 UV를 사용해 WebGL viewport에서 렌더링한다.
 - OBJ는 geometry-only 호환 import로 유지하며, texture가 필요한 OBJ는 이 단계에서 별도 texture 선택이 필요함을 명시한다.
@@ -10,6 +10,10 @@
 - 텍스처가 없거나 로드에 실패하면 현재 기본 surface 렌더링을 안전하게 유지한다.
 - 첫 구현은 PNG/JPEG를 필수 범위로 하고 WebP 및 KTX2는 compatibility/optimization 단계에서 검토한다.
 - GLB에 embedded된 material/texture import는 `+5차`에서 정식 지원한다.
+- OBJ의 complete usable UV는 position/UV reference pair로 seam-safe compact remap하고, UV가 없거나 일부 face의 UV가 누락·범위 이탈한 경우 geometry-only로 import한다.
+- texture는 active model ID에 session 동안만 연결한다. PNG/JPEG binary를 `localStorage`에 저장하지 않으며 reload 또는 해당 model topology replacement 후에는 다시 선택한다.
+- decode는 object URL 없이 `createImageBitmap(File)`을 사용하고 완료 후 `ImageBitmap.close()`를 호출한다. 최신 요청만 publish하며 model switch, topology replacement 및 runtime disposal 뒤의 stale decode는 폐기한다.
+- GL texture upload는 transactional하게 교체하고 실패 시 이전 texture를 유지한다. model deletion/topology replacement, texture replacement 및 viewport disposal에서 GPU texture를 삭제한다.
 
 ## +2차: 자체 작업 파일 로컬 저장 및 로드
 

@@ -92,6 +92,22 @@ describe("facial workspace", () => {
     expect(original.meshes).toHaveLength(1);
   });
 
+  it("validates and independently copies aligned finite UV coordinates", () => {
+    const geometry = {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0, 1],
+    };
+    expect(isValidMeshGeometry(geometry)).toBe(true);
+    expect(isValidMeshGeometry({ ...geometry, uvs: [0, 0] })).toBe(false);
+    expect(isValidMeshGeometry({ ...geometry, uvs: [0, 0, Number.NaN, 0, 0, 1] })).toBe(false);
+
+    const replaced = replaceBaseMesh(createDefaultFacialWorkspace(), geometry);
+    const duplicated = duplicateBaseMesh(replaced, "copy-uv");
+    expect(duplicated.meshes[1]?.geometry.uvs).toEqual(geometry.uvs);
+    expect(duplicated.meshes[1]?.geometry.uvs).not.toBe(replaced.meshes[0]?.geometry.uvs);
+  });
+
   it("deletes an active copied mesh and returns activity to the base", () => {
     const workspace = duplicateBaseMesh(createDefaultFacialWorkspace(), "copy-1");
 

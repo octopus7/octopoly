@@ -17,6 +17,7 @@ export interface OctoPolyAppDependencies {
   readonly nextCopyId: () => string;
   readonly parseObjText: (source: string) => MeshGeometry;
   readonly loadPresetText: NonNullable<FacialRuntimeOptions["loadPresetText"]>;
+  readonly decodeTextureImage?: NonNullable<FacialRuntimeOptions["decodeTextureImage"]>;
   readonly startCube: (canvas: HTMLCanvasElement) => () => void;
   readonly startFacial?: (options: FacialRuntimeOptions) => FacialRuntime;
   readonly startViewport: (
@@ -69,6 +70,9 @@ export function mountOctoPolyApp(
         nextCopyId: dependencies.nextCopyId,
         parseObjText: dependencies.parseObjText,
         loadPresetText: dependencies.loadPresetText,
+        ...(dependencies.decodeTextureImage
+          ? { decodeTextureImage: dependencies.decodeTextureImage }
+          : {}),
         startViewport: dependencies.startViewport,
         onError: reportError,
       });

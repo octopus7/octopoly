@@ -2,6 +2,7 @@ import "./styles.css";
 import { mountOctoPolyApp } from "./app";
 import { parseObjMesh } from "./facial/obj";
 import { createPresetTextLoader } from "./facial/preset-loader";
+import { createTextureImageDecoder } from "./facial/texture-loader";
 import type { FacialViewportScene } from "./facial/scene";
 import {
   startCubeViewport,
@@ -23,6 +24,7 @@ const nextCopyId = (): string => {
 };
 
 const loadPresetText = createPresetTextLoader((url) => window.fetch(url));
+const decodeTextureImage = createTextureImageDecoder((source) => window.createImageBitmap(source));
 
 mountOctoPolyApp(root, {
   storage: {
@@ -32,6 +34,7 @@ mountOctoPolyApp(root, {
   nextCopyId,
   parseObjText: parseObjMesh,
   loadPresetText,
+  decodeTextureImage,
   startCube: startCubeViewport,
   startViewport: (canvas, initialScene) => {
     const viewport = startMeshViewport(canvas, initialScene);
@@ -41,6 +44,8 @@ mountOctoPolyApp(root, {
         viewport.setScene(scene);
         viewport.setSelectedVertex(scene.selectedVertex);
       },
+      setTexture: (textureKey, source) => viewport.setTexture(textureKey, source),
+      deleteTexture: (textureKey) => viewport.deleteTexture(textureKey),
       projectVertex: (vertexIndex) => viewport.projectVertex(vertexIndex),
       projectAxis: (vertexIndex, axis) => viewport.projectAxis(vertexIndex, axis),
       pickVertex: (x, y, radius) => viewport.pickVertex(x, y, radius),

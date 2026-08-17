@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as renderer from "../src/viewport/renderer";
 
 type FakeWebGL = WebGL2RenderingContext & {
+  bindTexture: ReturnType<typeof vi.fn>;
   bufferData: ReturnType<typeof vi.fn>;
   depthFunc: ReturnType<typeof vi.fn>;
   drawArrays: ReturnType<typeof vi.fn>;
@@ -12,7 +13,11 @@ type FakeWebGL = WebGL2RenderingContext & {
   deleteBuffer: ReturnType<typeof vi.fn>;
   deleteProgram: ReturnType<typeof vi.fn>;
   deleteVertexArray: ReturnType<typeof vi.fn>;
+  deleteTexture: ReturnType<typeof vi.fn>;
+  createTexture: ReturnType<typeof vi.fn>;
+  getError: ReturnType<typeof vi.fn>;
   shaderSource: ReturnType<typeof vi.fn>;
+  texImage2D: ReturnType<typeof vi.fn>;
   uniform1f: ReturnType<typeof vi.fn>;
   useProgram: ReturnType<typeof vi.fn>;
 };
@@ -36,14 +41,29 @@ function createFakeWebGL(): FakeWebGL {
     LEQUAL: 0x0203,
     LINES: 0x0001,
     LINK_STATUS: 0x8b82,
+    NO_ERROR: 0,
+    INVALID_VALUE: 0x0501,
     POINTS: 0x0000,
+    TEXTURE0: 0x84c0,
+    TEXTURE_2D: 0x0de1,
+    TEXTURE_MAG_FILTER: 0x2800,
+    TEXTURE_MIN_FILTER: 0x2801,
+    TEXTURE_WRAP_S: 0x2802,
+    TEXTURE_WRAP_T: 0x2803,
+    LINEAR: 0x2601,
+    CLAMP_TO_EDGE: 0x812f,
+    RGBA: 0x1908,
+    UNPACK_FLIP_Y_WEBGL: 0x9240,
     STATIC_DRAW: 0x88e4,
     TRIANGLES: 0x0004,
+    UNSIGNED_BYTE: 0x1401,
     UNSIGNED_INT: 0x1405,
     UNSIGNED_SHORT: 0x1403,
     VERTEX_SHADER: 0x8b31,
     attachShader: noop,
+    activeTexture: noop,
     bindBuffer: noop,
+    bindTexture: vi.fn(),
     bindVertexArray: noop,
     bufferData: vi.fn(),
     clear: noop,
@@ -52,10 +72,12 @@ function createFakeWebGL(): FakeWebGL {
     createBuffer: vi.fn(object),
     createProgram: vi.fn(object),
     createShader: vi.fn(object),
+    createTexture: vi.fn(object),
     createVertexArray: vi.fn(object),
     deleteBuffer: vi.fn(),
     deleteProgram: vi.fn(),
     deleteShader: noop,
+    deleteTexture: vi.fn(),
     deleteVertexArray: vi.fn(),
     depthFunc: vi.fn(),
     disable: vi.fn(),
@@ -63,7 +85,8 @@ function createFakeWebGL(): FakeWebGL {
     drawElements: vi.fn(),
     enable: vi.fn(),
     enableVertexAttribArray: noop,
-    getAttribLocation: vi.fn((_program: WebGLProgram, name: string) => name === "aPosition" ? 0 : 1),
+    getAttribLocation: vi.fn((_program: WebGLProgram, name: string) => name === "aPosition" ? 0 : name === "aNormal" ? 1 : 2),
+    getError: vi.fn(() => 0),
     getProgramInfoLog: vi.fn(() => ""),
     getProgramParameter: vi.fn(() => true),
     getShaderInfoLog: vi.fn(() => ""),
@@ -71,8 +94,12 @@ function createFakeWebGL(): FakeWebGL {
     getUniformLocation: vi.fn((_program: WebGLProgram, name: string) => ({ name })),
     lineWidth: noop,
     linkProgram: noop,
+    pixelStorei: noop,
     shaderSource: vi.fn(),
+    texImage2D: vi.fn(),
+    texParameteri: noop,
     uniform1f: vi.fn(),
+    uniform1i: noop,
     uniform3fv: noop,
     uniformMatrix4fv: noop,
     useProgram: vi.fn(),
@@ -218,6 +245,114 @@ describe("mesh viewport renderer", () => {
     expect(gl.drawArrays).toHaveBeenCalledWith(gl.POINTS, 0, 3);
     expect(gl.depthFunc).toHaveBeenCalledWith(gl.LEQUAL);
 
+    controller.dispose();
+  });
+
+  it("uploads an active-model texture and draws faces before editable overlays", () => {
+    const { canvas, flushFrame, gl } = createHarness();
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: {
+        positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+        uvs: [0, 0, 1, 0, 0.5, 1],
+      },
+      editable: true,
+      textureKey: "base",
+    });
+    const bitmap = { width: 2, height: 2 } as ImageBitmap;
+
+    controller.setTexture("base", bitmap);
+    flushFrame();
+
+    expect(gl.texImage2D).toHaveBeenCalledWith(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      bitmap,
+    );
+    const faceDraw = gl.drawElements.mock.invocationCallOrder[0]!;
+    const edgeDraw = gl.drawElements.mock.invocationCallOrder[1]!;
+    const pointDraw = gl.drawArrays.mock.invocationCallOrder[0]!;
+    expect(faceDraw).toBeLessThan(edgeDraw);
+    expect(edgeDraw).toBeLessThan(pointDraw);
+
+    controller.dispose();
+    expect(gl.deleteTexture).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the prior GL texture when replacement upload fails, then deletes it exactly once on disposal", () => {
+    const { canvas, gl } = createHarness();
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: {
+        positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+        uvs: [0, 0, 1, 0, 0.5, 1],
+      },
+      editable: true,
+      textureKey: "base",
+    });
+    const first = { width: 2, height: 2 } as ImageBitmap;
+    const replacement = { width: 4, height: 4 } as ImageBitmap;
+    controller.setTexture("base", first);
+    const firstTexture = gl.createTexture.mock.results[0]!.value;
+    gl.getError.mockReturnValueOnce(gl.NO_ERROR).mockReturnValueOnce(gl.INVALID_VALUE);
+
+    expect(() => controller.setTexture("base", replacement)).toThrow(/WebGL 텍스처 업로드 오류/);
+    expect(gl.deleteTexture).toHaveBeenCalledTimes(1);
+    expect(gl.deleteTexture).not.toHaveBeenCalledWith(firstTexture);
+
+    controller.dispose();
+    expect(gl.deleteTexture).toHaveBeenCalledTimes(2);
+    expect(gl.deleteTexture).toHaveBeenCalledWith(firstTexture);
+  });
+
+  it("deletes the prior texture after successful replacement and the current texture on explicit deletion", () => {
+    const { canvas, gl } = createHarness();
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: {
+        positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+        uvs: [0, 0, 1, 0, 0.5, 1],
+      },
+      editable: true,
+      textureKey: "base",
+    });
+    controller.setTexture("base", { width: 2, height: 2 } as ImageBitmap);
+    const firstTexture = gl.createTexture.mock.results[0]!.value;
+    controller.setTexture("base", { width: 4, height: 4 } as ImageBitmap);
+    const secondTexture = gl.createTexture.mock.results[1]!.value;
+
+    expect(gl.deleteTexture).toHaveBeenCalledTimes(1);
+    expect(gl.deleteTexture).toHaveBeenCalledWith(firstTexture);
+
+    controller.deleteTexture("base");
+    expect(gl.deleteTexture).toHaveBeenCalledTimes(2);
+    expect(gl.deleteTexture).toHaveBeenCalledWith(secondTexture);
+
+    controller.dispose();
+    expect(gl.deleteTexture).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders the same keyed texture after switching away from and back to its model", () => {
+    const { canvas, flushFrame, gl } = createHarness();
+    const geometry = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0.5, 1],
+    };
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry, editable: true, textureKey: "base",
+    });
+    controller.setTexture("base", { width: 2, height: 2 } as ImageBitmap);
+    const baseTexture = gl.createTexture.mock.results[0]!.value;
+
+    controller.setScene({ geometry, editable: true, textureKey: "copy-1" });
+    controller.setScene({ geometry, editable: true, textureKey: "base" });
+    flushFrame();
+
+    expect(gl.bindTexture).toHaveBeenCalledWith(gl.TEXTURE_2D, baseTexture);
     controller.dispose();
   });
 
@@ -652,7 +787,7 @@ describe("mesh viewport renderer", () => {
       "wheel",
     ]);
     expect(observerDisconnect).toHaveBeenCalledTimes(expectedDisconnects);
-    expect(gl.deleteBuffer).toHaveBeenCalledTimes(3);
+    expect(gl.deleteBuffer).toHaveBeenCalledTimes(4);
     expect(gl.deleteVertexArray).toHaveBeenCalledOnce();
     expect(gl.deleteProgram).toHaveBeenCalledOnce();
   });
@@ -686,7 +821,7 @@ describe("mesh viewport renderer", () => {
 
     expect(cancelAnimationFrame).toHaveBeenCalledWith(42);
     expect(observerDisconnect).toHaveBeenCalledOnce();
-    expect(gl.deleteBuffer).toHaveBeenCalledTimes(3);
+    expect(gl.deleteBuffer).toHaveBeenCalledTimes(4);
     expect(gl.deleteVertexArray).toHaveBeenCalledOnce();
     expect(gl.deleteProgram).toHaveBeenCalledOnce();
   });

@@ -10,12 +10,15 @@ import {
 const VERTEX_SHADER = `#version 300 es
 in vec3 aPosition;
 in vec3 aNormal;
+in vec2 aUv;
 uniform mat4 uViewProjection;
 uniform float uPointSize;
 out vec3 vNormal;
+out vec2 vUv;
 
 void main() {
   vNormal = aNormal;
+  vUv = aUv;
   gl_Position = uViewProjection * vec4(aPosition, 1.0);
   gl_PointSize = uPointSize;
 }`;
@@ -23,7 +26,10 @@ void main() {
 const FRAGMENT_SHADER = `#version 300 es
 precision highp float;
 in vec3 vNormal;
+in vec2 vUv;
 uniform vec3 uColor;
+uniform sampler2D uTexture;
+uniform float uUseTexture;
 uniform float uLighting;
 uniform float uPointMode;
 out vec4 outColor;
@@ -38,7 +44,8 @@ void main() {
   vec3 light = normalize(vec3(0.6, 0.9, 0.7));
   float diffuse = max(dot(normal, light), 0.0);
   float intensity = 0.32 + diffuse * 0.68;
-  outColor = vec4(uColor * intensity, 1.0);
+  vec4 surface = uUseTexture > 0.5 ? texture(uTexture, vUv) : vec4(uColor, 1.0);
+  outColor = vec4(surface.rgb * intensity, surface.a);
 }`;
 
 const DEFAULT_COLOR: readonly [number, number, number] = [0.23, 0.57, 0.92];
@@ -64,12 +71,14 @@ const CUBE_INDICES = [
 export interface ViewportMeshGeometry {
   readonly positions: readonly number[];
   readonly indices: readonly number[];
+  readonly uvs?: readonly number[];
 }
 
 export interface ViewportScene {
   readonly geometry: ViewportMeshGeometry;
   readonly editable: boolean;
   readonly color?: readonly [number, number, number];
+  readonly textureKey?: string;
 }
 
 export type ViewportDragPlane = "view" | "xy" | "yz" | "xz";
@@ -86,6 +95,8 @@ interface PreparedScene {
   readonly editable: boolean;
   readonly color: readonly [number, number, number];
   readonly vertices: Float32Array;
+  readonly uvs: Float32Array | null;
+  readonly textureKey: string | null;
   readonly triangleIndices: Uint16Array | Uint32Array;
   readonly edgeIndices: Uint16Array | Uint32Array;
   readonly indexType: number;
@@ -94,11 +105,14 @@ interface PreparedScene {
 interface ProgramInputs {
   readonly position: number;
   readonly normal: number;
+  readonly uv: number;
   readonly viewProjection: WebGLUniformLocation;
   readonly color: WebGLUniformLocation;
   readonly lighting: WebGLUniformLocation;
   readonly pointSize: WebGLUniformLocation;
   readonly pointMode: WebGLUniformLocation;
+  readonly texture: WebGLUniformLocation;
+  readonly useTexture: WebGLUniformLocation;
 }
 
 function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
@@ -151,15 +165,19 @@ function requireUniform(
 function getProgramInputs(gl: WebGL2RenderingContext, program: WebGLProgram): ProgramInputs {
   const position = gl.getAttribLocation(program, "aPosition");
   const normal = gl.getAttribLocation(program, "aNormal");
-  if (position < 0 || normal < 0) throw new Error("메시 렌더링 vertex attribute를 찾지 못했습니다.");
+  const uv = gl.getAttribLocation(program, "aUv");
+  if (position < 0 || normal < 0 || uv < 0) throw new Error("메시 렌더링 vertex attribute를 찾지 못했습니다.");
   return {
     position,
     normal,
+    uv,
     viewProjection: requireUniform(gl, program, "uViewProjection"),
     color: requireUniform(gl, program, "uColor"),
     lighting: requireUniform(gl, program, "uLighting"),
     pointSize: requireUniform(gl, program, "uPointSize"),
     pointMode: requireUniform(gl, program, "uPointMode"),
+    texture: requireUniform(gl, program, "uTexture"),
+    useTexture: requireUniform(gl, program, "uUseTexture"),
   };
 }
 
@@ -185,6 +203,17 @@ function validateGeometry(geometry: ViewportMeshGeometry): void {
     const vertexIndex = indices[index];
     if (!Number.isInteger(vertexIndex) || vertexIndex === undefined || vertexIndex < 0 || vertexIndex >= vertexCount) {
       throw new Error(`Viewport geometry index ${String(vertexIndex)} at offset ${index} is outside the vertex range.`);
+    }
+  }
+  if (geometry.uvs !== undefined) {
+    if (geometry.uvs.length !== vertexCount * 2) {
+      throw new Error("Viewport geometry UV length must provide two coordinates per vertex.");
+    }
+    for (let index = 0; index < geometry.uvs.length; index += 1) {
+      const coordinate = geometry.uvs[index];
+      if (coordinate === undefined || !Number.isFinite(coordinate) || !Number.isFinite(Math.fround(coordinate))) {
+        throw new Error(`Viewport geometry UV at index ${index} must be a finite 32-bit float.`);
+      }
     }
   }
 }
@@ -242,6 +271,8 @@ function prepareScene(gl: WebGL2RenderingContext, scene: ViewportScene): Prepare
     editable: scene.editable,
     color,
     vertices,
+    uvs: scene.geometry.uvs ? new Float32Array(scene.geometry.uvs) : null,
+    textureKey: scene.textureKey ?? null,
     triangleIndices: new IndexArray(indices),
     edgeIndices: new IndexArray(createEdgeIndices(indices)),
     indexType: useUint32 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT,
@@ -331,8 +362,10 @@ export class MeshViewportController {
   readonly #inputs: ProgramInputs;
   readonly #vertexArray: WebGLVertexArrayObject;
   readonly #vertexBuffer: WebGLBuffer;
+  readonly #uvBuffer: WebGLBuffer;
   readonly #triangleBuffer: WebGLBuffer;
   readonly #edgeBuffer: WebGLBuffer;
+  readonly #textures = new Map<string, WebGLTexture>();
   readonly #camera = new OrbitCamera();
   readonly #resizeObserver: ResizeObserver;
   readonly #detachControls: () => void;
@@ -352,6 +385,7 @@ export class MeshViewportController {
     const program = createProgram(gl);
     let vertexArray: WebGLVertexArrayObject | null = null;
     let vertexBuffer: WebGLBuffer | null = null;
+    let uvBuffer: WebGLBuffer | null = null;
     let triangleBuffer: WebGLBuffer | null = null;
     let edgeBuffer: WebGLBuffer | null = null;
     let resizeObserver: ResizeObserver | null = null;
@@ -360,9 +394,10 @@ export class MeshViewportController {
       const inputs = getProgramInputs(gl, program);
       vertexArray = gl.createVertexArray();
       vertexBuffer = gl.createBuffer();
+      uvBuffer = gl.createBuffer();
       triangleBuffer = gl.createBuffer();
       edgeBuffer = gl.createBuffer();
-      if (!vertexArray || !vertexBuffer || !triangleBuffer || !edgeBuffer) {
+      if (!vertexArray || !vertexBuffer || !uvBuffer || !triangleBuffer || !edgeBuffer) {
         throw new Error("메시 렌더링 버퍼를 생성하지 못했습니다.");
       }
 
@@ -372,6 +407,7 @@ export class MeshViewportController {
       this.#inputs = inputs;
       this.#vertexArray = vertexArray;
       this.#vertexBuffer = vertexBuffer;
+      this.#uvBuffer = uvBuffer;
       this.#triangleBuffer = triangleBuffer;
       this.#edgeBuffer = edgeBuffer;
       this.#scene = prepareScene(gl, initialScene);
@@ -395,6 +431,9 @@ export class MeshViewportController {
       gl.vertexAttribPointer(inputs.position, 3, gl.FLOAT, false, 24, 0);
       gl.enableVertexAttribArray(inputs.normal);
       gl.vertexAttribPointer(inputs.normal, 3, gl.FLOAT, false, 24, 12);
+      gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer);
+      gl.enableVertexAttribArray(inputs.uv);
+      gl.vertexAttribPointer(inputs.uv, 2, gl.FLOAT, false, 8, 0);
       this.#uploadScene();
 
       detachControls = attachCameraControls(canvas, this.#camera, () => this.#notifyViewChange());
@@ -426,6 +465,7 @@ export class MeshViewportController {
       resizeObserver?.disconnect();
       detachControls?.();
       if (vertexBuffer) gl.deleteBuffer(vertexBuffer);
+      if (uvBuffer) gl.deleteBuffer(uvBuffer);
       if (triangleBuffer) gl.deleteBuffer(triangleBuffer);
       if (edgeBuffer) gl.deleteBuffer(edgeBuffer);
       if (vertexArray) gl.deleteVertexArray(vertexArray);
@@ -459,6 +499,55 @@ export class MeshViewportController {
       this.#selectedVertex = null;
     }
     this.#uploadScene();
+    this.invalidate();
+  }
+
+  setTexture(textureKey: string, source: TexImageSource): void {
+    this.#assertActive();
+    if (!textureKey || this.#scene.textureKey !== textureKey) {
+      throw new Error("현재 작업 모델에만 텍스처를 적용할 수 있습니다.");
+    }
+    if (!this.#scene.uvs) {
+      throw new Error("현재 작업 모델에는 사용할 수 있는 UV 좌표가 없습니다.");
+    }
+    const gl = this.#gl;
+    if (gl.getError() !== gl.NO_ERROR) {
+      throw new Error("기존 WebGL 오류 때문에 텍스처를 안전하게 업로드하지 못했습니다.");
+    }
+    const candidate = gl.createTexture();
+    if (!candidate) throw new Error("WebGL 텍스처를 생성하지 못했습니다.");
+    try {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, candidate);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+      const uploadError = gl.getError();
+      if (uploadError !== gl.NO_ERROR) {
+        throw new Error(`WebGL 텍스처 업로드 오류 (0x${uploadError.toString(16)})`);
+      }
+    } catch (error) {
+      gl.deleteTexture(candidate);
+      throw error;
+    } finally {
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+    const previous = this.#textures.get(textureKey);
+    this.#textures.set(textureKey, candidate);
+    if (previous) gl.deleteTexture(previous);
+    this.invalidate();
+  }
+
+  deleteTexture(textureKey: string): void {
+    this.#assertActive();
+    const texture = this.#textures.get(textureKey);
+    if (!texture) return;
+    this.#textures.delete(textureKey);
+    this.#gl.deleteTexture(texture);
     this.invalidate();
   }
 
@@ -605,7 +694,10 @@ export class MeshViewportController {
     this.#resizeObserver.disconnect();
     this.#detachControls();
     this.#viewChangeListeners.clear();
+    for (const texture of this.#textures.values()) this.#gl.deleteTexture(texture);
+    this.#textures.clear();
     this.#gl.deleteBuffer(this.#vertexBuffer);
+    this.#gl.deleteBuffer(this.#uvBuffer);
     this.#gl.deleteBuffer(this.#triangleBuffer);
     this.#gl.deleteBuffer(this.#edgeBuffer);
     this.#gl.deleteVertexArray(this.#vertexArray);
@@ -627,6 +719,12 @@ export class MeshViewportController {
     gl.bindVertexArray(this.#vertexArray);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.#vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, this.#scene.vertices, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.#uvBuffer);
+    gl.bufferData(
+      gl.ARRAY_BUFFER,
+      this.#scene.uvs ?? new Float32Array(this.#scene.positions.length / 3 * 2),
+      gl.DYNAMIC_DRAW,
+    );
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#triangleBuffer);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.#scene.triangleIndices, gl.DYNAMIC_DRAW);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#edgeBuffer);
@@ -656,7 +754,13 @@ export class MeshViewportController {
       gl.bindVertexArray(this.#vertexArray);
       gl.uniformMatrix4fv(this.#inputs.viewProjection, false, this.#camera.viewProjection(width / height));
 
-      this.#setStyle(this.#scene.color, 1, 1, false);
+      const texture = this.#scene.uvs && this.#scene.textureKey
+        ? this.#textures.get(this.#scene.textureKey)
+        : undefined;
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, texture ?? null);
+      gl.uniform1i(this.#inputs.texture, 0);
+      this.#setStyle(this.#scene.color, 1, 1, false, Boolean(texture));
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#triangleBuffer);
       gl.drawElements(gl.TRIANGLES, this.#scene.triangleIndices.length, this.#scene.indexType, 0);
 
@@ -686,12 +790,19 @@ export class MeshViewportController {
     }
   }
 
-  #setStyle(color: readonly [number, number, number], lighting: number, pointSize: number, pointMode: boolean): void {
+  #setStyle(
+    color: readonly [number, number, number],
+    lighting: number,
+    pointSize: number,
+    pointMode: boolean,
+    useTexture = false,
+  ): void {
     const gl = this.#gl;
     gl.uniform3fv(this.#inputs.color, color);
     gl.uniform1f(this.#inputs.lighting, lighting);
     gl.uniform1f(this.#inputs.pointSize, pointSize);
     gl.uniform1f(this.#inputs.pointMode, pointMode ? 1 : 0);
+    gl.uniform1f(this.#inputs.useTexture, useTexture ? 1 : 0);
   }
 }
 

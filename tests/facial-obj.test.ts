@@ -61,6 +61,95 @@ describe("parseObjMesh", () => {
     ).toEqual([0, 1, 2, 0, 2, 3]);
   });
 
+  it("remaps position and UV reference pairs so OBJ seams remain intact", () => {
+    expect(parseObjMesh(`
+      v 0 0 0
+      v 1 0 0
+      v 0 1 0
+      vt 0 0
+      vt 1 0
+      vt 0 1
+      vt 1 1
+      f 1/1 2/2 3/3
+      f 1/4 3/3 2/2
+    `)).toEqual({
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+      indices: [0, 1, 2, 3, 2, 1],
+      uvs: [0, 0, 1, 0, 0, 1, 1, 1],
+    });
+  });
+
+  it("resolves negative UV references relative to declared texture coordinates", () => {
+    expect(parseObjMesh(`
+      v 0 0 0
+      v 1 0 0
+      v 0 1 0
+      vt 0 0
+      vt 1 0
+      vt 0 1
+      f 1/-3 2/-2 3/-1
+    `)).toEqual({
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0, 1],
+    });
+  });
+
+  it("falls back to geometry-only output when selected faces do not all have UVs", () => {
+    expect(parseObjMesh(`
+      v 0 0 0
+      v 1 0 0
+      v 0 1 0
+      vt 0 0
+      vt 1 0
+      vt 0 1
+      f 1/1 2/2 3/3
+      f 1 3 2
+    `)).toEqual({
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2, 0, 2, 1],
+    });
+  });
+
+  it("keeps valid geometry but omits invalid out-of-range UV references", () => {
+    expect(parseObjMesh(`
+      v 0 0 0
+      v 1 0 0
+      v 0 1 0
+      vt 0 0
+      f 1/1 2/2 3/1
+    `)).toEqual({
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    });
+  });
+
+  it("keeps valid geometry but omits non-finite UV records", () => {
+    expect(parseObjMesh(`
+      v 0 0 0
+      v 1 0 0
+      v 0 1 0
+      vt Infinity 0
+      f 1/1 2/1 3/1
+    `)).toEqual({
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    });
+  });
+
+  it("keeps valid geometry but omits malformed UV records", () => {
+    expect(parseObjMesh(`
+      v 0 0 0
+      v 1 0 0
+      v 0 1 0
+      vt nope 0
+      f 1/1 2/1 3/1
+    `)).toEqual({
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    });
+  });
+
   it("rejects non-finite vertex coordinates", () => {
     expect(() =>
       parseObjMesh(`

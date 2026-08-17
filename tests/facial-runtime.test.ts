@@ -5,6 +5,7 @@ import {
   type FacialViewportPort,
 } from "../src/facial/runtime";
 import type { FacialViewportScene } from "../src/facial/scene";
+import { FACIAL_WORKSPACE_STORAGE_KEY } from "../src/facial/storage";
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -32,13 +33,480 @@ function pointerEvent(type: string, x: number, y: number): PointerEvent {
 function deferred<T>(): {
   readonly promise: Promise<T>;
   readonly resolve: (value: T) => void;
+  readonly reject: (reason: unknown) => void;
 } {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((complete) => { resolve = complete; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((complete, fail) => {
+    resolve = complete;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
+
+function seedUvWorkspace(storage: MemoryStorage): void {
+  storage.values.set(FACIAL_WORKSPACE_STORAGE_KEY, JSON.stringify({
+    version: 1,
+    activeMeshId: "base",
+    meshes: [{
+      id: "base",
+      name: "Base Mask",
+      kind: "base",
+      geometry: {
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+        uvs: [0, 0, 1, 0, 0, 1],
+      },
+    }],
+  }));
 }
 
 describe("facial runtime composition", () => {
+  it("decodes a PNG for the active UV model, uploads it by mesh ID, and closes the bitmap without persistence", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const close = vi.fn();
+    const bitmap = { close } as unknown as ImageBitmap;
+    const decodeTextureImage = vi.fn(async () => bitmap);
+    const setTexture = vi.fn();
+    let initialScene: FacialViewportScene | undefined;
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(),
+      decodeTextureImage,
+      startViewport: (_canvas, scene) => {
+        initialScene = scene;
+        return {
+          setScene: vi.fn(),
+          setTexture,
+          deleteTexture: vi.fn(),
+          projectVertex: vi.fn(() => null),
+          pickVertex: vi.fn(() => null),
+          dispose: vi.fn(),
+        };
+      },
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    const file = new File([new Uint8Array([1, 2, 3])], "surface.png", { type: "image/png" });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(setTexture).toHaveBeenCalledOnce());
+
+    expect(initialScene).toEqual(expect.objectContaining({ meshId: "base", textureKey: "base" }));
+    expect(decodeTextureImage).toHaveBeenCalledWith(file);
+    expect(setTexture).toHaveBeenCalledWith("base", bitmap);
+    expect(close).toHaveBeenCalledOnce();
+    expect([...storage.values.values()].some((value) => value.includes("textureKey") || value.includes("surface.png"))).toBe(false);
+    runtime.dispose();
+  });
+
+  it("rejects unsupported texture MIME types before decode without replacing the surface", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const decodeTextureImage = vi.fn();
+    const setTexture = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(),
+      decodeTextureImage,
+      onError,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    const file = new File(["bad"], "surface.webp", { type: "image/webp" });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await Promise.resolve();
+
+    expect(decodeTextureImage).not.toHaveBeenCalled();
+    expect(setTexture).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/PNG.*JPEG/) }));
+    runtime.dispose();
+  });
+
+  it("rejects texture selection on a geometry-only model before decode", async () => {
+    const root = document.createElement("div");
+    const decodeTextureImage = vi.fn(async () => ({ close: vi.fn() } as unknown as ImageBitmap));
+    const setTexture = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(),
+      decodeTextureImage,
+      onError,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    const file = new File(["png"], "surface.png", { type: "image/png" });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(decodeTextureImage).not.toHaveBeenCalled();
+    expect(setTexture).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/UV/) }));
+    runtime.dispose();
+  });
+
+  it("routes a synchronous texture decoder failure through the status error callback", () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const failure = new Error("sync decode failed");
+    const onError = vi.fn();
+    const setTexture = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      decodeTextureImage: () => { throw failure; },
+      onError,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["png"], "surface.png", { type: "image/png" })],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(onError).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledWith(failure);
+    expect(setTexture).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
+
+  it("closes a decoded bitmap without upload when the active model changes during decode", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const pending = deferred<ImageBitmap>();
+    const close = vi.fn();
+    const bitmap = { close } as unknown as ImageBitmap;
+    const setTexture = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      decodeTextureImage: () => pending.promise,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["png"], "surface.png", { type: "image/png" })],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')!.click();
+    pending.resolve(bitmap);
+    await pending.promise;
+    await Promise.resolve();
+
+    expect(setTexture).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+    runtime.dispose();
+  });
+
+  it("drops a pending decoded texture after switching away from and back to the same model", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const pending = deferred<ImageBitmap>();
+    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const setTexture = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      decodeTextureImage: () => pending.promise,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["png"], "surface.png", { type: "image/png" })],
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-mesh-id="base"]')!.click();
+
+    pending.resolve(bitmap);
+    await pending.promise;
+    await Promise.resolve();
+
+    expect(setTexture).not.toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    runtime.dispose();
+  });
+
+  it("drops a pending decoded texture when OBJ import replaces the same model topology", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const pending = deferred<ImageBitmap>();
+    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const setTexture = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({
+        positions: [0, 0, 0, 2, 0, 0, 0, 2, 0], indices: [0, 1, 2],
+      })),
+      loadPresetText: vi.fn(async () => "replacement"),
+      decodeTextureImage: () => pending.promise,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["png"], "surface.png", { type: "image/png" })],
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    pending.resolve(bitmap);
+    await pending.promise;
+    await Promise.resolve();
+
+    expect(setTexture).not.toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    runtime.dispose();
+  });
+
+  it("suppresses an older decode rejection after the same model topology is replaced", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const pending = deferred<ImageBitmap>();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({
+        positions: [0, 0, 0, 2, 0, 0, 0, 2, 0], indices: [0, 1, 2],
+      })),
+      loadPresetText: vi.fn(async () => "replacement"),
+      decodeTextureImage: () => pending.promise,
+      onError,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture: vi.fn(), deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["png"], "surface.png", { type: "image/png" })],
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    pending.reject(new Error("stale decode failed"));
+    await pending.promise.catch(() => undefined);
+    await Promise.resolve();
+
+    expect(onError).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
+
+  it("keeps the latest texture request when an older decode finishes last", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const first = deferred<ImageBitmap>();
+    const second = deferred<ImageBitmap>();
+    const firstBitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const secondBitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const decodeTextureImage = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const setTexture = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), decodeTextureImage,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["first"], "first.png", { type: "image/png" })],
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["second"], "second.jpg", { type: "image/jpeg" })],
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    second.resolve(secondBitmap);
+    await second.promise;
+    await Promise.resolve();
+    first.resolve(firstBitmap);
+    await first.promise;
+    await Promise.resolve();
+
+    expect(setTexture).toHaveBeenCalledOnce();
+    expect(setTexture).toHaveBeenCalledWith("base", secondBitmap);
+    expect(firstBitmap.close).toHaveBeenCalledOnce();
+    expect(secondBitmap.close).toHaveBeenCalledOnce();
+    runtime.dispose();
+  });
+
+  it("suppresses an older decode rejection after a newer texture succeeds", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const first = deferred<ImageBitmap>();
+    const secondBitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const decodeTextureImage = vi.fn()
+      .mockReturnValueOnce(first.promise)
+      .mockResolvedValueOnce(secondBitmap);
+    const setTexture = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), decodeTextureImage, onError,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["first"], "first.png", { type: "image/png" })],
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["second"], "second.png", { type: "image/png" })],
+    });
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(setTexture).toHaveBeenCalledOnce());
+
+    first.reject(new Error("stale decode failed"));
+    await first.promise.catch(() => undefined);
+    await Promise.resolve();
+
+    expect(onError).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
+
+  it("closes a late decoded bitmap without upload or error after runtime disposal", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const pending = deferred<ImageBitmap>();
+    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const setTexture = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: () => pending.promise,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File(["png"], "surface.png", { type: "image/png" })],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    runtime.dispose();
+    pending.resolve(bitmap);
+    await pending.promise;
+    await Promise.resolve();
+
+    expect(setTexture).not.toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    expect(onError).not.toHaveBeenCalled();
+  });
+
+  it("deletes the model texture when OBJ import replaces its topology", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const setTexture = vi.fn();
+    const deleteTexture = vi.fn();
+    const setScene = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({
+        positions: [0, 0, 0, 2, 0, 0, 0, 2, 0],
+        indices: [0, 1, 2],
+      })),
+      loadPresetText: vi.fn(async () => "replacement obj"),
+      decodeTextureImage: vi.fn(async () => bitmap),
+      startViewport: () => ({
+        setScene, setTexture, deleteTexture,
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const textureInput = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(textureInput, "files", {
+      configurable: true,
+      value: [new File(["png"], "surface.png", { type: "image/png" })],
+    });
+    textureInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(setTexture).toHaveBeenCalledOnce());
+
+    root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
+    await vi.waitFor(() => expect(setScene).toHaveBeenCalled());
+
+    expect(deleteTexture).toHaveBeenCalledOnce();
+    expect(deleteTexture).toHaveBeenCalledWith("base");
+    runtime.dispose();
+  });
+
   it("rolls back an initialized viewport when later UI mounting fails", () => {
     const panelContainer = document.createElement("div");
     panelContainer.append = vi.fn(() => {

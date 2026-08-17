@@ -19,12 +19,14 @@ describe("OctoPoly app composition", () => {
     const disposeFacial = vi.fn();
     const startCube = vi.fn(() => vi.fn());
     const loadPresetText = vi.fn(async () => "preset");
+    const decodeTextureImage = vi.fn(async () => ({ close: vi.fn() } as unknown as ImageBitmap));
     const startFacial = vi.fn((_options: FacialRuntimeOptions) => ({ dispose: disposeFacial }));
     const app = mountOctoPolyApp(root, {
       storage: new MemoryStorage(),
       nextCopyId: () => "copy-1",
       parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
       loadPresetText,
+      decodeTextureImage,
       startCube,
       startFacial,
       startViewport: vi.fn(),
@@ -38,6 +40,7 @@ describe("OctoPoly app composition", () => {
     expect(startFacial.mock.calls[0]?.[0].panelContainer.className).toBe("facial-panel-layer");
     expect(startFacial.mock.calls[0]?.[0].overlayContainer.className).toBe("viewport-overlay");
     expect(startFacial.mock.calls[0]?.[0].loadPresetText).toBe(loadPresetText);
+    expect(startFacial.mock.calls[0]?.[0].decodeTextureImage).toBe(decodeTextureImage);
     expect(facial.getAttribute("aria-pressed")).toBe("true");
     expect(facial.getAttribute("aria-current")).toBe("true");
     expect(root.querySelector("canvas")?.getAttribute("aria-label")).toBe("편집 가능한 페이셜 메시 3D 뷰포트");

@@ -13,6 +13,7 @@ export type FacialPresetId = "luna";
 
 export interface FacialPanelCallbacks {
   readonly onImport: (file: File) => void;
+  readonly onLoadTexture?: (file: File) => void;
   readonly onLoadPreset?: (preset: FacialPresetId) => void;
   readonly onDuplicate: () => void;
   readonly onSelectMesh: (meshId: string) => void;
@@ -130,6 +131,30 @@ export function mountFacialPanel(
     fileMenu.hidden = !open;
     if (restoreFocus) fileMenuToggle.focus();
   };
+  const textureInput = document.createElement("input");
+  textureInput.type = "file";
+  textureInput.accept = ".png,.jpg,.jpeg,image/png,image/jpeg";
+  textureInput.dataset.textureInput = "";
+  textureInput.setAttribute("aria-label", "현재 모델 텍스처 불러오기");
+  textureInput.hidden = true;
+  const textureButton = document.createElement("button");
+  textureButton.type = "button";
+  textureButton.dataset.action = "load-texture";
+  textureButton.textContent = "텍스처 불러오기";
+  const handleTextureButton = (): void => textureInput.click();
+  const handleTexture = (): void => {
+    const file = textureInput.files?.[0];
+    try {
+      if (file) {
+        callbacks.onLoadTexture?.(file);
+        setFileMenuOpen(false, true);
+      }
+    } finally {
+      textureInput.value = "";
+    }
+  };
+  textureButton.addEventListener("click", handleTextureButton);
+  textureInput.addEventListener("change", handleTexture);
   const presetSection = document.createElement("section");
   presetSection.setAttribute("role", "group");
   const presetHeading = document.createElement("h3");
@@ -382,7 +407,7 @@ export function mountFacialPanel(
   renameInput.addEventListener("input", handleRenameInput);
   dialogBackdrop.addEventListener("keydown", handleDialogKeydown);
 
-  fileMenu.append(fileHeading, importButton, importInput, presetSection);
+  fileMenu.append(fileHeading, importButton, importInput, textureButton, textureInput, presetSection);
   toolStrip.append(fileMenuToggle, fileMenu, meshDrawerToggle);
   selectionCard.append(heading, selectionSummary, focusButton, selectionAnnouncement);
   meshDrawer.append(meshHeading, duplicateButton, meshList);
@@ -491,6 +516,8 @@ export function mountFacialPanel(
     dispose: () => {
       importInput.removeEventListener("change", handleImport);
       importButton.removeEventListener("click", handleImportButton);
+      textureInput.removeEventListener("change", handleTexture);
+      textureButton.removeEventListener("click", handleTextureButton);
       lunaButton.removeEventListener("click", handleLunaPreset);
       fileMenuToggle.removeEventListener("click", handleFileMenuToggle);
       fileMenuToggle.removeEventListener("keydown", handleFileMenuKeydown);

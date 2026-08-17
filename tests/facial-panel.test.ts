@@ -167,6 +167,54 @@ describe("facial workspace panel", () => {
     container.remove();
   });
 
+  it("offers an accessible PNG/JPEG texture picker and restores File-menu focus after selection", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const onLoadTexture = vi.fn();
+    const panel = mountFacialPanel(container, {
+      onImport: vi.fn(),
+      onLoadTexture,
+      onDuplicate: vi.fn(),
+      onSelectMesh: vi.fn(),
+      onRenameMesh: vi.fn(),
+    });
+    const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!;
+    const menu = container.querySelector<HTMLElement>(".facial-file-menu")!;
+
+    try {
+      const input = menu.querySelector<HTMLInputElement>('[data-texture-input]')!;
+      const action = menu.querySelector<HTMLButtonElement>('[data-action="load-texture"]')!;
+      expect(input.type).toBe("file");
+      expect(input.hidden).toBe(true);
+      expect(input.accept).toBe(".png,.jpg,.jpeg,image/png,image/jpeg");
+      expect(input.getAttribute("aria-label")).toBe("현재 모델 텍스처 불러오기");
+      expect(action.textContent).toBe("텍스처 불러오기");
+
+      toggle.click();
+      const pickerClick = vi.spyOn(input, "click");
+      action.click();
+      expect(pickerClick).toHaveBeenCalledOnce();
+
+      const file = new File([new Uint8Array([1, 2, 3])], "surface.png", { type: "image/png" });
+      const setValue = vi.fn();
+      Object.defineProperties(input, {
+        files: { configurable: true, value: [file] },
+        value: { configurable: true, get: () => "surface.png", set: setValue },
+      });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+
+      expect(onLoadTexture).toHaveBeenCalledOnce();
+      expect(onLoadTexture).toHaveBeenCalledWith(file);
+      expect(setValue).toHaveBeenCalledWith("");
+      expect(menu.hidden).toBe(true);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(document.activeElement).toBe(toggle);
+    } finally {
+      panel.dispose();
+      container.remove();
+    }
+  });
+
   it("loads the Luna preset once and closes the File menu with focus restored", () => {
     const container = document.createElement("div");
     document.body.append(container);

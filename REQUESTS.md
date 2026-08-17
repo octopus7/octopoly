@@ -53,3 +53,16 @@
 - 최종 CI에서 typecheck, **20 test files / 263 tests**, production build, artifact baseline 및 `git diff --check`를 통과했다. local production bundle은 `index-BTOIdPGT.js` / `index-BZFj_gyb.css`다.
 - 실제 production preview에서 Facial 기본 시작, Luna 130/224 close framing, orbit containment, depth-tested square points, view-plane 2D affordance, camera-projected plane, screen-space XY/YZ/XZ axis identity, axis-only drag, plane-body two-axis drag 및 true edge-on YZ screen-space movement을 확인했고 JavaScript 오류는 0건이었다.
 - 최신 complete diff에 대한 독립 fail-closed review는 security concern 0건, logic error 0건으로 `passed:true`였다. Physical iPad Safari와 Apple Pencil 검증은 장치 부재로 `NOT_RUN`이다.
+
+## Active model PNG/JPEG 텍스처 로드·UV WebGL 렌더링 | 시작: 2026-08-18 01:55:25 KST | 종료: 2026-08-18 03:00:51 KST | 소요: 65분
+
+- File 메뉴에 현재 active Facial model용 별도 PNG/JPEG texture picker를 추가했다. input은 접근 가능한 label과 PNG/JPEG accept contract를 가지며 선택 후 같은 파일을 다시 고를 수 있게 reset하고 File 메뉴를 닫은 뒤 trigger focus를 복원한다.
+- OBJ의 complete usable UV를 position/UV reference pair로 compact remap해 seam과 negative UV references를 보존한다. no/partial/out-of-range/non-finite/malformed UV는 hardened position/face validation과 유효 geometry를 유지한 geometry-only import로 fallback한다.
+- optional aligned UV를 workspace validation, defensive copy, storage round trip 및 scene publication에 전달한다. Luna preset은 기존 계약대로 geometry-only 130 vertices / 224 triangles를 유지한다.
+- texture는 active model ID별 **session-only** resource다. `localStorage`나 object URL에 image binary/texture truth를 저장하지 않으며 reload 또는 해당 topology replacement 뒤에는 다시 선택한다.
+- decoder는 production에서 `createImageBitmap(File)`을 주입한다. latest request, model switch/ABA, topology replacement 및 runtime disposal 뒤 stale completion/rejection을 폐기하고, successful/stale/upload-failed bitmap 모두 필요한 경로에서 `ImageBitmap.close()`로 해제한다. MIME/decode/upload/WebGL 오류는 기존 status error lifecycle로 보고한다.
+- WebGL texture upload는 candidate를 성공적으로 올린 뒤에만 model key에 publish하는 transaction이다. 실패 시 prior/default surface를 유지하고 successful replacement, explicit model/topology deletion 및 viewport disposal에서 GL texture를 삭제한다. textured face 뒤 기존 wire, depth-tested points 및 selected vertex를 그려 편집 표시 우선순위를 보존한다.
+- strict RED→GREEN에서 OBJ seam/fallback/UV validation, workspace copy/storage, renderer upload/draw/resource lifecycle, panel accessibility/focus, runtime MIME/no-UV/latest/ABA/topology/disposal/synchronous error 경로를 focused tests로 고정했다. 첫 독립 review의 4 blockers(non-finite/malformed `vt`, ABA stale upload, topology stale rejection, synchronous decoder throw)를 각각 재현 test로 RED 확인 후 GREEN으로 수정했다.
+- 최종 CI는 typecheck, **21 test files / 288 tests**, production build `index-Di4JQFL_.js`, artifact 6 files / 1,201,386 bytes / warnings 0 / failures 0 및 `git diff --check`를 통과했다.
+- 실제 production preview에서 non-finite `vt` geometry-only fallback, PNG checker `texImage2D=1` / `ImageBitmap.close=1` / persistence 0, base→copy→base ABA upload 0 / close 1, synchronous decode status routing, topology stale rejection suppression, texture face 위 wire·vertex handle 표시 및 console/page error 0건을 확인했다.
+- 두 번째 complete-diff 독립 fail-closed review는 이전 4 blockers를 별도 probe로 재검증하고 security concern 0건, logic error 0건, `passed:true`를 반환했다. Physical iPad Safari와 Apple Pencil 검증은 장치 부재로 `NOT_RUN`이다.

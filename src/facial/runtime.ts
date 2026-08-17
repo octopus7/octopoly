@@ -19,6 +19,8 @@ interface ScreenPoint {
 
 export interface FacialViewportPort {
   setScene(scene: FacialViewportScene): void;
+  setTexture?(textureKey: string, source: TexImageSource): void;
+  deleteTexture?(textureKey: string): void;
   projectVertex(vertexIndex: number): ScreenPoint | null;
   projectAxis?(vertexIndex: number, axis: "x" | "y" | "z"): ScreenPoint | null;
   pickVertex(x: number, y: number, radius?: number): number | null;
@@ -41,6 +43,7 @@ export interface FacialRuntimeOptions {
   readonly nextCopyId: () => string;
   readonly parseObjText: (source: string) => MeshGeometry;
   readonly loadPresetText?: (preset: FacialPresetId) => Promise<string>;
+  readonly decodeTextureImage?: (file: File) => Promise<ImageBitmap>;
   readonly startViewport: (
     canvas: HTMLCanvasElement,
     initialScene: FacialViewportScene,
@@ -83,7 +86,13 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
   let detachKeyboard: (() => void) | undefined;
   let detachViewChange: (() => void) | undefined;
   let disposed = false;
+  let textureRequestEpoch = 0;
   let movementUnitsPerPixel = 1 / 300;
+  let knownActiveMeshId: string | null = null;
+  let knownMeshTopology = new Map<string, {
+    readonly indices: readonly number[];
+    readonly uvs: readonly number[] | undefined;
+  }>();
 
   const updateGizmo = (): void => {
     const selectedVertex = controller.selectedVertex;
@@ -113,12 +122,35 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
     storage: options.storage,
     nextCopyId: options.nextCopyId,
     onChange: (workspace, selectedVertex) => {
+      if (knownActiveMeshId !== null && workspace.activeMeshId !== knownActiveMeshId) {
+        textureRequestEpoch += 1;
+      }
+      knownActiveMeshId = workspace.activeMeshId;
+      const nextTopology = new Map(workspace.meshes.map((mesh) => [mesh.id, {
+        indices: mesh.geometry.indices,
+        uvs: mesh.geometry.uvs,
+      }]));
+      let topologyChanged = false;
+      for (const [meshId, topology] of knownMeshTopology) {
+        const next = nextTopology.get(meshId);
+        if (!next || next.indices !== topology.indices || next.uvs !== topology.uvs) {
+          topologyChanged = true;
+          viewport?.deleteTexture?.(meshId);
+        }
+      }
+      if (topologyChanged) textureRequestEpoch += 1;
+      knownMeshTopology = nextTopology;
       const scene = createFacialScene(workspace, selectedVertex, controller.sceneRevision);
       viewport?.setScene(scene);
       panel?.render(workspace, selectedVertex);
       updateGizmo();
     },
   });
+  knownActiveMeshId = controller.workspace.activeMeshId;
+  knownMeshTopology = new Map(controller.workspace.meshes.map((mesh) => [mesh.id, {
+    indices: mesh.geometry.indices,
+    uvs: mesh.geometry.uvs,
+  }]));
 
   const disposeSafely = (dispose: (() => void) | undefined): void => {
     try {
@@ -170,6 +202,54 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
         void session?.importObj({
           text: () => loadPresetText(preset),
         }).catch((error: unknown) => options.onError?.(error));
+      },
+      onLoadTexture: (file) => {
+        const requestEpoch = ++textureRequestEpoch;
+        const activeMesh = controller.workspace.meshes.find(
+          (mesh) => mesh.id === controller.workspace.activeMeshId,
+        )!;
+        if (file.type !== "image/png" && file.type !== "image/jpeg") {
+          options.onError?.(new Error("PNG 또는 JPEG 텍스처만 불러올 수 있습니다."));
+          return;
+        }
+        if (!activeMesh.geometry.uvs) {
+          options.onError?.(new Error("현재 작업 모델에는 사용할 수 있는 UV 좌표가 없습니다."));
+          return;
+        }
+        const decodeTextureImage = options.decodeTextureImage;
+        if (!decodeTextureImage || !viewport?.setTexture) {
+          options.onError?.(new Error("텍스처 이미지 로더를 사용할 수 없습니다."));
+          return;
+        }
+        const meshId = activeMesh.id;
+        const indices = activeMesh.geometry.indices;
+        const uvs = activeMesh.geometry.uvs;
+        let decoded: Promise<ImageBitmap>;
+        try {
+          decoded = decodeTextureImage(file);
+        } catch (error) {
+          if (!disposed && requestEpoch === textureRequestEpoch) options.onError?.(error);
+          return;
+        }
+        void decoded.then((bitmap) => {
+          try {
+            const currentMesh = controller.workspace.meshes.find((mesh) => mesh.id === meshId);
+            if (disposed
+              || requestEpoch !== textureRequestEpoch
+              || controller.workspace.activeMeshId !== meshId
+              || currentMesh?.geometry.indices !== indices
+              || currentMesh.geometry.uvs !== uvs) return;
+            viewport?.setTexture?.(meshId, bitmap);
+          } catch (error) {
+            if (!disposed && requestEpoch === textureRequestEpoch) options.onError?.(error);
+          } finally {
+            bitmap.close();
+          }
+        }, (error: unknown) => {
+          if (!disposed
+            && requestEpoch === textureRequestEpoch
+            && controller.workspace.activeMeshId === meshId) options.onError?.(error);
+        });
       },
       onDuplicate: () => runCommand(() => session?.duplicateBase()),
       onSelectMesh: (meshId) => runCommand(() => session?.selectMesh(meshId)),

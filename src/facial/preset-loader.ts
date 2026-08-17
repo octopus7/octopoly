@@ -1,5 +1,5 @@
 import type { FacialPresetId } from "./panel";
-import { parseObjObjectMesh, type ObjMesh } from "./obj";
+import { parseObjObjectGeometryMesh, type ObjMesh } from "./obj";
 
 interface PresetResponse {
   readonly ok: boolean;
@@ -41,6 +41,6 @@ export function createPresetTextLoader(fetchPreset: PresetFetch): (preset: Facia
       throw new Error(`${PRESET_NAMES[preset]} 프리셋 OBJ를 불러오지 못했습니다. (HTTP ${status})`);
     }
     const source = await response.text();
-    return serializeObjMesh(parseObjObjectMesh(source, PRESET_OBJECTS[preset]));
+    return serializeObjMesh(parseObjObjectGeometryMesh(source, PRESET_OBJECTS[preset]));
   };
 }
