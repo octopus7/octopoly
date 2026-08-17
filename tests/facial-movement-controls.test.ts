@@ -93,6 +93,9 @@ describe("vertex movement controls", () => {
     panel.querySelector<HTMLButtonElement>('[data-movement-mode="constrained-plane"]')?.click();
     const options = panel.querySelector<HTMLElement>(".movement-plane-options")!;
     expect(options.hidden).toBe(false);
+    const screenSpace = options.querySelector<HTMLInputElement>('[data-plane-screen-space="true"]')!;
+    expect(screenSpace.checked).toBe(false);
+    expect(screenSpace.parentElement?.textContent).toContain("스크린 스페이스");
     const selector = overlay.querySelector<HTMLElement>(".movement-plane-selector")!;
     expect([...selector.querySelectorAll("[data-constrained-plane]")]).toHaveLength(3);
 
@@ -107,6 +110,26 @@ describe("vertex movement controls", () => {
     yz.dispatchEvent(new Event("change", { bubbles: true }));
     expect(selector.hidden).toBe(true);
     expect([...selector.querySelectorAll("[data-constrained-plane]")]).toHaveLength(0);
+    controls.dispose();
+  });
+
+  it("publishes the constrained-plane screen-space presentation toggle", () => {
+    const panel = document.createElement("section");
+    panel.append(document.createElement("h2"));
+    const overlay = document.createElement("div");
+    const onChange = vi.fn();
+    const controls = mountMovementControls(panel, overlay, { onChange });
+    panel.querySelector<HTMLButtonElement>('[data-movement-mode="constrained-plane"]')?.click();
+    const screenSpace = panel.querySelector<HTMLInputElement>('[data-plane-screen-space="true"]')!;
+
+    screenSpace.checked = true;
+    screenSpace.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      mode: "constrained-plane",
+      activeConstrainedPlane: "xy",
+      constrainedPlaneScreenSpace: true,
+    }));
     controls.dispose();
   });
 

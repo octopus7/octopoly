@@ -16,6 +16,7 @@ export interface OctoPolyAppDependencies {
   readonly storage: AppStorage;
   readonly nextCopyId: () => string;
   readonly parseObjText: (source: string) => MeshGeometry;
+  readonly loadPresetText: NonNullable<FacialRuntimeOptions["loadPresetText"]>;
   readonly startCube: (canvas: HTMLCanvasElement) => () => void;
   readonly startFacial?: (options: FacialRuntimeOptions) => FacialRuntime;
   readonly startViewport: (
@@ -46,19 +47,20 @@ export function mountOctoPolyApp(
     setStatus(error instanceof Error ? error.message : "페이셜 모드를 시작하지 못했습니다.", "error");
   };
 
-  try {
-    activeDispose = dependencies.startCube(canvas);
-    setStatus("기본 큐브", "ready");
-  } catch (error) {
-    reportError(error);
-  }
-
   const onModeChange = (event: Event): void => {
     if (disposed || (event as CustomEvent<{ mode?: string }>).detail?.mode !== "facial") return;
-    try {
-      const disposeCurrent = activeDispose;
+    const disposeCurrent = activeDispose;
+    if (disposeCurrent) {
+      try {
+        disposeCurrent();
+      } catch (error) {
+        event.preventDefault();
+        reportError(error);
+        return;
+      }
       activeDispose = undefined;
-      disposeCurrent?.();
+    }
+    try {
       const runtime = (dependencies.startFacial ?? startFacialRuntime)({
         canvas,
         panelContainer,
@@ -66,6 +68,7 @@ export function mountOctoPolyApp(
         storage: dependencies.storage,
         nextCopyId: dependencies.nextCopyId,
         parseObjText: dependencies.parseObjText,
+        loadPresetText: dependencies.loadPresetText,
         startViewport: dependencies.startViewport,
         onError: reportError,
       });
@@ -85,6 +88,7 @@ export function mountOctoPolyApp(
     }
   };
   document.addEventListener("octopoly:mode-change", onModeChange);
+  shell.activateMode("facial");
 
   return {
     dispose: () => {

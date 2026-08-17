@@ -29,6 +29,15 @@ function pointerEvent(type: string, x: number, y: number): PointerEvent {
   return event as PointerEvent;
 }
 
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T) => void;
+} {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
+
 describe("facial runtime composition", () => {
   it("rolls back an initialized viewport when later UI mounting fails", () => {
     const panelContainer = document.createElement("div");
@@ -126,6 +135,213 @@ describe("facial runtime composition", () => {
     expect(fileMenu.hidden).toBe(false);
     expect(movementPopover.hidden).toBe(true);
     expect(movementToggle.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("loads the Luna preset through the injected text loader and publishes the saved parsed scene", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const geometry = {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    };
+    const loadPresetText = vi.fn(async () => "luna obj source");
+    const parseObjText = vi.fn(() => geometry);
+    const setScene = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText,
+      loadPresetText,
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
+    await vi.waitFor(() => expect(setScene).toHaveBeenCalled());
+
+    expect(loadPresetText).toHaveBeenCalledOnce();
+    expect(loadPresetText).toHaveBeenCalledWith("luna");
+    expect(parseObjText).toHaveBeenCalledWith("luna obj source");
+    expect(setScene).toHaveBeenLastCalledWith(expect.objectContaining({ geometry }));
+    expect([...storage.values.values()].some((value) => value.includes("luna") || value.includes("positions"))).toBe(true);
+    runtime.dispose();
+  });
+
+  it("suppresses a pending Luna preset after a later authoritative workspace command", async () => {
+    const root = document.createElement("div");
+    const pendingText = deferred<string>();
+    const parseObjText = vi.fn(() => ({
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    }));
+    const setScene = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText,
+      loadPresetText: () => pendingText.promise,
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')!.click();
+    pendingText.resolve("late luna obj");
+    await pendingText.promise;
+    await Promise.resolve();
+
+    expect(parseObjText).not.toHaveBeenCalled();
+    expect(setScene).toHaveBeenLastCalledWith(expect.objectContaining({ meshId: "copy-1" }));
+    runtime.dispose();
+  });
+
+  it("suppresses a pending Luna preset after runtime disposal", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const pendingText = deferred<string>();
+    const parseObjText = vi.fn();
+    const setScene = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText,
+      loadPresetText: () => pendingText.promise,
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
+    runtime.dispose();
+    pendingText.resolve("late luna obj");
+    await pendingText.promise;
+    await Promise.resolve();
+
+    expect(parseObjText).not.toHaveBeenCalled();
+    expect(setScene).not.toHaveBeenCalled();
+    expect(storage.values.size).toBe(0);
+  });
+
+  it.each([
+    ["loader", () => vi.fn(async () => { throw new Error("preset load failed"); }), () => vi.fn()],
+    ["parser", () => vi.fn(async () => "invalid obj"), () => vi.fn(() => { throw new Error("parse failed"); })],
+  ])("reports a Luna %s failure without saving or publishing", async (_stage, makeLoader, makeParser) => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const onError = vi.fn();
+    const setScene = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: makeParser(),
+      loadPresetText: makeLoader(),
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+      onError,
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(setScene).not.toHaveBeenCalled();
+    expect(storage.values.size).toBe(0);
+    runtime.dispose();
+  });
+
+  it("reports an imported File read failure without parsing, saving, or publishing", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const onError = vi.fn();
+    const parseObjText = vi.fn();
+    const setScene = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText,
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+      onError,
+    });
+    const input = root.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const unreadable = { text: vi.fn(async () => { throw new Error("read failed"); }) };
+    Object.defineProperty(input, "files", { configurable: true, value: [unreadable] });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(parseObjText).not.toHaveBeenCalled();
+    expect(setScene).not.toHaveBeenCalled();
+    expect(storage.values.size).toBe(0);
+    runtime.dispose();
+  });
+
+  it("reports Luna persistence failure without publishing a false scene", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const onError = vi.fn();
+    const setScene = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: () => ({
+        positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+        indices: [0, 1, 2],
+      }),
+      loadPresetText: async () => "luna obj",
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+      onError,
+    });
+    storage.failWrites = true;
+
+    root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ name: "FacialPersistenceError" }));
+    expect(setScene).not.toHaveBeenCalled();
+    expect(storage.values.size).toBe(0);
+    runtime.dispose();
   });
 
   it("routes a synchronous autosave failure through the runtime error callback", () => {
@@ -390,6 +606,48 @@ describe("facial runtime composition", () => {
       { x: 140, y: 90 },
     );
     expect(setScene).toHaveBeenLastCalledWith(expect.objectContaining({ selectedVertex: 2 }));
+  });
+
+  it("moves a screen-space plane body in its two world axes even when ray-plane drag is unavailable", () => {
+    const root = document.createElement("div");
+    const canvas = document.createElement("canvas");
+    root.append(canvas);
+    const setScene = vi.fn();
+    const modelDeltaForPlaneDrag = vi.fn(() => null);
+    startFacialRuntime({
+      canvas,
+      panelContainer: root,
+      overlayContainer: root,
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => ({ x: 120, y: 80 })),
+        pickVertex: vi.fn(() => 2),
+        modelDeltaForPlaneDrag,
+        dispose: vi.fn(),
+      }),
+    });
+    canvas.dispatchEvent(pointerEvent("pointerdown", 40, 60));
+    canvas.dispatchEvent(pointerEvent("pointerup", 40, 60));
+    const before = setScene.mock.calls.at(-1)?.[0] as FacialViewportScene;
+    root.querySelector<HTMLButtonElement>('[data-movement-mode="constrained-plane"]')?.click();
+    const screenSpace = root.querySelector<HTMLInputElement>('[data-plane-screen-space="true"]')!;
+    screenSpace.checked = true;
+    screenSpace.dispatchEvent(new Event("change", { bubbles: true }));
+    modelDeltaForPlaneDrag.mockClear();
+    const planeHandle = root.querySelector<HTMLButtonElement>(".vertex-gizmo__plane-handle")!;
+
+    planeHandle.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 120, clientY: 80 }));
+    planeHandle.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 140, clientY: 90 }));
+
+    const after = setScene.mock.calls.at(-1)?.[0] as FacialViewportScene;
+    const offset = 2 * 3;
+    expect(modelDeltaForPlaneDrag).not.toHaveBeenCalled();
+    expect(after.geometry.positions[offset]).toBeGreaterThan(before.geometry.positions[offset]!);
+    expect(after.geometry.positions[offset + 1]).toBeLessThan(before.geometry.positions[offset + 1]!);
+    expect(after.geometry.positions[offset + 2]).toBe(before.geometry.positions[offset + 2]);
   });
 
   it("deletes a copied mesh only after confirming the destructive dialog", () => {

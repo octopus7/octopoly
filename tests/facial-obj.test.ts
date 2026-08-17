@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseObjMesh } from "../src/facial/obj";
+import { parseObjMesh, parseObjObjectMesh } from "../src/facial/obj";
 
 describe("parseObjMesh", () => {
   it("parses a triangle into shared indexed positions", () => {
@@ -205,5 +205,35 @@ describe("parseObjMesh", () => {
     expect(() => parseObjMesh("v 0 0 0\nv 1 0 0\nv 0 1 0")).toThrow(
       "OBJ mesh must contain at least one face",
     );
+  });
+});
+
+describe("parseObjObjectMesh", () => {
+  it("compacts and remaps only vertices referenced by the selected object", () => {
+    expect(parseObjObjectMesh(`
+      o Body
+      v 0 0 0
+      v 1 0 0
+      v 0 1 0
+      f 1 2 3
+      o SKM_Luna.Face.eye
+      v 10 0 0
+      v 11 0 0
+      v 10 1 0
+      f 4/1/1 5/2/2 6/3/3
+    `, "SKM_Luna.Face.eye")).toEqual({
+      positions: [10, 0, 0, 11, 0, 0, 10, 1, 0],
+      indices: [0, 1, 2],
+    });
+  });
+
+  it("fails closed when the requested object is absent", () => {
+    expect(() => parseObjObjectMesh(`
+      o Body
+      v 0 0 0
+      v 1 0 0
+      v 0 1 0
+      f 1 2 3
+    `, "SKM_Luna.Face.eye")).toThrow('OBJ object "SKM_Luna.Face.eye" was not found');
   });
 });

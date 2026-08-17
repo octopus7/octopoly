@@ -13,6 +13,7 @@ type FakeWebGL = WebGL2RenderingContext & {
   deleteProgram: ReturnType<typeof vi.fn>;
   deleteVertexArray: ReturnType<typeof vi.fn>;
   shaderSource: ReturnType<typeof vi.fn>;
+  uniform1f: ReturnType<typeof vi.fn>;
   useProgram: ReturnType<typeof vi.fn>;
 };
 
@@ -71,7 +72,7 @@ function createFakeWebGL(): FakeWebGL {
     lineWidth: noop,
     linkProgram: noop,
     shaderSource: vi.fn(),
-    uniform1f: noop,
+    uniform1f: vi.fn(),
     uniform3fv: noop,
     uniformMatrix4fv: noop,
     useProgram: vi.fn(),
@@ -85,6 +86,7 @@ interface HarnessOptions {
   readonly resizeObserverFailure?: "construct" | "observe";
   readonly width?: number;
   readonly height?: number;
+  readonly devicePixelRatio?: number;
 }
 
 function createHarness(options: HarnessOptions = {}): {
@@ -92,14 +94,16 @@ function createHarness(options: HarnessOptions = {}): {
   flushFrame: () => void;
   gl: FakeWebGL;
   observerDisconnect: ReturnType<typeof vi.fn>;
+  resize: (width: number, height: number) => void;
 } {
   const gl = createFakeWebGL();
   const canvas = document.createElement("canvas");
-  const width = options.width ?? 400;
-  const height = options.height ?? 200;
+  let width = options.width ?? 400;
+  let height = options.height ?? 200;
+  vi.stubGlobal("devicePixelRatio", options.devicePixelRatio ?? 1);
   Object.defineProperties(canvas, {
-    clientWidth: { value: width },
-    clientHeight: { value: height },
+    clientWidth: { get: () => width },
+    clientHeight: { get: () => height },
     getBoundingClientRect: {
       value: () => ({ left: 10, top: 20, width, height, right: 10 + width, bottom: 20 + height, x: 10, y: 20, toJSON: () => ({}) }),
     },
@@ -115,9 +119,11 @@ function createHarness(options: HarnessOptions = {}): {
   }));
   vi.stubGlobal("cancelAnimationFrame", vi.fn());
   const observerDisconnect = vi.fn();
+  let resizeCallback: ResizeObserverCallback | null = null;
   vi.stubGlobal("ResizeObserver", class {
-    constructor(_callback: ResizeObserverCallback) {
+    constructor(callback: ResizeObserverCallback) {
       if (options.resizeObserverFailure === "construct") throw new Error("late constructor failure");
+      resizeCallback = callback;
     }
     observe(): void {
       if (options.resizeObserverFailure === "observe") throw new Error("late constructor failure");
@@ -134,6 +140,11 @@ function createHarness(options: HarnessOptions = {}): {
     },
     gl,
     observerDisconnect,
+    resize: (nextWidth, nextHeight) => {
+      width = nextWidth;
+      height = nextHeight;
+      resizeCallback?.([], {} as ResizeObserver);
+    },
   };
 }
 
@@ -210,8 +221,8 @@ describe("mesh viewport renderer", () => {
     controller.dispose();
   });
 
-  it("renders normal and selected vertex handles without face depth occlusion", () => {
-    const { canvas, flushFrame, gl } = createHarness();
+  it("renders 5/8 CSS-pixel square vertex handles with LEQUAL depth testing and restores LESS", () => {
+    const { canvas, flushFrame, gl } = createHarness({ devicePixelRatio: 1 });
     const controller = renderer.startMeshViewport(canvas, {
       geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
       editable: true,
@@ -220,14 +231,75 @@ describe("mesh viewport renderer", () => {
 
     flushFrame();
 
-    const depthDisableIndex = gl.disable.mock.calls.findIndex((call) => call[0] === gl.DEPTH_TEST);
-    expect(depthDisableIndex).toBeGreaterThanOrEqual(0);
-    const depthDisableOrder = gl.disable.mock.invocationCallOrder[depthDisableIndex]!;
+    const uniformCalls = (name: string): number[] => gl.uniform1f.mock.calls
+      .filter(([location]) => (location as { name?: string }).name === name)
+      .map(([, value]) => value as number);
+    expect(uniformCalls("uPointSize").slice(-2)).toEqual([5, 8]);
+    expect(uniformCalls("uPointMode").slice(-2)).toEqual([0, 0]);
+    expect(gl.disable).not.toHaveBeenCalledWith(gl.DEPTH_TEST);
+
     const pointDrawOrders = gl.drawArrays.mock.invocationCallOrder;
-    const restoredDepthOrder = gl.enable.mock.invocationCallOrder.at(-1)!;
+    const lastCallIndex = (calls: readonly (readonly unknown[])[], expected: number): number => {
+      for (let index = calls.length - 1; index >= 0; index -= 1) {
+        if (calls[index]?.[0] === expected) return index;
+      }
+      return -1;
+    };
+    const lequalIndex = lastCallIndex(gl.depthFunc.mock.calls, gl.LEQUAL);
+    const finalLessIndex = lastCallIndex(gl.depthFunc.mock.calls, gl.LESS);
     expect(pointDrawOrders).toHaveLength(2);
-    expect(depthDisableOrder).toBeLessThan(pointDrawOrders[0]!);
-    expect(restoredDepthOrder).toBeGreaterThan(pointDrawOrders[1]!);
+    expect(gl.depthFunc.mock.invocationCallOrder[lequalIndex]!).toBeLessThan(pointDrawOrders[0]!);
+    expect(gl.depthFunc.mock.invocationCallOrder[finalLessIndex]!).toBeGreaterThan(pointDrawOrders[1]!);
+    expect(gl.depthFunc).toHaveBeenLastCalledWith(gl.LESS);
+    const cullDisableIndex = gl.disable.mock.calls.findIndex(([capability]) => capability === gl.CULL_FACE);
+    const cullEnableIndices = gl.enable.mock.calls
+      .map(([capability], index) => capability === gl.CULL_FACE ? index : -1)
+      .filter((index) => index >= 0);
+    const finalCullEnableIndex = cullEnableIndices.at(-1)!;
+    expect(gl.enable.mock.invocationCallOrder[finalCullEnableIndex]!)
+      .toBeGreaterThan(gl.disable.mock.invocationCallOrder[cullDisableIndex]!);
+    expect(gl.enable.mock.invocationCallOrder[finalCullEnableIndex]!).toBeGreaterThan(pointDrawOrders[1]!);
+    controller.dispose();
+  });
+
+  it("restores editable WebGL state and releases the program when edge drawing throws", () => {
+    const { canvas, flushFrame, gl } = createHarness();
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+    gl.drawElements
+      .mockImplementationOnce(() => undefined)
+      .mockImplementationOnce(() => { throw new Error("edge draw failed"); });
+
+    expect(flushFrame).toThrow("edge draw failed");
+
+    const cullDisableIndex = gl.disable.mock.calls.findIndex(([capability]) => capability === gl.CULL_FACE);
+    const cullEnableIndices = gl.enable.mock.calls
+      .map(([capability], index) => capability === gl.CULL_FACE ? index : -1)
+      .filter((index) => index >= 0);
+    const finalCullEnableIndex = cullEnableIndices.at(-1)!;
+    expect(gl.depthFunc).toHaveBeenLastCalledWith(gl.LESS);
+    expect(gl.enable.mock.invocationCallOrder[finalCullEnableIndex]!)
+      .toBeGreaterThan(gl.disable.mock.invocationCallOrder[cullDisableIndex]!);
+    expect(gl.useProgram).toHaveBeenLastCalledWith(null);
+    controller.dispose();
+  });
+
+  it("caps vertex handle scaling at two device pixels per CSS pixel", () => {
+    const { canvas, flushFrame, gl } = createHarness({ devicePixelRatio: 4 });
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+    controller.setSelectedVertex(1);
+
+    flushFrame();
+
+    const pointSizes = gl.uniform1f.mock.calls
+      .filter(([location]) => (location as { name?: string }).name === "uPointSize")
+      .map(([, value]) => value as number);
+    expect(pointSizes.slice(-2)).toEqual([10, 16]);
     controller.dispose();
   });
 
@@ -304,6 +376,72 @@ describe("mesh viewport renderer", () => {
     expect(projected?.x).toBeGreaterThanOrEqual(10);
     expect(projected?.y).toBeGreaterThanOrEqual(20);
     expect(controller.pickVertex(projected!.x, projected!.y, 1)).toBe(2);
+    controller.dispose();
+  });
+
+  it("fills a wide viewport with a shallow Facial mesh while retaining a safe border", () => {
+    const width = 1280;
+    const height = 577;
+    const { canvas } = createHarness({ width, height });
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: {
+        positions: [-1, -0.3, 0, 1, -0.3, 0, 1, 0.3, 0, -1, 0.3, 0],
+        indices: [0, 1, 2, 0, 2, 3],
+      },
+      editable: true,
+    });
+
+    const projected = [0, 1, 2, 3].map((index) => controller.projectVertex(index)!);
+    const span = Math.max(...projected.map(({ x }) => x)) - Math.min(...projected.map(({ x }) => x));
+    expect(span).toBeGreaterThan(width * 0.9);
+    expect(projected.every(({ x, y }) => x >= 10 && x <= 10 + width && y >= 20 && y <= 20 + height)).toBe(true);
+    controller.dispose();
+  });
+
+  it("recovers finite close framing when a zero-sized mount receives layout", () => {
+    const { canvas, resize } = createHarness({ width: 0, height: 0 });
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: {
+        positions: [-1, -0.3, 0, 1, -0.3, 0, 1, 0.3, 0, -1, 0.3, 0],
+        indices: [0, 1, 2, 0, 2, 3],
+      },
+      editable: true,
+    });
+
+    resize(1280, 577);
+
+    const projected = [0, 1, 2, 3].map((index) => controller.projectVertex(index)!);
+    const span = Math.max(...projected.map(({ x }) => x)) - Math.min(...projected.map(({ x }) => x));
+    expect(projected.every(({ x, y, depth }) => [x, y, depth].every(Number.isFinite))).toBe(true);
+    expect(span).toBeGreaterThan(1280 * 0.9);
+    controller.dispose();
+  });
+
+  it("refreshes box framing when replacement geometry keeps the same center and radius", () => {
+    const width = 400;
+    const height = 200;
+    const { canvas } = createHarness({ width, height });
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: {
+        positions: [-1, -0.1, 0, 1, -0.1, 0, 1, 0.1, 0, -1, 0.1, 0],
+        indices: [0, 1, 2, 0, 2, 3],
+      },
+      editable: true,
+    });
+
+    controller.setScene({
+      geometry: {
+        positions: [-0.1, -1, 0, 0.1, -1, 0, 0.1, 1, 0, -0.1, 1, 0],
+        indices: [0, 1, 2, 0, 2, 3],
+      },
+      editable: true,
+    });
+
+    const projected = [0, 1, 2, 3].map((index) => controller.projectVertex(index)!);
+    expect(projected.every(({ x, y, depth }) =>
+      [x, y, depth].every(Number.isFinite)
+      && x >= 10 && x <= 10 + width
+      && y >= 20 && y <= 20 + height)).toBe(true);
     controller.dispose();
   });
 

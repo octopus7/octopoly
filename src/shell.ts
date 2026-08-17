@@ -4,10 +4,11 @@ export interface WorkspaceElements {
   readonly fullscreenToggle: HTMLButtonElement;
   readonly panelContainer: HTMLElement;
   readonly overlayContainer: HTMLElement;
+  activateMode(mode: WorkspaceMode): void;
   dispose(): void;
 }
 
-type WorkspaceMode = "retopo" | "facial" | "paint";
+export type WorkspaceMode = "retopo" | "facial" | "paint";
 
 const WORKSPACE_MODES: ReadonlyArray<{
   readonly mode: WorkspaceMode;
@@ -146,58 +147,66 @@ function attachAppMenuTabs(
   return () => disposers.forEach((dispose) => dispose());
 }
 
+interface ModeSelector {
+  activate(mode: WorkspaceMode): void;
+  dispose(): void;
+}
+
 function attachModeSelector(
   buttons: readonly HTMLButtonElement[],
   document: Document,
   menuToggle: HTMLButtonElement,
   menu: HTMLElement,
-): () => void {
+): ModeSelector {
   const disposers: Array<() => void> = [];
-  for (const button of buttons) {
-    if (button.disabled) {
-      continue;
+  const activate = (button: HTMLButtonElement, closeOnSuccess: boolean): void => {
+    if (button.getAttribute("aria-current") === "true") {
+      if (closeOnSuccess) closeAppMenu(menuToggle, menu);
+      return;
     }
 
-    const onClick = (): void => {
-      if (button.getAttribute("aria-current") === "true") {
-        closeAppMenu(menuToggle, menu);
-        return;
-      }
+    const mode = button.dataset.mode as WorkspaceMode;
+    const previousState = buttons.map((candidate) => ({
+      button: candidate,
+      pressed: candidate.getAttribute("aria-pressed") ?? "false",
+      current: candidate.getAttribute("aria-current"),
+    }));
+    for (const candidate of buttons) {
+      const selected = candidate === button;
+      candidate.setAttribute("aria-pressed", String(selected));
+      candidate.toggleAttribute("aria-current", selected);
+      if (selected) candidate.setAttribute("aria-current", "true");
+    }
 
-      const mode = button.dataset.mode as WorkspaceMode;
-      const previousState = buttons.map((candidate) => ({
-        button: candidate,
-        pressed: candidate.getAttribute("aria-pressed") ?? "false",
-        current: candidate.getAttribute("aria-current"),
-      }));
-      for (const candidate of buttons) {
-        const selected = candidate === button;
-        candidate.setAttribute("aria-pressed", String(selected));
-        candidate.toggleAttribute("aria-current", selected);
-        if (selected) {
-          candidate.setAttribute("aria-current", "true");
-        }
+    const CustomEventConstructor = document.defaultView?.CustomEvent ?? CustomEvent;
+    const accepted = document.dispatchEvent(new CustomEventConstructor("octopoly:mode-change", {
+      detail: { mode },
+      cancelable: true,
+    }));
+    if (!accepted) {
+      for (const previous of previousState) {
+        previous.button.setAttribute("aria-pressed", previous.pressed);
+        if (previous.current === null) previous.button.removeAttribute("aria-current");
+        else previous.button.setAttribute("aria-current", previous.current);
       }
+      return;
+    }
+    if (closeOnSuccess) closeAppMenu(menuToggle, menu);
+  };
 
-      const CustomEventConstructor = document.defaultView?.CustomEvent ?? CustomEvent;
-      const accepted = document.dispatchEvent(new CustomEventConstructor("octopoly:mode-change", {
-        detail: { mode },
-        cancelable: true,
-      }));
-      if (!accepted) {
-        for (const previous of previousState) {
-          previous.button.setAttribute("aria-pressed", previous.pressed);
-          if (previous.current === null) previous.button.removeAttribute("aria-current");
-          else previous.button.setAttribute("aria-current", previous.current);
-        }
-        return;
-      }
-      closeAppMenu(menuToggle, menu);
-    };
+  for (const button of buttons) {
+    if (button.disabled) continue;
+    const onClick = (): void => activate(button, true);
     button.addEventListener("click", onClick);
     disposers.push(() => button.removeEventListener("click", onClick));
   }
-  return () => disposers.forEach((dispose) => dispose());
+  return {
+    activate: (mode) => {
+      const button = buttons.find((candidate) => candidate.dataset.mode === mode);
+      if (button && !button.disabled) activate(button, false);
+    },
+    dispose: () => disposers.forEach((dispose) => dispose()),
+  };
 }
 
 export function mountShell(root: HTMLElement): WorkspaceElements {
@@ -285,10 +294,11 @@ export function mountShell(root: HTMLElement): WorkspaceElements {
     throw new Error("OctoPoly workspace could not be created.");
   }
 
+  const modeSelector = attachModeSelector(workspaceModeButtons, root.ownerDocument, appMenuToggle, appMenu);
   const disposers = [
     attachAppMenuToggle(appMenuToggle, appMenu),
     attachAppMenuTabs(appMenuTabs, appMenuPanels),
-    attachModeSelector(workspaceModeButtons, root.ownerDocument, appMenuToggle, appMenu),
+    () => modeSelector.dispose(),
     attachFullscreenToggle(fullscreenToggle, root.ownerDocument),
   ];
   let disposed = false;
@@ -298,6 +308,7 @@ export function mountShell(root: HTMLElement): WorkspaceElements {
     fullscreenToggle,
     panelContainer,
     overlayContainer,
+    activateMode: (mode) => modeSelector.activate(mode),
     dispose: () => {
       if (disposed) return;
       disposed = true;

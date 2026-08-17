@@ -1,6 +1,7 @@
 import "./styles.css";
 import { mountOctoPolyApp } from "./app";
 import { parseObjMesh } from "./facial/obj";
+import { createPresetTextLoader } from "./facial/preset-loader";
 import type { FacialViewportScene } from "./facial/scene";
 import {
   startCubeViewport,
@@ -21,6 +22,8 @@ const nextCopyId = (): string => {
     : `copy-${Date.now()}-${copySequence}`;
 };
 
+const loadPresetText = createPresetTextLoader((url) => window.fetch(url));
+
 mountOctoPolyApp(root, {
   storage: {
     getItem: (key) => window.localStorage.getItem(key),
@@ -28,6 +31,7 @@ mountOctoPolyApp(root, {
   },
   nextCopyId,
   parseObjText: parseObjMesh,
+  loadPresetText,
   startCube: startCubeViewport,
   startViewport: (canvas, initialScene) => {
     const viewport = startMeshViewport(canvas, initialScene);

@@ -14,29 +14,33 @@ class MemoryStorage implements Storage {
 }
 
 describe("OctoPoly app composition", () => {
-  it("replaces the cube with one Facial runtime on first Facial selection", () => {
+  it("starts exactly one Facial runtime as the selected default without mounting the cube first", () => {
     const root = document.createElement("div");
-    const stopCube = vi.fn();
     const disposeFacial = vi.fn();
-    const startCube = vi.fn(() => stopCube);
+    const startCube = vi.fn(() => vi.fn());
+    const loadPresetText = vi.fn(async () => "preset");
     const startFacial = vi.fn((_options: FacialRuntimeOptions) => ({ dispose: disposeFacial }));
     const app = mountOctoPolyApp(root, {
       storage: new MemoryStorage(),
       nextCopyId: () => "copy-1",
       parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText,
       startCube,
       startFacial,
       startViewport: vi.fn(),
     });
+    const facial = root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!;
 
-    root.querySelector<HTMLButtonElement>('[data-mode="facial"]')?.click();
-    root.querySelector<HTMLButtonElement>('[data-mode="facial"]')?.click();
+    facial.click();
 
-    expect(startCube).toHaveBeenCalledOnce();
-    expect(stopCube).toHaveBeenCalledOnce();
+    expect(startCube).not.toHaveBeenCalled();
     expect(startFacial).toHaveBeenCalledOnce();
     expect(startFacial.mock.calls[0]?.[0].panelContainer.className).toBe("facial-panel-layer");
     expect(startFacial.mock.calls[0]?.[0].overlayContainer.className).toBe("viewport-overlay");
+    expect(startFacial.mock.calls[0]?.[0].loadPresetText).toBe(loadPresetText);
+    expect(facial.getAttribute("aria-pressed")).toBe("true");
+    expect(facial.getAttribute("aria-current")).toBe("true");
+    expect(root.querySelector("canvas")?.getAttribute("aria-label")).toBe("편집 가능한 페이셜 메시 3D 뷰포트");
     expect(root.querySelector(".status")?.textContent).toBe("페이셜 모드");
 
     app.dispose();
@@ -51,6 +55,7 @@ describe("OctoPoly app composition", () => {
       storage: new MemoryStorage(),
       nextCopyId: () => "copy-1",
       parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
       startCube: vi.fn(() => vi.fn()),
       startViewport: vi.fn(() => ({
         setScene: vi.fn(),
@@ -96,6 +101,7 @@ describe("OctoPoly app composition", () => {
       storage: new MemoryStorage(),
       nextCopyId: () => "copy-1",
       parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
       startCube: vi.fn(() => vi.fn()),
       startViewport: vi.fn(() => ({
         setScene: vi.fn(),
@@ -150,51 +156,62 @@ describe("OctoPoly app composition", () => {
       storage: new MemoryStorage(),
       nextCopyId: () => "copy-1",
       parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
       startCube,
       startFacial,
       startViewport: vi.fn(),
     });
     const facial = root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!;
 
-    facial.click();
     expect(startFacial).toHaveBeenCalledOnce();
-    expect(startCube).toHaveBeenCalledTimes(2);
+    expect(startCube).toHaveBeenCalledOnce();
+    expect(facial.getAttribute("aria-pressed")).toBe("false");
     expect(facial.getAttribute("aria-current")).not.toBe("true");
     expect(root.querySelector(".status")?.textContent).toBe("transient startup failure");
 
     facial.click();
     expect(startFacial).toHaveBeenCalledTimes(2);
+    expect(startCube).toHaveBeenCalledOnce();
+    expect(cubeDisposers[0]).toHaveBeenCalledOnce();
     expect(facial.getAttribute("aria-current")).toBe("true");
     expect(root.querySelector(".status")?.textContent).toBe("페이셜 모드");
 
     app.dispose();
   });
 
-  it("rolls back and permits retry when the current runtime disposer throws", () => {
+  it("rolls back and permits retry when disposing the fallback cube throws", () => {
     const root = document.createElement("div");
-    const brokenCubeDispose = vi.fn(() => { throw new Error("cube cleanup failed"); });
-    const recoveredCubeDispose = vi.fn();
-    const startCube = vi.fn()
-      .mockImplementationOnce(() => brokenCubeDispose)
-      .mockImplementationOnce(() => recoveredCubeDispose);
-    const startFacial = vi.fn(() => ({ dispose: vi.fn() }));
+    const brokenCubeDispose = vi.fn()
+      .mockImplementationOnce(() => { throw new Error("cube cleanup failed"); })
+      .mockImplementationOnce(() => undefined);
+    const startCube = vi.fn(() => brokenCubeDispose);
+    const startFacial = vi.fn()
+      .mockImplementationOnce(() => { throw new Error("initial Facial failure"); })
+      .mockImplementation(() => ({ dispose: vi.fn() }));
     const app = mountOctoPolyApp(root, {
       storage: new MemoryStorage(),
       nextCopyId: () => "copy-1",
       parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
       startCube,
       startFacial,
       startViewport: vi.fn(),
     });
     const facial = root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!;
 
-    facial.click();
-    expect(startFacial).not.toHaveBeenCalled();
-    expect(startCube).toHaveBeenCalledTimes(2);
-    expect(facial.getAttribute("aria-current")).not.toBe("true");
-
+    expect(startFacial).toHaveBeenCalledOnce();
+    expect(startCube).toHaveBeenCalledOnce();
     facial.click();
     expect(startFacial).toHaveBeenCalledOnce();
+    expect(startCube).toHaveBeenCalledOnce();
+    expect(brokenCubeDispose).toHaveBeenCalledOnce();
+    expect(facial.getAttribute("aria-current")).not.toBe("true");
+    expect(root.querySelector(".status")?.textContent).toBe("cube cleanup failed");
+
+    facial.click();
+    expect(startFacial).toHaveBeenCalledTimes(2);
+    expect(startCube).toHaveBeenCalledOnce();
+    expect(brokenCubeDispose).toHaveBeenCalledTimes(2);
     expect(facial.getAttribute("aria-current")).toBe("true");
 
     app.dispose();
@@ -207,8 +224,9 @@ describe("OctoPoly app composition", () => {
       storage: new MemoryStorage(),
       nextCopyId: () => "copy-1",
       parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
-      startCube: vi.fn(() => disposeRuntime),
-      startFacial: vi.fn(),
+      loadPresetText: vi.fn(async () => "preset"),
+      startCube: vi.fn(() => vi.fn()),
+      startFacial: vi.fn(() => ({ dispose: disposeRuntime })),
       startViewport: vi.fn(),
     });
     const menuToggle = root.querySelector<HTMLButtonElement>(".app-menu-toggle")!;

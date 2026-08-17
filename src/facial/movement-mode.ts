@@ -5,6 +5,7 @@ export interface VertexMovementModeState {
   readonly mode: VertexMovementMode;
   readonly enabledConstrainedPlanes: readonly WorldPlane[];
   readonly activeConstrainedPlane: WorldPlane;
+  readonly constrainedPlaneScreenSpace: boolean;
 }
 
 export type VertexMovementModeAction =
@@ -20,6 +21,10 @@ export type VertexMovementModeAction =
   | {
       readonly type: "select-constrained-plane";
       readonly plane: WorldPlane;
+    }
+  | {
+      readonly type: "set-constrained-plane-screen-space";
+      readonly enabled: boolean;
     };
 
 export const WORLD_PLANES: readonly WorldPlane[] = ["xy", "yz", "xz"];
@@ -29,6 +34,7 @@ export function createVertexMovementModeState(): VertexMovementModeState {
     mode: "gizmo",
     enabledConstrainedPlanes: [...WORLD_PLANES],
     activeConstrainedPlane: "xy",
+    constrainedPlaneScreenSpace: false,
   };
 }
 
@@ -43,6 +49,11 @@ export function vertexMovementModeReducer(
     return state.enabledConstrainedPlanes.includes(action.plane)
       ? { ...state, activeConstrainedPlane: action.plane }
       : state;
+  }
+  if (action.type === "set-constrained-plane-screen-space") {
+    return action.enabled === state.constrainedPlaneScreenSpace
+      ? state
+      : { ...state, constrainedPlaneScreenSpace: action.enabled };
   }
 
   const isEnabled = state.enabledConstrainedPlanes.includes(action.plane);

@@ -39,3 +39,17 @@
 - 실제 desktop browser와 production `dist` preview에서 cube→Facial 전환, 전체 기본 마스크 framing, 눈·입 opening, duplicate/rename/select, pointer·keyboard vertex 선택과 adaptive 좌표 announcement, camera-projected X/Y/Z 이동, zoom 후 gizmo 재투영, autosave, million-offset·tiny-scale OBJ framing, extreme Float32 bounds import rejection 및 기존 workspace 보존, `200×400` portrait framing, panel input stacking, reload recovery, same-mode/Escape 메뉴 닫힘 및 JavaScript 오류 0건을 확인했다.
 - 2026-08-17 `main` commit `9d7f0b3`을 push했고 GitHub Actions CI run `31954809330`이 성공했다. Cloudflare production이 `index-Cz9816yW.js`로 전환된 뒤 <https://octopoly.pages.dev/>에서 Facial 진입, 기본 마스크·opening·panel 및 console 오류 0건을 재확인했다.
 - Responsive CSS는 구현했으나 browser tool의 CSS viewport가 1280px로 고정되어 physical iPad/mobile 검증은 `NOT_RUN`이다.
+
+## Facial 기본 진입·Luna 프리셋·편집 표시 개선 | 시작: 2026-08-17 23:12:15 KST | 종료: 2026-08-18 01:52:22 KST | 소요: 160분
+
+- 앱 mount 시 기존 cancelable mode transaction을 통해 Facial runtime을 정확히 한 번 기본 시작한다. 초기 Facial 시작 실패 시 선택 상태를 rollback하고 기본 cube fallback으로 복구하며, fallback disposer 실패도 retry 가능한 상태로 유지한다.
+- 파일 메뉴에 explicit preset ID `luna`를 사용하는 `프리셋 > Luna`를 추가했다. 사용자 제공 원본 OBJ를 same-origin asset으로 byte-identical하게 보존하고 `SKM_Luna.Face.eye` object만 compact/remap해 기존 parse/validate/save-before-publish/import-epoch 경로로 가져온다.
+- Luna 원본과 production artifact는 모두 1,038,090 bytes, SHA-256 `4cb6861d8363bbd5a37afcd317dd7c4a5ab32db5f6d7cc6f8c017a7f09df7c53`로 일치하며, 추출 결과는 130 vertices / 224 triangles / max index 129다.
+- camera를 정면 초기 orientation과 projected AABB close framing으로 바꾸고, orbit·resize·0×0 mount recovery 및 same-center/same-radius이지만 AABB 비율이 다른 scene replacement에서 clipping과 non-finite state를 방지했다. geometry 편집과 camera state의 완전한 분리 및 추가 근접 zoom은 `ROADMAP.md`의 `+6차`로 분리했다.
+- vertex handle을 일반 5 CSS px, 선택 8 CSS px 정사각형으로 변경했다. DPR은 2배로 제한하고 point pass는 `DEPTH_TEST`·`LEQUAL`을 사용하며, editable edge/point pass의 성공과 예외 모두에서 `LESS`·`CULL_FACE`·null program을 복원한다.
+- view-plane mode에서는 `VIEW` text와 X/Y/Z bubble/line을 제거하고 선택 정점 중심의 viewport-independent 4방향 2D move affordance만 표시한다.
+- constrained-plane 기본 표시는 선택 world plane과 두 axis의 camera projection 및 foreshortening을 반영한다. 별도 기본-off `스크린 스페이스` 체크박스를 켜면 고정된 직교 2D plane을 표시하며, plane body는 true edge-on에서도 두 world axes를 한 transaction으로 이동하고 개별 axis segment는 해당 axis만 이동한다.
+- 후속 순서를 `ROADMAP.md`에 기록했다: texture load/render, embedded-texture `.octopoly` save/load, proportional multi-vertex edit, 전체/Base+모든 모델 또는 active-only export, GLB import/export, camera 근접 zoom 및 geometry-edit 독립성.
+- 최종 CI에서 typecheck, **20 test files / 263 tests**, production build, artifact baseline 및 `git diff --check`를 통과했다. local production bundle은 `index-BTOIdPGT.js` / `index-BZFj_gyb.css`다.
+- 실제 production preview에서 Facial 기본 시작, Luna 130/224 close framing, orbit containment, depth-tested square points, view-plane 2D affordance, camera-projected plane, screen-space XY/YZ/XZ axis identity, axis-only drag, plane-body two-axis drag 및 true edge-on YZ screen-space movement을 확인했고 JavaScript 오류는 0건이었다.
+- 최신 complete diff에 대한 독립 fail-closed review는 security concern 0건, logic error 0건으로 `passed:true`였다. Physical iPad Safari와 Apple Pencil 검증은 장치 부재로 `NOT_RUN`이다.

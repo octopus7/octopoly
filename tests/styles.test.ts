@@ -60,6 +60,22 @@ describe("application stacking order", () => {
     expect(declarationFor(".movement-mode-buttons button", "white-space")).toBe("nowrap");
   });
 
+  it("uses a compact view-plane touch target and a non-interactive top-level plane visual", () => {
+    expect(declarationFor(".vertex-gizmo__plane-handle--view", "width")).toBe("2.75rem");
+    expect(declarationFor(".vertex-gizmo__plane-handle--view", "min-width")).toBe("2.75rem");
+    expect(declarationFor(".vertex-gizmo__plane-handle--view", "height")).toBe("2.75rem");
+    expect(declarationFor('.vertex-gizmo__handle[hidden]', "display")).toBe("none");
+    expect(declarationFor('.vertex-gizmo__plane-handle[hidden]', "display")).toBe("none");
+    expect(declarationFor('.vertex-gizmo__plane-axis-handle[hidden]', "display")).toBe("none");
+    expect(declarationFor(".vertex-gizmo__plane-visual", "pointer-events")).toBe("none");
+    expect(declarationFor(".vertex-gizmo__plane-axis-handle", "pointer-events")).toBe("auto");
+    expect(declarationFor(".vertex-gizmo__plane-axis-handle", "touch-action")).toBe("none");
+    expect(Number(declarationFor(".vertex-gizmo__plane-axis-handle", "z-index")))
+      .toBeGreaterThan(Number(declarationFor(".vertex-gizmo__plane-handle", "z-index")));
+    expect(Number(declarationFor(".vertex-gizmo__plane-visual", "z-index")))
+      .toBeGreaterThan(Number(declarationFor(".vertex-gizmo__axis-line", "z-index")));
+  });
+
   it("includes safe-area-aware narrow layouts for the drawer, top strip, and compact selection", () => {
     const mobile = stylesheet.match(/@media \(max-width: 520px\)\s*\{([\s\S]*)\}\s*$/)?.[1] ?? "";
     expect(mobile).toContain(".facial-mesh-drawer");

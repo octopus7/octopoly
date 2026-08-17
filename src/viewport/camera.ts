@@ -15,6 +15,8 @@ const MAX_PITCH = Math.PI / 2 - 0.05;
 const MIN_DISTANCE = 2.2;
 const MAX_DISTANCE = 14;
 
+export const CAMERA_FRAMING_MARGIN = 0.96;
+
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
@@ -22,16 +24,43 @@ function clamp(value: number, minimum: number, maximum: number): number {
 function framingDistance(radius: number, aspect: number): number {
   const verticalHalfFov = Math.PI / 8;
   const horizontalHalfFov = Math.atan(Math.tan(verticalHalfFov) * Math.max(aspect, 0.01));
-  return radius * 1.1 / Math.sin(Math.min(verticalHalfFov, horizontalHalfFov));
+  return radius / CAMERA_FRAMING_MARGIN / Math.sin(Math.min(verticalHalfFov, horizontalHalfFov));
+}
+
+function boxFramingDistance(halfExtents: Vec3, aspect: number, yaw: number, pitch: number): number {
+  const verticalTangent = Math.tan(Math.PI / 8);
+  const horizontalTangent = verticalTangent * Math.max(aspect, 0.01);
+  const right: Vec3 = [Math.cos(yaw), 0, -Math.sin(yaw)];
+  const up: Vec3 = [
+    -Math.sin(pitch) * Math.sin(yaw),
+    Math.cos(pitch),
+    -Math.sin(pitch) * Math.cos(yaw),
+  ];
+  const forward: Vec3 = [
+    Math.cos(pitch) * Math.sin(yaw),
+    Math.sin(pitch),
+    Math.cos(pitch) * Math.cos(yaw),
+  ];
+  const projectedExtent = (axis: Vec3): number =>
+    Math.abs(axis[0]) * halfExtents[0]
+    + Math.abs(axis[1]) * halfExtents[1]
+    + Math.abs(axis[2]) * halfExtents[2];
+  return projectedExtent(forward) + Math.max(
+    projectedExtent(up) / verticalTangent,
+    projectedExtent(right) / horizontalTangent,
+  ) / CAMERA_FRAMING_MARGIN;
 }
 
 export class OrbitCamera {
-  #yaw = Math.PI / 4;
-  #pitch = Math.PI / 6;
+  #yaw = 0;
+  #pitch = 0;
   #distance = 6.5;
+  #minimumDistance = MIN_DISTANCE;
   #maximumDistance = MAX_DISTANCE;
   #target: Vec3 = [0, 0, 0];
   #framingRadius: number | null = null;
+  #framingHalfExtents: Vec3 | null = null;
+  #framingAspect: number | null = null;
 
   state(): CameraState {
     return {
@@ -43,8 +72,23 @@ export class OrbitCamera {
   }
 
   orbit(deltaX: number, deltaY: number): void {
+    if (![deltaX, deltaY].every(Number.isFinite)) return;
     this.#yaw -= deltaX * 0.008;
     this.#pitch = clamp(this.#pitch - deltaY * 0.008, MIN_PITCH, MAX_PITCH);
+    if (this.#framingHalfExtents && this.#framingAspect !== null) {
+      const requiredDistance = boxFramingDistance(
+        this.#framingHalfExtents,
+        this.#framingAspect,
+        this.#yaw,
+        this.#pitch,
+      );
+      this.#maximumDistance = Math.max(this.#maximumDistance, requiredDistance * 4);
+      this.#distance = clamp(
+        Math.max(this.#distance, requiredDistance),
+        this.#minimumDistance,
+        this.#maximumDistance,
+      );
+    }
   }
 
   pan(deltaX: number, deltaY: number, viewportHeight: number): void {
@@ -105,12 +149,12 @@ export class OrbitCamera {
   }
 
   zoomByWheel(deltaY: number): void {
-    this.#distance = clamp(this.#distance * Math.exp(deltaY * 0.001), MIN_DISTANCE, this.#maximumDistance);
+    this.#distance = clamp(this.#distance * Math.exp(deltaY * 0.001), this.#minimumDistance, this.#maximumDistance);
   }
 
   zoomByPinch(previousDistance: number, nextDistance: number): void {
     if (previousDistance <= 0 || nextDistance <= 0) return;
-    this.#distance = clamp(this.#distance * (previousDistance / nextDistance), MIN_DISTANCE, this.#maximumDistance);
+    this.#distance = clamp(this.#distance * (previousDistance / nextDistance), this.#minimumDistance, this.#maximumDistance);
   }
 
   fitRadius(radius: number): void {
@@ -120,19 +164,70 @@ export class OrbitCamera {
   }
 
   frameBounds(center: Vec3, radius: number, aspect = 1): void {
-    if (!center.every(Number.isFinite) || !Number.isFinite(radius) || radius <= 0) return;
+    if (
+      !center.every(Number.isFinite)
+      || !Number.isFinite(radius)
+      || radius <= 0
+      || !Number.isFinite(aspect)
+      || aspect <= 0
+    ) return;
     const requiredDistance = framingDistance(radius, aspect);
     this.#target = [...center] as unknown as Vec3;
     this.#framingRadius = radius;
+    this.#framingHalfExtents = null;
+    this.#framingAspect = aspect;
+    this.#minimumDistance = MIN_DISTANCE;
     this.#maximumDistance = Math.max(MAX_DISTANCE, requiredDistance * 4);
-    this.#distance = clamp(requiredDistance, MIN_DISTANCE, this.#maximumDistance);
+    this.#distance = clamp(requiredDistance, this.#minimumDistance, this.#maximumDistance);
+  }
+
+  frameBox(center: Vec3, halfExtents: Vec3, aspect = 1): void {
+    if (
+      !center.every(Number.isFinite)
+      || !halfExtents.every((extent) => Number.isFinite(extent) && extent >= 0)
+      || !halfExtents.some((extent) => extent > 0)
+      || !Number.isFinite(aspect)
+      || aspect <= 0
+    ) return;
+    const requiredDistance = boxFramingDistance(halfExtents, aspect, this.#yaw, this.#pitch);
+    this.#target = [...center] as unknown as Vec3;
+    this.#framingRadius = null;
+    this.#framingHalfExtents = [...halfExtents] as unknown as Vec3;
+    this.#framingAspect = aspect;
+    this.#minimumDistance = Math.max(0.05, Math.hypot(...halfExtents) + 0.01);
+    this.#maximumDistance = Math.max(MAX_DISTANCE, requiredDistance * 4);
+    this.#distance = clamp(requiredDistance, this.#minimumDistance, this.#maximumDistance);
+  }
+
+  updateBoxFraming(halfExtents: Vec3, aspect: number): void {
+    if (
+      !halfExtents.every((extent) => Number.isFinite(extent) && extent >= 0)
+      || !halfExtents.some((extent) => extent > 0)
+      || !Number.isFinite(aspect)
+      || aspect <= 0
+    ) return;
+    const requiredDistance = boxFramingDistance(halfExtents, aspect, this.#yaw, this.#pitch);
+    this.#framingRadius = null;
+    this.#framingHalfExtents = [...halfExtents] as unknown as Vec3;
+    this.#framingAspect = aspect;
+    this.#minimumDistance = Math.max(0.05, Math.hypot(...halfExtents) + 0.01);
+    this.#maximumDistance = Math.max(this.#maximumDistance, MAX_DISTANCE, requiredDistance * 4);
+    this.#distance = clamp(
+      Math.max(this.#distance, requiredDistance),
+      this.#minimumDistance,
+      this.#maximumDistance,
+    );
   }
 
   fitAspect(aspect: number): void {
-    if (this.#framingRadius === null || !Number.isFinite(aspect) || aspect <= 0) return;
-    const requiredDistance = framingDistance(this.#framingRadius, aspect);
+    if (!Number.isFinite(aspect) || aspect <= 0) return;
+    const requiredDistance = this.#framingHalfExtents
+      ? boxFramingDistance(this.#framingHalfExtents, aspect, this.#yaw, this.#pitch)
+      : this.#framingRadius === null ? null : framingDistance(this.#framingRadius, aspect);
+    if (requiredDistance === null) return;
+    this.#framingAspect = aspect;
     this.#maximumDistance = Math.max(this.#maximumDistance, requiredDistance * 4);
-    this.#distance = clamp(Math.max(this.#distance, requiredDistance), MIN_DISTANCE, this.#maximumDistance);
+    this.#distance = clamp(Math.max(this.#distance, requiredDistance), this.#minimumDistance, this.#maximumDistance);
   }
 
   viewProjection(aspect: number): Float32Array {

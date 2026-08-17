@@ -66,6 +66,12 @@ export function mountMovementControls(
   planeOptions.append(legend);
   const planeInputs = new Map<WorldPlane, HTMLInputElement>();
   const planeDisposers: Array<() => void> = [];
+  const screenSpaceLabel = document.createElement("label");
+  screenSpaceLabel.className = "movement-plane-options__screen-space";
+  const screenSpaceInput = document.createElement("input");
+  screenSpaceInput.type = "checkbox";
+  screenSpaceInput.dataset.planeScreenSpace = "true";
+  screenSpaceLabel.append(screenSpaceInput, document.createTextNode("스크린 스페이스"));
 
   const selector = document.createElement("aside");
   selector.className = "movement-plane-selector";
@@ -86,6 +92,7 @@ export function mountMovementControls(
     for (const [plane, input] of planeInputs) {
       input.checked = currentState.enabledConstrainedPlanes.includes(plane);
     }
+    screenSpaceInput.checked = currentState.constrainedPlaneScreenSpace;
     const selectorPlanes = currentState.mode === "constrained-plane"
       ? getConstrainedPlaneSelectorPlanes(currentState)
       : [];
@@ -144,6 +151,17 @@ export function mountMovementControls(
     label.append(input, document.createTextNode(plane.toUpperCase()));
     planeOptions.append(label);
   }
+  const onScreenSpaceChange = (): void => {
+    currentState = vertexMovementModeReducer(currentState, {
+      type: "set-constrained-plane-screen-space",
+      enabled: screenSpaceInput.checked,
+    });
+    render();
+    publish();
+  };
+  screenSpaceInput.addEventListener("change", onScreenSpaceChange);
+  planeDisposers.push(() => screenSpaceInput.removeEventListener("change", onScreenSpaceChange));
+  planeOptions.append(screenSpaceLabel);
 
   const setOpen = (open: boolean, restoreFocus = false): void => {
     trigger.setAttribute("aria-expanded", String(open));

@@ -1,7 +1,7 @@
 import { createFacialController } from "./controller";
 import { mountVertexGizmo, type GizmoAxisDirections, type GizmoDragPlane, type GizmoPosition, type VertexGizmo } from "./gizmo";
 import { mountMovementControls, type MovementControls } from "./movement-controls";
-import { mountFacialPanel, type FacialPanel } from "./panel";
+import { mountFacialPanel, type FacialPanel, type FacialPresetId } from "./panel";
 import { attachVertexPicker } from "./picker";
 import { createFacialScene, type FacialViewportScene } from "./scene";
 import { createFacialSession, type FacialSession } from "./session";
@@ -40,6 +40,7 @@ export interface FacialRuntimeOptions {
   readonly storage: RuntimeStorage;
   readonly nextCopyId: () => string;
   readonly parseObjText: (source: string) => MeshGeometry;
+  readonly loadPresetText?: (preset: FacialPresetId) => Promise<string>;
   readonly startViewport: (
     canvas: HTMLCanvasElement,
     initialScene: FacialViewportScene,
@@ -82,6 +83,7 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
   let detachKeyboard: (() => void) | undefined;
   let detachViewChange: (() => void) | undefined;
   let disposed = false;
+  let movementUnitsPerPixel = 1 / 300;
 
   const updateGizmo = (): void => {
     const selectedVertex = controller.selectedVertex;
@@ -95,7 +97,8 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
     if (activeMesh) {
       const radius = geometryRadius(activeMesh.geometry.positions);
       const modelScale = radius > 0 ? radius : 1;
-      gizmo?.setMovementScale(modelScale / 300, modelScale / 30);
+      movementUnitsPerPixel = modelScale / 300;
+      gizmo?.setMovementScale(movementUnitsPerPixel, modelScale / 30);
     }
     const directions = viewport?.projectAxis
       ? Object.fromEntries((["x", "y", "z"] as const).map((axis) => [
@@ -158,6 +161,16 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
       onImport: (file) => {
         void session?.importObj(file).catch((error: unknown) => options.onError?.(error));
       },
+      onLoadPreset: (preset) => {
+        const loadPresetText = options.loadPresetText;
+        if (!loadPresetText) {
+          options.onError?.(new Error("프리셋 로더를 사용할 수 없습니다."));
+          return;
+        }
+        void session?.importObj({
+          text: () => loadPresetText(preset),
+        }).catch((error: unknown) => options.onError?.(error));
+      },
       onDuplicate: () => runCommand(() => session?.duplicateBase()),
       onSelectMesh: (meshId) => runCommand(() => session?.selectMesh(meshId)),
       onRenameMesh: (meshId, name) => runCommand(() => session?.renameMesh(meshId, name)),
@@ -178,10 +191,16 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
             delta,
           ));
       },
-      onPlaneMove: (plane, from, to) => {
+      onPlaneMove: (plane, from, to, screenSpace = false) => {
         const selectedVertex = controller.selectedVertex;
         if (selectedVertex === null) return;
-        const delta = viewport?.modelDeltaForPlaneDrag?.(selectedVertex, plane, from, to);
+        const horizontal = (to.x - from.x) * movementUnitsPerPixel;
+        const vertical = (from.y - to.y) * movementUnitsPerPixel;
+        const delta = screenSpace && plane !== "view"
+          ? plane === "xy" ? [horizontal, vertical, 0] as const
+          : plane === "yz" ? [0, vertical, horizontal] as const
+          : [horizontal, 0, vertical] as const
+          : viewport?.modelDeltaForPlaneDrag?.(selectedVertex, plane, from, to);
         if (!delta) return;
         const meshId = controller.workspace.activeMeshId;
         const sceneRevision = controller.sceneRevision;
@@ -198,6 +217,7 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
         const plane: GizmoDragPlane | null = state.mode === "gizmo"
           ? null
           : state.mode === "view-plane" ? "view" : state.activeConstrainedPlane;
+        gizmo?.setConstrainedPlaneScreenSpace(state.constrainedPlaneScreenSpace);
         gizmo?.setDragPlane(plane);
       },
     });

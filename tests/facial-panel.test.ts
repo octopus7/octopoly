@@ -167,6 +167,44 @@ describe("facial workspace panel", () => {
     container.remove();
   });
 
+  it("loads the Luna preset once and closes the File menu with focus restored", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const onLoadPreset = vi.fn();
+    const panel = mountFacialPanel(container, {
+      onImport: vi.fn(),
+      onLoadPreset,
+      onDuplicate: vi.fn(),
+      onSelectMesh: vi.fn(),
+      onRenameMesh: vi.fn(),
+    });
+    const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!;
+    const menu = container.querySelector<HTMLElement>(".facial-file-menu")!;
+
+    try {
+      const presetGroup = menu.querySelector<HTMLElement>('[aria-labelledby^="facial-preset-heading-"]')!;
+      const heading = presetGroup.querySelector<HTMLElement>("h3")!;
+      const presetButtons = [...presetGroup.querySelectorAll<HTMLButtonElement>("button")];
+      expect(presetGroup.getAttribute("role")).toBe("group");
+      expect(heading.textContent).toBe("프리셋");
+      expect(presetButtons.map((button) => button.textContent)).toEqual(["Luna"]);
+      expect(container.textContent).not.toMatch(/Export|내보내기/);
+
+      toggle.click();
+      presetButtons[0]!.focus();
+      presetButtons[0]!.click();
+
+      expect(onLoadPreset).toHaveBeenCalledOnce();
+      expect(onLoadPreset).toHaveBeenCalledWith("luna");
+      expect(menu.hidden).toBe(true);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      expect(document.activeElement).toBe(toggle);
+    } finally {
+      panel.dispose();
+      container.remove();
+    }
+  });
+
   it("closes only the open File menu when Escape bubbles from its focused trigger", () => {
     const container = document.createElement("div");
     document.body.append(container);

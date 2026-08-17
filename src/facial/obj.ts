@@ -9,9 +9,11 @@ const OBJ_FACE_REFERENCE_PATTERN = new RegExp(
   `^(${OBJ_NON_ZERO_INTEGER_SOURCE})(?:/(?:${OBJ_NON_ZERO_INTEGER_SOURCE})(?:/(?:${OBJ_NON_ZERO_INTEGER_SOURCE}))?|//(?:${OBJ_NON_ZERO_INTEGER_SOURCE}))?$`,
 );
 
-export function parseObjMesh(source: string): ObjMesh {
+function parseObjMeshInternal(source: string, selectedObjectName?: string): ObjMesh {
   const positions: number[] = [];
   const indices: number[] = [];
+  let currentObjectName: string | null = null;
+  let selectedObjectSeen = false;
 
   const lines = source.split(/\r?\n/);
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
@@ -21,7 +23,10 @@ export function parseObjMesh(source: string): ObjMesh {
     }
     const fields = content.split(/\s+/);
 
-    if (fields[0] === "v") {
+    if (fields[0] === "o") {
+      currentObjectName = fields.slice(1).join(" ");
+      if (currentObjectName === selectedObjectName) selectedObjectSeen = true;
+    } else if (fields[0] === "v") {
       const coordinateTokens = fields.slice(1);
       const coordinates = coordinateTokens.map(Number);
       if (
@@ -64,13 +69,12 @@ export function parseObjMesh(source: string): ObjMesh {
         }
         return resolvedIndex;
       };
-      const first = vertexIndex(fields[1]);
-      for (let vertex = 2; vertex < fields.length - 1; vertex += 1) {
-        indices.push(
-          first,
-          vertexIndex(fields[vertex]),
-          vertexIndex(fields[vertex + 1]),
-        );
+      const faceIndices = fields.slice(1).map(vertexIndex);
+      if (selectedObjectName === undefined || currentObjectName === selectedObjectName) {
+        const first = faceIndices[0]!;
+        for (let vertex = 1; vertex < faceIndices.length - 1; vertex += 1) {
+          indices.push(first, faceIndices[vertex]!, faceIndices[vertex + 1]!);
+        }
       }
     }
   }
@@ -78,10 +82,37 @@ export function parseObjMesh(source: string): ObjMesh {
   if (positions.length === 0) {
     throw new Error("OBJ mesh must contain at least one vertex");
   }
-
-  if (indices.length === 0) {
-    throw new Error("OBJ mesh must contain at least one face");
+  if (selectedObjectName !== undefined && !selectedObjectSeen) {
+    throw new Error(`OBJ object "${selectedObjectName}" was not found`);
   }
+  if (indices.length === 0) {
+    throw new Error(selectedObjectName === undefined
+      ? "OBJ mesh must contain at least one face"
+      : `OBJ object "${selectedObjectName}" must contain at least one face`);
+  }
+  if (selectedObjectName === undefined) return { positions, indices };
 
-  return { positions, indices };
+  const compactPositions: number[] = [];
+  const compactIndices: number[] = [];
+  const remappedIndices = new Map<number, number>();
+  for (const originalIndex of indices) {
+    let compactIndex = remappedIndices.get(originalIndex);
+    if (compactIndex === undefined) {
+      compactIndex = remappedIndices.size;
+      remappedIndices.set(originalIndex, compactIndex);
+      const offset = originalIndex * 3;
+      compactPositions.push(positions[offset]!, positions[offset + 1]!, positions[offset + 2]!);
+    }
+    compactIndices.push(compactIndex);
+  }
+  return { positions: compactPositions, indices: compactIndices };
+}
+
+export function parseObjMesh(source: string): ObjMesh {
+  return parseObjMeshInternal(source);
+}
+
+export function parseObjObjectMesh(source: string, objectName: string): ObjMesh {
+  if (objectName.trim() === "") throw new Error("OBJ object name must not be empty");
+  return parseObjMeshInternal(source, objectName);
 }

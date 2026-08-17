@@ -9,8 +9,11 @@ function formatCoordinate(value: number): string {
     : value.toFixed(6);
 }
 
+export type FacialPresetId = "luna";
+
 export interface FacialPanelCallbacks {
   readonly onImport: (file: File) => void;
+  readonly onLoadPreset?: (preset: FacialPresetId) => void;
   readonly onDuplicate: () => void;
   readonly onSelectMesh: (meshId: string) => void;
   readonly onRenameMesh: (meshId: string, name: string) => boolean;
@@ -127,6 +130,23 @@ export function mountFacialPanel(
     fileMenu.hidden = !open;
     if (restoreFocus) fileMenuToggle.focus();
   };
+  const presetSection = document.createElement("section");
+  presetSection.setAttribute("role", "group");
+  const presetHeading = document.createElement("h3");
+  presetHeading.id = `facial-preset-heading-${panelId}`;
+  presetHeading.textContent = "프리셋";
+  presetSection.setAttribute("aria-labelledby", presetHeading.id);
+  const lunaButton = document.createElement("button");
+  lunaButton.type = "button";
+  lunaButton.dataset.action = "load-preset";
+  lunaButton.dataset.presetId = "luna";
+  lunaButton.textContent = "Luna";
+  const handleLunaPreset = (): void => {
+    callbacks.onLoadPreset?.("luna");
+    setFileMenuOpen(false, true);
+  };
+  lunaButton.addEventListener("click", handleLunaPreset);
+  presetSection.append(presetHeading, lunaButton);
   const handleFileMenuToggle = (): void => {
     const open = fileMenu.hidden !== false;
     setFileMenuOpen(open);
@@ -362,7 +382,7 @@ export function mountFacialPanel(
   renameInput.addEventListener("input", handleRenameInput);
   dialogBackdrop.addEventListener("keydown", handleDialogKeydown);
 
-  fileMenu.append(fileHeading, importButton, importInput);
+  fileMenu.append(fileHeading, importButton, importInput, presetSection);
   toolStrip.append(fileMenuToggle, fileMenu, meshDrawerToggle);
   selectionCard.append(heading, selectionSummary, focusButton, selectionAnnouncement);
   meshDrawer.append(meshHeading, duplicateButton, meshList);
@@ -471,6 +491,7 @@ export function mountFacialPanel(
     dispose: () => {
       importInput.removeEventListener("change", handleImport);
       importButton.removeEventListener("click", handleImportButton);
+      lunaButton.removeEventListener("click", handleLunaPreset);
       fileMenuToggle.removeEventListener("click", handleFileMenuToggle);
       fileMenuToggle.removeEventListener("keydown", handleFileMenuKeydown);
       fileMenu.removeEventListener("keydown", handleFileMenuKeydown);

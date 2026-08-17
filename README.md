@@ -2,22 +2,24 @@
 
 OctoPoly는 저폴리곤 작업 전반을 다루는 범용 도구이며, 작업별 특화 모드를 통해 작업 효율을 극대화하는
 것을 목표로 합니다. 초기 작업 모드 분류는 리토폴로지, 페이셜 작업, 페인트로 나누며, 현재는 페이셜 모드만
-제공하고 리토폴로지와 페인트는 준비 중입니다. 기본 큐브 뷰포트는 공통 기준선이며 리토폴로지 모드를
-의미하지 않습니다.
+제공하고 리토폴로지와 페인트는 준비 중입니다. 앱은 페이셜 작업 공간으로 바로 시작하며, 기본 큐브 뷰포트는
+페이셜 시작에 실패했을 때 사용할 수 있는 공통 fallback 기준선입니다.
 
-현재 앱은 초기 공통 큐브 뷰포트에서 `Facial` 모드를 선택해 다음 작업을 수행할 수 있습니다.
+현재 앱에서는 다음 작업을 수행할 수 있습니다.
 
 - 좌우 대칭 저폴리 기본 얼굴 마스크와 topology상 실제 눈·입 opening
-- OBJ base mesh 가져오기
+- OBJ base mesh 가져오기와 `파일 > 프리셋 > Luna` 불러오기
 - immutable `Base Mask` 복제, 복제본 이름 변경 및 active mesh 전환
-- 단일 vertex 선택과 X/Y/Z axis gizmo 이동
+- 단일 vertex 선택과 X/Y/Z axis gizmo, view-plane 및 constrained-plane 이동
+- camera-projected 제한 평면과 별도 screen-space 표시, 각 plane axis의 axis-only drag
 - `localStorage` 자동 저장 및 다음 세션 복구
-- WebGL2 indexed face·wire·vertex 렌더링
+- WebGL2 indexed face·wire·depth-tested square vertex 렌더링
 
 현재 범위에는 내보내기, undo/redo, edge/face 선택, UV, 재질, 미러 편집, 리토폴로지 및
-페인트 기능이 포함되지 않습니다. 초기화 전 구현과 과거 계획·진행 기록은
-`codex/pre-minimal-main-20260811` 브랜치에 보존되어 있으며, 필요한 코드는 기능별로 검토한 뒤
-선택적으로 가져옵니다.
+페인트 기능이 포함되지 않습니다. 텍스처 렌더링, 자체 작업 파일, proportional multi-vertex 편집, 익스포트,
+GLB 입출력 및 camera 편집 독립성의 후속 순서와 제품 계약은 [`ROADMAP.md`](./ROADMAP.md)에 기록합니다. 초기화 전 구현과 과거
+계획·진행 기록은 `codex/pre-minimal-main-20260811` 브랜치에 보존되어 있으며, 필요한 코드는
+기능별로 검토한 뒤 선택적으로 가져옵니다.
 
 ## 로컬 실행
 

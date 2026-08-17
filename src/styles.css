@@ -545,6 +545,11 @@ canvas:active {
   min-height: auto;
 }
 
+.movement-plane-options__screen-space {
+  padding-left: 0.55rem;
+  border-left: 1px solid #3d4d61;
+}
+
 .movement-plane-selector {
   position: absolute;
   top: 50%;
@@ -612,7 +617,9 @@ canvas:active {
 .facial-panel input:focus-visible,
 .facial-mesh-dialog button:focus-visible,
 .facial-mesh-dialog input:focus-visible,
-.vertex-gizmo__handle:focus-visible {
+.vertex-gizmo__handle:focus-visible,
+.vertex-gizmo__plane-axis-handle:focus-visible,
+.vertex-gizmo__plane-handle:focus-visible {
   outline: 2px solid #8ec5ff;
   outline-offset: 2px;
 }
@@ -756,6 +763,106 @@ canvas:active {
   color: #6eb7ff;
 }
 
+.vertex-gizmo__plane-visual {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  width: 10rem;
+  height: 10rem;
+  overflow: visible;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.vertex-gizmo__plane-visual[hidden],
+.vertex-gizmo__plane-axis[hidden],
+.vertex-gizmo__plane-fill[hidden] {
+  display: none;
+}
+
+.vertex-gizmo__plane-fill {
+  fill: rgb(110 183 255 / 24%);
+  stroke: rgb(213 230 248 / 78%);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.vertex-gizmo__plane-visual[data-plane="yz"] .vertex-gizmo__plane-fill {
+  fill: rgb(255 105 120 / 24%);
+}
+
+.vertex-gizmo__plane-visual[data-plane="xz"] .vertex-gizmo__plane-fill {
+  fill: rgb(101 215 164 / 24%);
+}
+
+.vertex-gizmo__plane-axis {
+  stroke-width: 3;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.vertex-gizmo__plane-axis--x {
+  stroke: #ff6978;
+}
+
+.vertex-gizmo__plane-axis--y {
+  stroke: #65d7a4;
+}
+
+.vertex-gizmo__plane-axis--z {
+  stroke: #6eb7ff;
+}
+
+.vertex-gizmo__plane-axis-handle {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  left: 0;
+  min-width: 2.75rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  color: #f4f7fb;
+  background: transparent;
+  cursor: grab;
+  pointer-events: auto;
+  touch-action: none;
+  transform-origin: center;
+}
+
+.vertex-gizmo__plane-axis-handle::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--plane-axis-visual-length, 0);
+  height: 3px;
+  border-radius: 999px;
+  background: currentcolor;
+  content: "";
+  transform: translate(-50%, -50%);
+}
+
+.vertex-gizmo__plane-axis-handle:active {
+  cursor: grabbing;
+}
+
+.vertex-gizmo__plane-axis-handle[hidden] {
+  display: none;
+}
+
+.vertex-gizmo__plane-axis-handle--x {
+  color: #ff6978;
+}
+
+.vertex-gizmo__plane-axis-handle--y {
+  color: #65d7a4;
+}
+
+.vertex-gizmo__plane-axis-handle--z {
+  color: #6eb7ff;
+}
+
 .vertex-gizmo__handle {
   position: absolute;
   z-index: 1;
@@ -780,6 +887,10 @@ canvas:active {
   cursor: grabbing;
 }
 
+.vertex-gizmo__handle[hidden] {
+  display: none;
+}
+
 .vertex-gizmo__plane-handle {
   position: absolute;
   z-index: 2;
@@ -802,6 +913,38 @@ canvas:active {
 
 .vertex-gizmo__plane-handle:active {
   cursor: grabbing;
+}
+
+.vertex-gizmo__plane-handle[hidden] {
+  display: none;
+}
+
+.vertex-gizmo__plane-handle--view {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border-radius: 0.8rem;
+}
+
+.vertex-gizmo__plane-handle--view svg {
+  width: 1.75rem;
+  height: 1.75rem;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.vertex-gizmo__plane-handle--constrained {
+  width: 4.5rem;
+  min-width: 4.5rem;
+  height: 4.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .vertex-gizmo__handle--x {

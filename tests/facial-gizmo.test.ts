@@ -75,10 +75,107 @@ describe("facial gizmo math", () => {
     planeHandle.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 140, clientY: 90 }));
 
     expect(planeHandle.hidden).toBe(false);
-    expect(planeHandle.textContent).toBe("XY");
+    expect(planeHandle.textContent).toBe("");
+    expect(planeHandle.dataset.dragPlane).toBe("xy");
+    expect(planeHandle.getAttribute("aria-label")).toBe("XY 제한 평면에서 정점 이동");
     expect([...gizmo.element.querySelectorAll<HTMLElement>("[data-axis]")]
       .every((handle) => handle.hidden)).toBe(true);
     expect(onPlaneMove).toHaveBeenCalledWith("xy", { x: 120, y: 80 }, { x: 140, y: 90 });
+  });
+
+  it("shows only a four-direction 2D move gizmo for the view plane", () => {
+    const container = document.createElement("div");
+    const onPlaneMove = vi.fn();
+    const gizmo = mountVertexGizmo(container, {
+      onMove: () => undefined,
+      onPlaneMove,
+    });
+    gizmo.setDragPlane("view");
+    gizmo.show({ x: 120, y: 80 });
+    const planeHandle = gizmo.element.querySelector<HTMLButtonElement>(".vertex-gizmo__plane-handle")!;
+
+    expect(planeHandle.hidden).toBe(false);
+    expect(planeHandle.classList.contains("vertex-gizmo__plane-handle--view")).toBe(true);
+    expect(planeHandle.dataset.dragPlane).toBe("view");
+    expect(planeHandle.textContent).not.toContain("VIEW");
+    expect(planeHandle.getAttribute("aria-label")).toBe("뷰 평면 2D 정점 이동");
+    expect(planeHandle.querySelector('svg[data-view-plane-gizmo="true"]')).not.toBeNull();
+    expect(gizmo.element.querySelector<SVGElement>(".vertex-gizmo__plane-visual")?.hasAttribute("hidden")).toBe(true);
+    expect([...gizmo.element.querySelectorAll<HTMLElement>("[data-axis], [data-axis-line]")]
+      .every((axisElement) => axisElement.hidden)).toBe(true);
+
+    planeHandle.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 120, clientY: 80 }));
+    planeHandle.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 140, clientY: 90 }));
+    expect(onPlaneMove).toHaveBeenCalledWith("view", { x: 120, y: 80 }, { x: 140, y: 90 });
+  });
+
+  it("projects the world plane by default and uses a full orthogonal plane only in screen space", () => {
+    const container = document.createElement("div");
+    const gizmo = mountVertexGizmo(container, { onMove: () => undefined });
+    gizmo.setDragPlane("xy");
+    gizmo.show({ x: 120, y: 80 }, {
+      x: { x: 1, y: 0 },
+      y: { x: 0, y: -1 },
+      z: { x: 0, y: 0 },
+    });
+    const planeVisual = gizmo.element.querySelector<SVGElement>(".vertex-gizmo__plane-visual")!;
+    const planeFill = planeVisual.querySelector<SVGPolygonElement>("[data-plane-fill]")!;
+
+    expect(planeVisual.hasAttribute("hidden")).toBe(false);
+    expect(planeVisual.dataset.plane).toBe("xy");
+    expect(planeFill.hasAttribute("hidden")).toBe(false);
+    expect(planeFill.getAttribute("points")?.split(" ")).toHaveLength(4);
+    expect([...planeVisual.querySelectorAll<SVGLineElement>("[data-plane-axis]")]
+      .filter((line) => !line.hasAttribute("hidden"))
+      .map((line) => line.dataset.planeAxis)).toEqual(["x", "y"]);
+
+    gizmo.setDragPlane("yz");
+    gizmo.show({ x: 120, y: 80 }, {
+      x: { x: 1, y: 0 },
+      y: { x: 0, y: -8 },
+      z: { x: 0, y: 0 },
+    });
+
+    expect(planeVisual.dataset.plane).toBe("yz");
+    expect(planeFill.hasAttribute("hidden")).toBe(true);
+    expect([...planeVisual.querySelectorAll<SVGLineElement>("[data-plane-axis]")]
+      .filter((line) => !line.hasAttribute("hidden"))
+      .map((line) => line.dataset.planeAxis)).toEqual(["y"]);
+
+    gizmo.setConstrainedPlaneScreenSpace(true);
+
+    expect(planeFill.hasAttribute("hidden")).toBe(false);
+    expect(planeFill.getAttribute("points")?.split(" ")).toHaveLength(4);
+    expect([...planeVisual.querySelectorAll<SVGLineElement>("[data-plane-axis]")]
+      .filter((line) => !line.hasAttribute("hidden"))
+      .map((line) => line.dataset.planeAxis)).toEqual(["y", "z"]);
+    expect([...gizmo.element.querySelectorAll<HTMLButtonElement>("[data-plane-axis-handle]")]
+      .filter((handle) => !handle.hidden)
+      .map((handle) => handle.dataset.planeAxisHandle)).toEqual(["y", "z"]);
+  });
+
+  it("drags a constrained-plane axis segment along that axis only", () => {
+    const container = document.createElement("div");
+    const onMove = vi.fn();
+    const onPlaneMove = vi.fn();
+    const gizmo = mountVertexGizmo(container, { onMove, onPlaneMove, unitsPerPixel: 0.01 });
+    gizmo.setDragPlane("yz");
+    gizmo.setConstrainedPlaneScreenSpace(true);
+    gizmo.show({ x: 120, y: 80 }, {
+      x: { x: 1, y: 0 },
+      y: { x: 0, y: -8 },
+      z: { x: 0, y: 0 },
+    });
+    const zSegment = gizmo.element.querySelector<HTMLButtonElement>('[data-plane-axis-handle="z"]')!;
+
+    zSegment.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0, clientX: 10, clientY: 10 }));
+    zSegment.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientX: 20, clientY: 10 }));
+    zSegment.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientX: 20, clientY: 10 }));
+
+    expect(onMove).toHaveBeenCalledTimes(1);
+    expect(onMove.mock.calls[0]?.[0]).toBe("z");
+    expect(onMove.mock.calls[0]?.[1]).toBeCloseTo(0.1);
+    expect(onPlaneMove).not.toHaveBeenCalled();
   });
 
   it("updates pointer and keyboard movement to the active mesh scale", () => {

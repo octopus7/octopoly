@@ -250,6 +250,7 @@ function prepareScene(gl: WebGL2RenderingContext, scene: ViewportScene): Prepare
 
 interface SceneBounds {
   readonly center: readonly [number, number, number];
+  readonly halfExtents: readonly [number, number, number];
   readonly radius: number;
 }
 
@@ -271,7 +272,15 @@ function sceneBounds(positions: readonly number[]): SceneBounds {
       positions[offset + 2]! - center[2],
     ));
   }
-  return { center, radius };
+  return {
+    center,
+    halfExtents: [
+      (maximum[0]! - minimum[0]!) / 2,
+      (maximum[1]! - minimum[1]!) / 2,
+      (maximum[2]! - minimum[2]!) / 2,
+    ],
+    radius,
+  };
 }
 
 function shouldReframe(previous: SceneBounds, next: SceneBounds): boolean {
@@ -333,6 +342,7 @@ export class MeshViewportController {
   readonly #viewChangeListeners = new Set<() => void>();
   #frame = 0;
   #disposed = false;
+  #awaitingInitialLayout = false;
 
   constructor(canvas: HTMLCanvasElement, initialScene: ViewportScene) {
     validateGeometry(initialScene.geometry);
@@ -367,7 +377,17 @@ export class MeshViewportController {
       this.#scene = prepareScene(gl, initialScene);
       this.#bounds = sceneBounds(this.#scene.positions);
       const initialBounds = canvas.getBoundingClientRect();
-      this.#camera.frameBounds([0, 0, 0], 1, initialBounds.width / initialBounds.height);
+      const initialRenderBounds = sceneBounds(this.#scene.renderPositions);
+      const hasInitialLayout = Number.isFinite(initialBounds.width)
+        && Number.isFinite(initialBounds.height)
+        && initialBounds.width > 0
+        && initialBounds.height > 0;
+      this.#awaitingInitialLayout = !hasInitialLayout;
+      this.#camera.frameBox(
+        initialRenderBounds.center,
+        initialRenderBounds.halfExtents,
+        hasInitialLayout ? initialBounds.width / initialBounds.height : 1,
+      );
 
       gl.bindVertexArray(vertexArray);
       gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
@@ -380,7 +400,20 @@ export class MeshViewportController {
       detachControls = attachCameraControls(canvas, this.#camera, () => this.#notifyViewChange());
       resizeObserver = new ResizeObserver(() => {
         const bounds = canvas.getBoundingClientRect();
-        this.#camera.fitAspect(bounds.width / bounds.height);
+        const hasLayout = Number.isFinite(bounds.width)
+          && Number.isFinite(bounds.height)
+          && bounds.width > 0
+          && bounds.height > 0;
+        if (hasLayout) {
+          const aspect = bounds.width / bounds.height;
+          if (this.#awaitingInitialLayout) {
+            const renderBounds = sceneBounds(this.#scene.renderPositions);
+            this.#camera.frameBox(renderBounds.center, renderBounds.halfExtents, aspect);
+            this.#awaitingInitialLayout = false;
+          } else {
+            this.#camera.fitAspect(aspect);
+          }
+        }
         this.#notifyViewChange();
       });
       resizeObserver.observe(canvas);
@@ -408,9 +441,19 @@ export class MeshViewportController {
     const reframe = shouldReframe(this.#bounds, bounds);
     this.#scene = prepared;
     this.#bounds = bounds;
+    const canvasBounds = this.#canvas.getBoundingClientRect();
+    const renderBounds = sceneBounds(prepared.renderPositions);
+    const hasLayout = Number.isFinite(canvasBounds.width)
+      && Number.isFinite(canvasBounds.height)
+      && canvasBounds.width > 0
+      && canvasBounds.height > 0;
+    const aspect = hasLayout ? canvasBounds.width / canvasBounds.height : 1;
     if (reframe) {
-      const canvasBounds = this.#canvas.getBoundingClientRect();
-      this.#camera.frameBounds([0, 0, 0], 1, canvasBounds.width / canvasBounds.height);
+      this.#awaitingInitialLayout = !hasLayout;
+      this.#camera.frameBox(renderBounds.center, renderBounds.halfExtents, aspect);
+    } else {
+      if (!hasLayout) this.#awaitingInitialLayout = true;
+      this.#camera.updateBoxFraming(renderBounds.halfExtents, aspect);
     }
     if (this.#selectedVertex !== null && this.#selectedVertex >= prepared.positions.length / 3) {
       this.#selectedVertex = null;
@@ -619,22 +662,24 @@ export class MeshViewportController {
 
       if (!this.#scene.editable) return;
       gl.disable(gl.CULL_FACE);
-      gl.depthFunc(gl.LEQUAL);
-      this.#setStyle(EDGE_COLOR, 0, 1, false);
-      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#edgeBuffer);
-      gl.drawElements(gl.LINES, this.#scene.edgeIndices.length, this.#scene.indexType, 0);
-
-      gl.disable(gl.DEPTH_TEST);
       try {
-        this.#setStyle(VERTEX_COLOR, 0, 8 * devicePixelRatio, true);
-        gl.drawArrays(gl.POINTS, 0, this.#scene.positions.length / 3);
-        if (this.#selectedVertex !== null) {
-          this.#setStyle(SELECTED_VERTEX_COLOR, 0, 13 * devicePixelRatio, true);
-          gl.drawArrays(gl.POINTS, this.#selectedVertex, 1);
+        gl.depthFunc(gl.LEQUAL);
+        try {
+          this.#setStyle(EDGE_COLOR, 0, 1, false);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#edgeBuffer);
+          gl.drawElements(gl.LINES, this.#scene.edgeIndices.length, this.#scene.indexType, 0);
+
+          this.#setStyle(VERTEX_COLOR, 0, 5 * devicePixelRatio, false);
+          gl.drawArrays(gl.POINTS, 0, this.#scene.positions.length / 3);
+          if (this.#selectedVertex !== null) {
+            this.#setStyle(SELECTED_VERTEX_COLOR, 0, 8 * devicePixelRatio, false);
+            gl.drawArrays(gl.POINTS, this.#selectedVertex, 1);
+          }
+        } finally {
+          gl.depthFunc(gl.LESS);
         }
       } finally {
-        gl.enable(gl.DEPTH_TEST);
-        gl.depthFunc(gl.LESS);
+        gl.enable(gl.CULL_FACE);
       }
     } finally {
       gl.useProgram(null);

@@ -14,6 +14,7 @@ describe("vertex movement mode state", () => {
       mode: "gizmo",
       enabledConstrainedPlanes: ["xy", "yz", "xz"],
       activeConstrainedPlane: "xy",
+      constrainedPlaneScreenSpace: false,
     });
     expect(getConstrainedPlaneSelectorPlanes(state)).toEqual(["xy", "yz", "xz"]);
   });
@@ -36,6 +37,26 @@ describe("vertex movement mode state", () => {
     expect(viewPlane).toEqual({ ...initial, mode: "view-plane" });
     expect(constrainedPlane).toEqual({ ...initial, mode: "constrained-plane" });
     expect(gizmo).toEqual(initial);
+  });
+
+  it("toggles screen-space presentation without changing the active world plane", () => {
+    const initial = createVertexMovementModeState();
+
+    const enabled = vertexMovementModeReducer(initial, {
+      type: "set-constrained-plane-screen-space",
+      enabled: true,
+    });
+    const disabled = vertexMovementModeReducer(enabled, {
+      type: "set-constrained-plane-screen-space",
+      enabled: false,
+    });
+
+    expect(enabled).toEqual({
+      ...initial,
+      constrainedPlaneScreenSpace: true,
+    });
+    expect(enabled.activeConstrainedPlane).toBe("xy");
+    expect(disabled).toEqual(initial);
   });
 
   it("configures constrained planes while retaining at least one enabled", () => {

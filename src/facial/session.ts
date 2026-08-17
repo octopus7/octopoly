@@ -6,8 +6,12 @@ export interface FacialSessionOptions {
   readonly parseObjText: (source: string) => MeshGeometry;
 }
 
+export interface ObjTextSource {
+  text(): Promise<string>;
+}
+
 export interface FacialSession {
-  importObj(file: File): Promise<void>;
+  importObj(source: ObjTextSource): Promise<void>;
   duplicateBase(): void;
   deleteMesh(meshId: string): void;
   selectMesh(meshId: string): void;
@@ -33,12 +37,12 @@ export function createFacialSession(options: FacialSessionOptions): FacialSessio
   let disposed = false;
   let importRevision = 0;
   return {
-    importObj: async (file) => {
+    importObj: async (textSource) => {
       if (disposed) return;
       const revision = ++importRevision;
       let source: string;
       try {
-        source = await file.text();
+        source = await textSource.text();
       } catch (error) {
         if (disposed || revision !== importRevision) return;
         throw error;
