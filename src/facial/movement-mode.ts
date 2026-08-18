@@ -29,6 +29,27 @@ export type VertexMovementModeAction =
 
 export const WORLD_PLANES: readonly WorldPlane[] = ["xy", "yz", "xz"];
 
+export function isVertexMovementModeState(value: unknown): value is VertexMovementModeState {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate);
+  if (keys.length !== 4
+    || !["mode", "enabledConstrainedPlanes", "activeConstrainedPlane", "constrainedPlaneScreenSpace"]
+      .every((key) => Object.hasOwn(candidate, key))) return false;
+  if (candidate.mode !== "gizmo"
+    && candidate.mode !== "view-plane"
+    && candidate.mode !== "constrained-plane") return false;
+  if (!Array.isArray(candidate.enabledConstrainedPlanes)
+    || candidate.enabledConstrainedPlanes.length === 0
+    || candidate.enabledConstrainedPlanes.length > WORLD_PLANES.length) return false;
+  const enabled = candidate.enabledConstrainedPlanes;
+  if (new Set(enabled).size !== enabled.length
+    || enabled.some((plane) => !WORLD_PLANES.includes(plane as WorldPlane))) return false;
+  if (!WORLD_PLANES.includes(candidate.activeConstrainedPlane as WorldPlane)
+    || !enabled.includes(candidate.activeConstrainedPlane)) return false;
+  return typeof candidate.constrainedPlaneScreenSpace === "boolean";
+}
+
 export function createVertexMovementModeState(): VertexMovementModeState {
   return {
     mode: "gizmo",

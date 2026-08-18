@@ -5,6 +5,14 @@ export interface CameraState {
   readonly target: readonly [number, number, number];
 }
 
+export interface CameraSnapshot extends CameraState {
+  readonly minimumDistance: number;
+  readonly maximumDistance: number;
+  readonly framingRadius: number | null;
+  readonly framingHalfExtents: readonly [number, number, number] | null;
+  readonly framingAspect: number | null;
+}
+
 export interface CameraRay {
   readonly origin: readonly [number, number, number];
   readonly direction: readonly [number, number, number];
@@ -69,6 +77,31 @@ export class OrbitCamera {
       distance: this.#distance,
       target: [...this.#target],
     };
+  }
+
+  snapshot(): CameraSnapshot {
+    return {
+      ...this.state(),
+      minimumDistance: this.#minimumDistance,
+      maximumDistance: this.#maximumDistance,
+      framingRadius: this.#framingRadius,
+      framingHalfExtents: this.#framingHalfExtents ? [...this.#framingHalfExtents] : null,
+      framingAspect: this.#framingAspect,
+    };
+  }
+
+  restore(snapshot: CameraSnapshot): void {
+    this.#yaw = snapshot.yaw;
+    this.#pitch = snapshot.pitch;
+    this.#distance = snapshot.distance;
+    this.#minimumDistance = snapshot.minimumDistance;
+    this.#maximumDistance = snapshot.maximumDistance;
+    this.#target = [...snapshot.target] as Vec3;
+    this.#framingRadius = snapshot.framingRadius;
+    this.#framingHalfExtents = snapshot.framingHalfExtents
+      ? [...snapshot.framingHalfExtents] as Vec3
+      : null;
+    this.#framingAspect = snapshot.framingAspect;
   }
 
   orbit(deltaX: number, deltaY: number): void {

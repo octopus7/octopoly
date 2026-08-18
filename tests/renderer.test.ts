@@ -335,6 +335,283 @@ describe("mesh viewport renderer", () => {
     expect(gl.deleteTexture).toHaveBeenCalledTimes(2);
   });
 
+  it("keeps every prior texture when an atomic texture-set replacement fails", () => {
+    const { canvas, gl } = createHarness();
+    const geometry = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0.5, 1],
+    };
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry, editable: true, textureKey: "base",
+    });
+    controller.setTexture("base", { width: 2, height: 2 } as ImageBitmap);
+    const prior = gl.createTexture.mock.results[0]!.value;
+    gl.getError
+      .mockReturnValueOnce(gl.NO_ERROR)
+      .mockReturnValueOnce(gl.NO_ERROR)
+      .mockReturnValueOnce(gl.NO_ERROR)
+      .mockReturnValueOnce(gl.INVALID_VALUE);
+
+    expect(() => controller.replaceTextures([
+      { textureKey: "base", source: { width: 4, height: 4 } as ImageBitmap },
+      { textureKey: "copy-1", source: { width: 4, height: 4 } as ImageBitmap },
+    ])).toThrow(/WebGL 텍스처 업로드 오류/);
+
+    expect(gl.deleteTexture).not.toHaveBeenCalledWith(prior);
+    expect(gl.deleteTexture).toHaveBeenCalledWith(gl.createTexture.mock.results[1]!.value);
+    expect(gl.deleteTexture).toHaveBeenCalledWith(gl.createTexture.mock.results[2]!.value);
+    controller.dispose();
+    expect(gl.deleteTexture).toHaveBeenCalledWith(prior);
+  });
+
+  it("preserves the upload error and attempts every staged texture cleanup", () => {
+    const { canvas, gl } = createHarness();
+    const geometry = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0.5, 1],
+    };
+    const controller = renderer.startMeshViewport(canvas, { geometry, editable: true });
+    gl.getError
+      .mockReturnValueOnce(gl.NO_ERROR).mockReturnValueOnce(gl.NO_ERROR)
+      .mockReturnValueOnce(gl.NO_ERROR).mockReturnValueOnce(gl.NO_ERROR)
+      .mockReturnValueOnce(gl.NO_ERROR).mockReturnValueOnce(gl.INVALID_VALUE);
+    let deleteCalls = 0;
+    gl.deleteTexture.mockImplementation(() => {
+      deleteCalls += 1;
+      if (deleteCalls === 2) throw new Error("candidate cleanup failed");
+    });
+
+    expect(() => controller.prepareTextures([
+      { textureKey: "base", source: {} as TexImageSource },
+      { textureKey: "copy-1", source: {} as TexImageSource },
+      { textureKey: "copy-2", source: {} as TexImageSource },
+    ])).toThrow(/WebGL 텍스처 업로드 오류/);
+
+    expect(gl.deleteTexture).toHaveBeenCalledTimes(3);
+    controller.dispose();
+  });
+
+  it("restores every prior texture when a committed replacement is rolled back", () => {
+    const { canvas, flushFrame, gl } = createHarness();
+    const geometry = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0.5, 1],
+    };
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry, editable: true, textureKey: "base",
+    });
+    controller.setTexture("base", { width: 2, height: 2 } as ImageBitmap);
+    const prior = gl.createTexture.mock.results[0]!.value;
+    const transaction = controller.prepareTextures([
+      { textureKey: "base", source: { width: 4, height: 4 } as ImageBitmap },
+    ]);
+    const candidate = gl.createTexture.mock.results[1]!.value;
+
+    transaction.commit();
+    transaction.dispose();
+    flushFrame();
+
+    expect(gl.bindTexture).toHaveBeenCalledWith(gl.TEXTURE_2D, prior);
+    expect(gl.deleteTexture).toHaveBeenCalledWith(candidate);
+    expect(gl.deleteTexture).not.toHaveBeenCalledWith(prior);
+    controller.dispose();
+    expect(gl.deleteTexture).toHaveBeenCalledWith(prior);
+  });
+
+  it("deletes an uploaded staged texture when candidate-map insertion fails", () => {
+    const { canvas, gl } = createHarness();
+    const geometry = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0, 1],
+    };
+    const controller = renderer.startMeshViewport(canvas, { geometry, editable: true });
+    const originalSet = Map.prototype.set;
+    let thrown: unknown;
+    Map.prototype.set = function (): Map<unknown, unknown> {
+      throw new Error("candidate map failed");
+    };
+    try {
+      controller.prepareTextures([{ textureKey: "base", source: {} as TexImageSource }]);
+    } catch (error) {
+      thrown = error;
+    } finally {
+      Map.prototype.set = originalSet;
+    }
+
+    expect(thrown).toEqual(expect.objectContaining({ message: "candidate map failed" }));
+    const candidate = vi.mocked(gl.createTexture).mock.results.at(-1)!.value;
+    expect(gl.deleteTexture).toHaveBeenCalledWith(candidate);
+    controller.dispose();
+  });
+
+  it("publishes prepared textures by reference swap without commit-time Map insertion", () => {
+    const { canvas } = createHarness();
+    const geometry = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0, 1],
+    };
+    const controller = renderer.startMeshViewport(canvas, { geometry, editable: true });
+    const transaction = controller.prepareTextures([
+      { textureKey: "base", source: {} as TexImageSource },
+    ]);
+    const originalSet = Map.prototype.set;
+    let thrown: unknown;
+    Map.prototype.set = function (): Map<unknown, unknown> {
+      throw new Error("commit-time Map.set");
+    };
+    try {
+      transaction.commit();
+    } catch (error) {
+      thrown = error;
+    } finally {
+      Map.prototype.set = originalSet;
+    }
+
+    expect(thrown).toBeUndefined();
+    transaction.finalize();
+    controller.dispose();
+  });
+
+  it("deletes a direct texture candidate when preparing its replacement map fails", () => {
+    const { canvas, gl } = createHarness();
+    const geometry = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0, 1],
+    };
+    const controller = renderer.startMeshViewport(canvas, { geometry, editable: true });
+    const originalSet = Map.prototype.set;
+    let thrown: unknown;
+    Map.prototype.set = function (): Map<unknown, unknown> {
+      throw new Error("replacement map failed");
+    };
+    try {
+      controller.setTexture("base", {} as TexImageSource);
+    } catch (error) {
+      thrown = error;
+    } finally {
+      Map.prototype.set = originalSet;
+    }
+
+    expect(thrown).toEqual(expect.objectContaining({ message: "replacement map failed" }));
+    const candidate = vi.mocked(gl.createTexture).mock.results.at(-1)!.value;
+    expect(gl.deleteTexture).toHaveBeenCalledWith(candidate);
+    controller.dispose();
+  });
+
+  it("keeps a committed replacement published when prior-texture cleanup throws", () => {
+    const { canvas, flushFrame, gl } = createHarness();
+    const geometry = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0.5, 1],
+    };
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry, editable: true, textureKey: "base",
+    });
+    controller.setTexture("base", { width: 2, height: 2 } as ImageBitmap);
+    const transaction = controller.prepareTextures([
+      { textureKey: "base", source: { width: 4, height: 4 } as ImageBitmap },
+    ]);
+    const candidate = gl.createTexture.mock.results[1]!.value;
+    transaction.commit();
+    gl.deleteTexture.mockImplementationOnce(() => { throw new Error("cleanup failed"); });
+
+    expect(() => transaction.finalize()).not.toThrow();
+    flushFrame();
+    expect(gl.bindTexture).toHaveBeenCalledWith(gl.TEXTURE_2D, candidate);
+    controller.dispose();
+  });
+
+  it("keeps the prior scene and deletes candidate buffers when staged scene upload fails", () => {
+    const { canvas, flushFrame, gl } = createHarness();
+    const original = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    };
+    const controller = renderer.startMeshViewport(canvas, { geometry: original, editable: true });
+    const originalVertexArray = vi.mocked(gl.createVertexArray).mock.results[0]!.value;
+    const originalBuffers = vi.mocked(gl.createBuffer).mock.results.slice(0, 4).map((result) => result.value);
+    gl.getError
+      .mockReturnValueOnce(gl.NO_ERROR)
+      .mockReturnValueOnce(0x0505);
+
+    expect(() => controller.prepareScene({
+      geometry: {
+        positions: [-2, -2, 0, 2, -2, 0, 0, 2, 0],
+        indices: [0, 1, 2],
+      },
+      editable: true,
+    })).toThrow(/WebGL 메시 업로드 오류/);
+
+    const candidateBuffers = vi.mocked(gl.createBuffer).mock.results.slice(4, 8).map((result) => result.value);
+    for (const buffer of candidateBuffers) expect(gl.deleteBuffer).toHaveBeenCalledWith(buffer);
+    for (const buffer of originalBuffers) expect(gl.deleteBuffer).not.toHaveBeenCalledWith(buffer);
+    expect(gl.deleteVertexArray).not.toHaveBeenCalledWith(originalVertexArray);
+    flushFrame();
+    expect(gl.bindVertexArray).toHaveBeenCalledWith(originalVertexArray);
+    controller.dispose();
+  });
+
+  it("restores prior scene resources and camera after a committed scene transaction rolls back", () => {
+    const { canvas, flushFrame, gl } = createHarness();
+    const original = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    };
+    const controller = renderer.startMeshViewport(canvas, { geometry: original, editable: true });
+    const originalVertexArray = vi.mocked(gl.createVertexArray).mock.results[0]!.value;
+    const originalBuffers = vi.mocked(gl.createBuffer).mock.results.slice(0, 4).map((result) => result.value);
+    const before = controller.projectVertex(0);
+    const transaction = controller.prepareScene({
+      geometry: {
+        positions: [-20, -20, 0, 20, -20, 0, 0, 20, 0],
+        indices: [0, 1, 2],
+      },
+      editable: true,
+    });
+    const candidateVertexArray = vi.mocked(gl.createVertexArray).mock.results[1]!.value;
+    const candidateBuffers = vi.mocked(gl.createBuffer).mock.results.slice(4, 8).map((result) => result.value);
+
+    transaction.commit();
+    transaction.dispose();
+    flushFrame();
+
+    expect(controller.projectVertex(0)).toEqual(before);
+    expect(gl.bindVertexArray).toHaveBeenCalledWith(originalVertexArray);
+    expect(gl.deleteVertexArray).toHaveBeenCalledWith(candidateVertexArray);
+    expect(gl.deleteVertexArray).not.toHaveBeenCalledWith(originalVertexArray);
+    for (const buffer of candidateBuffers) expect(gl.deleteBuffer).toHaveBeenCalledWith(buffer);
+    for (const buffer of originalBuffers) expect(gl.deleteBuffer).not.toHaveBeenCalledWith(buffer);
+    controller.dispose();
+  });
+
+  it("preloads an inactive model texture and renders it after the model becomes active", () => {
+    const { canvas, flushFrame, gl } = createHarness();
+    const geometry = {
+      positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0.5, 1],
+    };
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry, editable: true, textureKey: "base",
+    });
+
+    expect(() => controller.setTexture("copy-1", { width: 2, height: 2 } as ImageBitmap))
+      .not.toThrow();
+    const copyTexture = gl.createTexture.mock.results[0]!.value;
+    controller.setScene({ geometry, editable: true, textureKey: "copy-1" });
+    flushFrame();
+
+    expect(gl.bindTexture).toHaveBeenCalledWith(gl.TEXTURE_2D, copyTexture);
+    controller.dispose();
+  });
+
   it("renders the same keyed texture after switching away from and back to its model", () => {
     const { canvas, flushFrame, gl } = createHarness();
     const geometry = {

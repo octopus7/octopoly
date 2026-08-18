@@ -167,6 +167,59 @@ describe("facial workspace panel", () => {
     container.remove();
   });
 
+  it("offers accessible .octopoly save/open commands, resets same-file selection, and restores File-menu focus", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const onSaveProject = vi.fn();
+    const onOpenProject = vi.fn();
+    const panel = mountFacialPanel(container, {
+      onImport: vi.fn(),
+      onSaveProject,
+      onOpenProject,
+      onDuplicate: vi.fn(),
+      onSelectMesh: vi.fn(),
+      onRenameMesh: vi.fn(),
+    });
+    const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!;
+    const menu = container.querySelector<HTMLElement>(".facial-file-menu")!;
+    const save = menu.querySelector<HTMLButtonElement>('[data-action="save-project"]')!;
+    const open = menu.querySelector<HTMLButtonElement>('[data-action="open-project"]')!;
+    const input = menu.querySelector<HTMLInputElement>('[data-project-input]')!;
+
+    try {
+      expect(save.textContent).toBe("작업 파일 저장");
+      expect(open.textContent).toBe(".octopoly 작업 파일 열기");
+      expect(input.accept).toBe(".octopoly,application/x-octopoly,application/zip");
+      expect(input.hidden).toBe(true);
+
+      toggle.click();
+      save.click();
+      expect(onSaveProject).toHaveBeenCalledOnce();
+      expect(menu.hidden).toBe(true);
+      expect(document.activeElement).toBe(toggle);
+
+      toggle.click();
+      const pickerClick = vi.spyOn(input, "click");
+      open.click();
+      expect(pickerClick).toHaveBeenCalledOnce();
+      const file = new File(["project"], "face.octopoly", { type: "application/x-octopoly" });
+      const setValue = vi.fn();
+      Object.defineProperties(input, {
+        files: { configurable: true, value: [file] },
+        value: { configurable: true, get: () => "face.octopoly", set: setValue },
+      });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+
+      expect(onOpenProject).toHaveBeenCalledWith(file);
+      expect(setValue).toHaveBeenCalledWith("");
+      expect(menu.hidden).toBe(true);
+      expect(document.activeElement).toBe(toggle);
+    } finally {
+      panel.dispose();
+      container.remove();
+    }
+  });
+
   it("offers an accessible PNG/JPEG texture picker and restores File-menu focus after selection", () => {
     const container = document.createElement("div");
     document.body.append(container);

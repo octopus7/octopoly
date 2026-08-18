@@ -148,6 +148,33 @@ describe("facial mode session", () => {
     expect(parseObjText).toHaveBeenCalledWith("second");
   });
 
+  it("invalidates a pending OBJ import before replacing the whole project", async () => {
+    const storage = new MemoryStorage();
+    const controller = createFacialController({
+      storage,
+      nextCopyId: () => "copy-1",
+      onChange: vi.fn(),
+    });
+    let resolveText!: (source: string) => void;
+    const parseObjText = vi.fn(() => ({
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    }));
+    const session = createFacialSession({ controller, parseObjText });
+    const pending = session.importObj({
+      text: () => new Promise<string>((resolve) => { resolveText = resolve; }),
+    });
+    const projectWorkspace = structuredClone(controller.workspace);
+
+    session.replaceProject(projectWorkspace, 2);
+    resolveText("late import");
+    await pending;
+
+    expect(parseObjText).not.toHaveBeenCalled();
+    expect(controller.workspace).toEqual(projectWorkspace);
+    expect(controller.selectedVertex).toBe(2);
+  });
+
   it("does not let a pending import erase a newer workspace command", async () => {
     const controller = createFacialController({
       storage: new MemoryStorage(),
@@ -306,6 +333,9 @@ describe("facial mode session", () => {
       selectMesh: vi.fn(),
       renameMesh: vi.fn(),
       replaceBase: vi.fn(),
+      prepareProject: vi.fn(() => ({ commit: vi.fn() })),
+      replaceProject: vi.fn(),
+
       selectVertex: vi.fn(),
       moveVertex: vi.fn(),
       moveVertexByDelta: vi.fn(),

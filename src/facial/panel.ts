@@ -13,6 +13,8 @@ export type FacialPresetId = "luna";
 
 export interface FacialPanelCallbacks {
   readonly onImport: (file: File) => void;
+  readonly onSaveProject?: () => void;
+  readonly onOpenProject?: (file: File) => void;
   readonly onLoadTexture?: (file: File) => void;
   readonly onLoadPreset?: (preset: FacialPresetId) => void;
   readonly onDuplicate: () => void;
@@ -131,6 +133,39 @@ export function mountFacialPanel(
     fileMenu.hidden = !open;
     if (restoreFocus) fileMenuToggle.focus();
   };
+  const saveProjectButton = document.createElement("button");
+  saveProjectButton.type = "button";
+  saveProjectButton.dataset.action = "save-project";
+  saveProjectButton.textContent = "작업 파일 저장";
+  const handleSaveProject = (): void => {
+    callbacks.onSaveProject?.();
+    setFileMenuOpen(false, true);
+  };
+  saveProjectButton.addEventListener("click", handleSaveProject);
+  const projectInput = document.createElement("input");
+  projectInput.type = "file";
+  projectInput.accept = ".octopoly,application/x-octopoly,application/zip";
+  projectInput.dataset.projectInput = "";
+  projectInput.setAttribute("aria-label", ".octopoly 작업 파일 열기");
+  projectInput.hidden = true;
+  const openProjectButton = document.createElement("button");
+  openProjectButton.type = "button";
+  openProjectButton.dataset.action = "open-project";
+  openProjectButton.textContent = ".octopoly 작업 파일 열기";
+  const handleOpenProjectButton = (): void => projectInput.click();
+  const handleOpenProject = (): void => {
+    const file = projectInput.files?.[0];
+    try {
+      if (file) {
+        callbacks.onOpenProject?.(file);
+        setFileMenuOpen(false, true);
+      }
+    } finally {
+      projectInput.value = "";
+    }
+  };
+  openProjectButton.addEventListener("click", handleOpenProjectButton);
+  projectInput.addEventListener("change", handleOpenProject);
   const textureInput = document.createElement("input");
   textureInput.type = "file";
   textureInput.accept = ".png,.jpg,.jpeg,image/png,image/jpeg";
@@ -407,7 +442,17 @@ export function mountFacialPanel(
   renameInput.addEventListener("input", handleRenameInput);
   dialogBackdrop.addEventListener("keydown", handleDialogKeydown);
 
-  fileMenu.append(fileHeading, importButton, importInput, textureButton, textureInput, presetSection);
+  fileMenu.append(
+    fileHeading,
+    importInput,
+    saveProjectButton,
+    openProjectButton,
+    projectInput,
+    importButton,
+    textureButton,
+    textureInput,
+    presetSection,
+  );
   toolStrip.append(fileMenuToggle, fileMenu, meshDrawerToggle);
   selectionCard.append(heading, selectionSummary, focusButton, selectionAnnouncement);
   meshDrawer.append(meshHeading, duplicateButton, meshList);
@@ -516,6 +561,9 @@ export function mountFacialPanel(
     dispose: () => {
       importInput.removeEventListener("change", handleImport);
       importButton.removeEventListener("click", handleImportButton);
+      saveProjectButton.removeEventListener("click", handleSaveProject);
+      projectInput.removeEventListener("change", handleOpenProject);
+      openProjectButton.removeEventListener("click", handleOpenProjectButton);
       textureInput.removeEventListener("change", handleTexture);
       textureButton.removeEventListener("click", handleTextureButton);
       lunaButton.removeEventListener("click", handleLunaPreset);

@@ -1,5 +1,5 @@
 import type { FacialController } from "./controller";
-import type { MeshGeometry, VertexAxis, VertexDelta } from "./workspace";
+import type { FacialWorkspace, MeshGeometry, VertexAxis, VertexDelta } from "./workspace";
 
 export interface FacialSessionOptions {
   readonly controller: FacialController;
@@ -12,6 +12,8 @@ export interface ObjTextSource {
 
 export interface FacialSession {
   importObj(source: ObjTextSource): Promise<void>;
+  invalidatePendingImport(): void;
+  replaceProject(workspace: FacialWorkspace, selectedVertex: number | null): void;
   duplicateBase(): void;
   deleteMesh(meshId: string): void;
   selectMesh(meshId: string): void;
@@ -49,6 +51,14 @@ export function createFacialSession(options: FacialSessionOptions): FacialSessio
       }
       if (disposed || revision !== importRevision) return;
       options.controller.replaceBase(options.parseObjText(source));
+    },
+    invalidatePendingImport: () => {
+      if (!disposed) importRevision += 1;
+    },
+    replaceProject: (workspace, selectedVertex) => {
+      if (disposed) return;
+      importRevision += 1;
+      options.controller.replaceProject(workspace, selectedVertex);
     },
     duplicateBase: () => {
       if (disposed) return;

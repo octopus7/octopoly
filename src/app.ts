@@ -10,6 +10,7 @@ import type { MeshGeometry } from "./facial/workspace";
 interface AppStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export interface OctoPolyAppDependencies {
@@ -18,6 +19,7 @@ export interface OctoPolyAppDependencies {
   readonly parseObjText: (source: string) => MeshGeometry;
   readonly loadPresetText: NonNullable<FacialRuntimeOptions["loadPresetText"]>;
   readonly decodeTextureImage?: NonNullable<FacialRuntimeOptions["decodeTextureImage"]>;
+  readonly downloadProject?: NonNullable<FacialRuntimeOptions["downloadProject"]>;
   readonly startCube: (canvas: HTMLCanvasElement) => () => void;
   readonly startFacial?: (options: FacialRuntimeOptions) => FacialRuntime;
   readonly startViewport: (
@@ -73,8 +75,12 @@ export function mountOctoPolyApp(
         ...(dependencies.decodeTextureImage
           ? { decodeTextureImage: dependencies.decodeTextureImage }
           : {}),
+        ...(dependencies.downloadProject
+          ? { downloadProject: dependencies.downloadProject }
+          : {}),
         startViewport: dependencies.startViewport,
         onError: reportError,
+        onStatus: (message) => setStatus(message, "ready"),
       });
       activeDispose = () => runtime.dispose();
       canvas.setAttribute("aria-label", "편집 가능한 페이셜 메시 3D 뷰포트");

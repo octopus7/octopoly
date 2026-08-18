@@ -102,6 +102,14 @@ interface PreparedScene {
   readonly indexType: number;
 }
 
+interface SceneResources {
+  readonly vertexArray: WebGLVertexArrayObject;
+  readonly vertexBuffer: WebGLBuffer;
+  readonly uvBuffer: WebGLBuffer;
+  readonly triangleBuffer: WebGLBuffer;
+  readonly edgeBuffer: WebGLBuffer;
+}
+
 interface ProgramInputs {
   readonly position: number;
   readonly normal: number;
@@ -360,12 +368,12 @@ export class MeshViewportController {
   readonly #gl: WebGL2RenderingContext;
   readonly #program: WebGLProgram;
   readonly #inputs: ProgramInputs;
-  readonly #vertexArray: WebGLVertexArrayObject;
-  readonly #vertexBuffer: WebGLBuffer;
-  readonly #uvBuffer: WebGLBuffer;
-  readonly #triangleBuffer: WebGLBuffer;
-  readonly #edgeBuffer: WebGLBuffer;
-  readonly #textures = new Map<string, WebGLTexture>();
+  #vertexArray: WebGLVertexArrayObject;
+  #vertexBuffer: WebGLBuffer;
+  #uvBuffer: WebGLBuffer;
+  #triangleBuffer: WebGLBuffer;
+  #edgeBuffer: WebGLBuffer;
+  #textures = new Map<string, WebGLTexture>();
   readonly #camera = new OrbitCamera();
   readonly #resizeObserver: ResizeObserver;
   readonly #detachControls: () => void;
@@ -475,41 +483,68 @@ export class MeshViewportController {
   }
 
   setScene(scene: ViewportScene): void {
+    const transaction = this.prepareScene(scene);
+    try {
+      transaction.commit();
+      transaction.finalize();
+    } catch (error) {
+      transaction.dispose();
+      throw error;
+    }
+  }
+
+  prepareScene(scene: ViewportScene): { commit(): void; dispose(): void; finalize(): void } {
     this.#assertActive();
     const prepared = prepareScene(this.#gl, scene);
     const bounds = sceneBounds(prepared.positions);
-    const reframe = shouldReframe(this.#bounds, bounds);
-    this.#scene = prepared;
-    this.#bounds = bounds;
-    const canvasBounds = this.#canvas.getBoundingClientRect();
-    const renderBounds = sceneBounds(prepared.renderPositions);
-    const hasLayout = Number.isFinite(canvasBounds.width)
-      && Number.isFinite(canvasBounds.height)
-      && canvasBounds.width > 0
-      && canvasBounds.height > 0;
-    const aspect = hasLayout ? canvasBounds.width / canvasBounds.height : 1;
-    if (reframe) {
-      this.#awaitingInitialLayout = !hasLayout;
-      this.#camera.frameBox(renderBounds.center, renderBounds.halfExtents, aspect);
-    } else {
-      if (!hasLayout) this.#awaitingInitialLayout = true;
-      this.#camera.updateBoxFraming(renderBounds.halfExtents, aspect);
-    }
-    if (this.#selectedVertex !== null && this.#selectedVertex >= prepared.positions.length / 3) {
-      this.#selectedVertex = null;
-    }
-    this.#uploadScene();
-    this.invalidate();
+    const candidate = this.#createSceneResources(prepared);
+    const previous: SceneResources = {
+      vertexArray: this.#vertexArray,
+      vertexBuffer: this.#vertexBuffer,
+      uvBuffer: this.#uvBuffer,
+      triangleBuffer: this.#triangleBuffer,
+      edgeBuffer: this.#edgeBuffer,
+    };
+    const previousScene = this.#scene;
+    const previousBounds = this.#bounds;
+    const previousSelectedVertex = this.#selectedVertex;
+    const previousAwaitingInitialLayout = this.#awaitingInitialLayout;
+    const previousCamera = this.#camera.snapshot();
+    let state: "pending" | "committed" | "finished" = "pending";
+    return {
+      commit: () => {
+        if (state !== "pending") return;
+        this.invalidate();
+        this.#setSceneResources(candidate);
+        state = "committed";
+        this.#applyPreparedScene(prepared, bounds);
+      },
+      dispose: () => {
+        if (state === "finished") return;
+        const wasCommitted = state === "committed";
+        if (wasCommitted) {
+          this.#setSceneResources(previous);
+          this.#scene = previousScene;
+          this.#bounds = previousBounds;
+          this.#selectedVertex = previousSelectedVertex;
+          this.#awaitingInitialLayout = previousAwaitingInitialLayout;
+          this.#camera.restore(previousCamera);
+        }
+        state = "finished";
+        this.#deleteSceneResources(candidate);
+        if (wasCommitted) {
+          try { this.invalidate(); } catch { /* restored state remains authoritative */ }
+        }
+      },
+      finalize: () => {
+        if (state !== "committed") return;
+        state = "finished";
+        this.#deleteSceneResources(previous);
+      },
+    };
   }
 
-  setTexture(textureKey: string, source: TexImageSource): void {
-    this.#assertActive();
-    if (!textureKey || this.#scene.textureKey !== textureKey) {
-      throw new Error("현재 작업 모델에만 텍스처를 적용할 수 있습니다.");
-    }
-    if (!this.#scene.uvs) {
-      throw new Error("현재 작업 모델에는 사용할 수 있는 UV 좌표가 없습니다.");
-    }
+  #uploadTexture(source: TexImageSource): WebGLTexture {
     const gl = this.#gl;
     if (gl.getError() !== gl.NO_ERROR) {
       throw new Error("기존 WebGL 오류 때문에 텍스처를 안전하게 업로드하지 못했습니다.");
@@ -529,17 +564,115 @@ export class MeshViewportController {
       if (uploadError !== gl.NO_ERROR) {
         throw new Error(`WebGL 텍스처 업로드 오류 (0x${uploadError.toString(16)})`);
       }
+      return candidate;
     } catch (error) {
-      gl.deleteTexture(candidate);
+      try { gl.deleteTexture(candidate); } catch { /* preserve the upload failure */ }
       throw error;
     } finally {
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
       gl.bindTexture(gl.TEXTURE_2D, null);
     }
+  }
+
+  setTexture(textureKey: string, source: TexImageSource): void {
+    this.#assertActive();
+    if (!textureKey) {
+      throw new Error("텍스처 모델 키가 비어 있습니다.");
+    }
+    const candidate = this.#uploadTexture(source);
     const previous = this.#textures.get(textureKey);
-    this.#textures.set(textureKey, candidate);
-    if (previous) gl.deleteTexture(previous);
-    this.invalidate();
+    let next: Map<string, WebGLTexture>;
+    try {
+      next = new Map(this.#textures);
+      next.set(textureKey, candidate);
+      this.invalidate();
+    } catch (error) {
+      try { this.#gl.deleteTexture(candidate); } catch { /* best-effort candidate cleanup */ }
+      throw error;
+    }
+    this.#textures = next;
+    if (previous) {
+      try { this.#gl.deleteTexture(previous); } catch { /* no-throw prior cleanup after publication */ }
+    }
+  }
+
+  prepareTextures(entries: readonly {
+    readonly textureKey: string;
+    readonly source: TexImageSource;
+  }[]): { commit(): void; dispose(): void; finalize(): void } {
+    this.#assertActive();
+    const candidates = new Map<string, WebGLTexture>();
+    const previous = this.#textures;
+    try {
+      for (const entry of entries) {
+        if (!entry.textureKey || candidates.has(entry.textureKey)) {
+          throw new Error("텍스처 모델 키가 비어 있거나 중복되었습니다.");
+        }
+        const candidate = this.#uploadTexture(entry.source);
+        try {
+          candidates.set(entry.textureKey, candidate);
+        } catch (error) {
+          try { this.#gl.deleteTexture(candidate); } catch { /* preserve insertion failure */ }
+          throw error;
+        }
+      }
+    } catch (error) {
+      for (const texture of candidates.values()) {
+        try { this.#gl.deleteTexture(texture); } catch { /* continue cleaning every candidate */ }
+      }
+      throw error;
+    }
+    let state: "pending" | "committed" | "finished" = "pending";
+    return {
+      commit: () => {
+        if (state !== "pending") return;
+        this.invalidate();
+        this.#textures = candidates;
+        state = "committed";
+      },
+      dispose: () => {
+        if (state === "finished") return;
+        const shouldInvalidate = state === "committed";
+        if (shouldInvalidate) {
+          this.#textures = previous;
+        }
+        state = "finished";
+        for (const texture of candidates.values()) {
+          try {
+            this.#gl.deleteTexture(texture);
+          } catch {
+            // GL cleanup failure must not undo the restored texture-map state.
+          }
+        }
+        if (shouldInvalidate) {
+          try {
+            this.invalidate();
+          } catch {
+            // The prior texture map is already restored; a queued repaint is best-effort cleanup.
+          }
+        }
+      },
+      finalize: () => {
+        if (state !== "committed") return;
+        state = "finished";
+        for (const texture of previous.values()) {
+          try {
+            this.#gl.deleteTexture(texture);
+          } catch {
+            // Prior-resource cleanup must not split an already committed project publication.
+          }
+        }
+      },
+    };
+  }
+
+  replaceTextures(entries: readonly {
+    readonly textureKey: string;
+    readonly source: TexImageSource;
+  }[]): void {
+    const transaction = this.prepareTextures(entries);
+    transaction.commit();
+    transaction.finalize();
   }
 
   deleteTexture(textureKey: string): void {
@@ -714,21 +847,113 @@ export class MeshViewportController {
     for (const listener of this.#viewChangeListeners) listener();
   }
 
-  #uploadScene(): void {
+  #setSceneResources(resources: SceneResources): void {
+    this.#vertexArray = resources.vertexArray;
+    this.#vertexBuffer = resources.vertexBuffer;
+    this.#uvBuffer = resources.uvBuffer;
+    this.#triangleBuffer = resources.triangleBuffer;
+    this.#edgeBuffer = resources.edgeBuffer;
+  }
+
+  #deleteSceneResources(resources: SceneResources): void {
+    const deletions = [
+      () => this.#gl.deleteBuffer(resources.vertexBuffer),
+      () => this.#gl.deleteBuffer(resources.uvBuffer),
+      () => this.#gl.deleteBuffer(resources.triangleBuffer),
+      () => this.#gl.deleteBuffer(resources.edgeBuffer),
+      () => this.#gl.deleteVertexArray(resources.vertexArray),
+    ];
+    for (const remove of deletions) {
+      try { remove(); } catch { /* best-effort GL resource cleanup */ }
+    }
+  }
+
+  #createSceneResources(scene: PreparedScene): SceneResources {
     const gl = this.#gl;
-    gl.bindVertexArray(this.#vertexArray);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.#vertexBuffer);
-    gl.bufferData(gl.ARRAY_BUFFER, this.#scene.vertices, gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.#uvBuffer);
+    if (gl.getError() !== gl.NO_ERROR) {
+      throw new Error("기존 WebGL 오류 때문에 메시를 안전하게 업로드하지 못했습니다.");
+    }
+    const vertexArray = gl.createVertexArray();
+    const vertexBuffer = gl.createBuffer();
+    const uvBuffer = gl.createBuffer();
+    const triangleBuffer = gl.createBuffer();
+    const edgeBuffer = gl.createBuffer();
+    if (!vertexArray || !vertexBuffer || !uvBuffer || !triangleBuffer || !edgeBuffer) {
+      if (vertexBuffer) gl.deleteBuffer(vertexBuffer);
+      if (uvBuffer) gl.deleteBuffer(uvBuffer);
+      if (triangleBuffer) gl.deleteBuffer(triangleBuffer);
+      if (edgeBuffer) gl.deleteBuffer(edgeBuffer);
+      if (vertexArray) gl.deleteVertexArray(vertexArray);
+      throw new Error("메시 렌더링 버퍼를 생성하지 못했습니다.");
+    }
+    const resources = { vertexArray, vertexBuffer, uvBuffer, triangleBuffer, edgeBuffer };
+    try {
+      this.#uploadPreparedScene(resources, scene);
+      return resources;
+    } catch (error) {
+      this.#deleteSceneResources(resources);
+      throw error;
+    }
+  }
+
+  #uploadPreparedScene(resources: SceneResources, scene: PreparedScene): void {
+    const gl = this.#gl;
+    gl.bindVertexArray(resources.vertexArray);
+    gl.bindBuffer(gl.ARRAY_BUFFER, resources.vertexBuffer);
+    gl.enableVertexAttribArray(this.#inputs.position);
+    gl.vertexAttribPointer(this.#inputs.position, 3, gl.FLOAT, false, 24, 0);
+    gl.enableVertexAttribArray(this.#inputs.normal);
+    gl.vertexAttribPointer(this.#inputs.normal, 3, gl.FLOAT, false, 24, 12);
+    gl.bufferData(gl.ARRAY_BUFFER, scene.vertices, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ARRAY_BUFFER, resources.uvBuffer);
+    gl.enableVertexAttribArray(this.#inputs.uv);
+    gl.vertexAttribPointer(this.#inputs.uv, 2, gl.FLOAT, false, 8, 0);
     gl.bufferData(
       gl.ARRAY_BUFFER,
-      this.#scene.uvs ?? new Float32Array(this.#scene.positions.length / 3 * 2),
+      scene.uvs ?? new Float32Array(scene.positions.length / 3 * 2),
       gl.DYNAMIC_DRAW,
     );
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#triangleBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.#scene.triangleIndices, gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#edgeBuffer);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, this.#scene.edgeIndices, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, resources.triangleBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, scene.triangleIndices, gl.DYNAMIC_DRAW);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, resources.edgeBuffer);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, scene.edgeIndices, gl.DYNAMIC_DRAW);
+    const uploadError = gl.getError();
+    if (uploadError !== gl.NO_ERROR) {
+      throw new Error(`WebGL 메시 업로드 오류 (0x${uploadError.toString(16)})`);
+    }
+  }
+
+  #applyPreparedScene(scene: PreparedScene, bounds: SceneBounds): void {
+    const reframe = shouldReframe(this.#bounds, bounds);
+    this.#scene = scene;
+    this.#bounds = bounds;
+    const canvasBounds = this.#canvas.getBoundingClientRect();
+    const renderBounds = sceneBounds(scene.renderPositions);
+    const hasLayout = Number.isFinite(canvasBounds.width)
+      && Number.isFinite(canvasBounds.height)
+      && canvasBounds.width > 0
+      && canvasBounds.height > 0;
+    const aspect = hasLayout ? canvasBounds.width / canvasBounds.height : 1;
+    if (reframe) {
+      this.#awaitingInitialLayout = !hasLayout;
+      this.#camera.frameBox(renderBounds.center, renderBounds.halfExtents, aspect);
+    } else {
+      if (!hasLayout) this.#awaitingInitialLayout = true;
+      this.#camera.updateBoxFraming(renderBounds.halfExtents, aspect);
+    }
+    if (this.#selectedVertex !== null && this.#selectedVertex >= scene.positions.length / 3) {
+      this.#selectedVertex = null;
+    }
+  }
+
+  #uploadScene(): void {
+    this.#uploadPreparedScene({
+      vertexArray: this.#vertexArray,
+      vertexBuffer: this.#vertexBuffer,
+      uvBuffer: this.#uvBuffer,
+      triangleBuffer: this.#triangleBuffer,
+      edgeBuffer: this.#edgeBuffer,
+    }, this.#scene);
   }
 
   #draw(): void {

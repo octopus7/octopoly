@@ -1,4 +1,4 @@
-import { loadFacialWorkspace, saveFacialWorkspace } from "./storage";
+import { FACIAL_WORKSPACE_STORAGE_KEY, loadFacialWorkspace, saveFacialWorkspace } from "./storage";
 import {
   deleteMesh as deleteWorkspaceMesh,
   duplicateBaseMesh,
@@ -16,12 +16,21 @@ import {
 interface ControllerStorage {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
 }
 
 export interface FacialControllerOptions {
   readonly storage: ControllerStorage;
   readonly nextCopyId: () => string;
-  readonly onChange: (workspace: FacialWorkspace, selectedVertex: number | null) => void;
+  readonly onChange: (
+    workspace: FacialWorkspace,
+    selectedVertex: number | null,
+    sceneRevision?: number,
+  ) => void;
+}
+
+export interface FacialProjectTransaction {
+  commit(): void;
 }
 
 export interface FacialController {
@@ -34,6 +43,8 @@ export interface FacialController {
   selectMesh(meshId: string): void;
   renameMesh(meshId: string, name: string): void;
   replaceBase(geometry: MeshGeometry): void;
+  prepareProject(workspace: FacialWorkspace, selectedVertex: number | null): FacialProjectTransaction;
+  replaceProject(workspace: FacialWorkspace, selectedVertex: number | null): void;
   moveVertex(
     meshId: string,
     sceneRevision: number,
@@ -79,6 +90,59 @@ export function createFacialController(options: FacialControllerOptions): Facial
     sceneRevision = nextSceneRevision;
     selectedRevision = nextSelectedRevision;
     options.onChange(workspace, selectedVertex);
+  };
+  const prepareProject = (
+    nextWorkspace: FacialWorkspace,
+    nextSelectedVertex: number | null,
+  ): FacialProjectTransaction => {
+    const activeMesh = nextWorkspace.meshes.find((mesh) => mesh.id === nextWorkspace.activeMeshId);
+    const vertexCount = (activeMesh?.geometry.positions.length ?? 0) / 3;
+    if (nextSelectedVertex !== null
+      && (!Number.isInteger(nextSelectedVertex)
+        || nextSelectedVertex < 0
+        || nextSelectedVertex >= vertexCount)) {
+      throw new Error("작업 파일의 선택 정점이 현재 모델 범위를 벗어났습니다.");
+    }
+    const previousWorkspace = workspace;
+    const previousSelectedVertex = selectedVertex;
+    const previousSceneRevision = sceneRevision;
+
+    let nextSerialized: string;
+    try {
+      nextSerialized = JSON.stringify(nextWorkspace);
+    } catch (error) {
+      throw new FacialPersistenceError(error);
+    }
+    const nextRevision = previousSceneRevision + 1;
+    let committed = false;
+    return {
+      commit: () => {
+        if (committed || disposed) return;
+        const rollbackPublication = (error: unknown): never => {
+          try {
+            options.onChange(previousWorkspace, previousSelectedVertex, previousSceneRevision);
+          } catch (rollbackError) {
+            throw new AggregateError([error, rollbackError], "프로젝트 publication rollback에 실패했습니다.");
+          }
+          throw error;
+        };
+        try {
+          options.onChange(nextWorkspace, nextSelectedVertex, nextRevision);
+        } catch (error) {
+          rollbackPublication(error);
+        }
+        try {
+          options.storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, nextSerialized);
+        } catch (error) {
+          rollbackPublication(new FacialPersistenceError(error));
+        }
+        workspace = nextWorkspace;
+        selectedVertex = nextSelectedVertex;
+        sceneRevision = nextRevision;
+        selectedRevision = nextSelectedVertex === null ? null : nextRevision;
+        committed = true;
+      },
+    };
   };
 
   return {
@@ -137,6 +201,14 @@ export function createFacialController(options: FacialControllerOptions): Facial
         throw new Error("가져온 OBJ는 WebGL에서 안전하게 렌더링할 수 있는 geometry가 아닙니다.");
       }
       commit(next, null, sceneRevision + 1, null);
+    },
+    prepareProject: (nextWorkspace, nextSelectedVertex) => {
+      if (disposed) return { commit: () => undefined };
+      return prepareProject(nextWorkspace, nextSelectedVertex);
+    },
+    replaceProject: (nextWorkspace, nextSelectedVertex) => {
+      if (disposed) return;
+      prepareProject(nextWorkspace, nextSelectedVertex).commit();
     },
     moveVertex: (meshId, requestedRevision, vertexIndex, axis, delta) => {
       if (disposed) return;

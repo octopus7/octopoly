@@ -6,6 +6,13 @@ import {
 } from "../src/facial/runtime";
 import type { FacialViewportScene } from "../src/facial/scene";
 import { FACIAL_WORKSPACE_STORAGE_KEY } from "../src/facial/storage";
+import {
+  decodeOctopolyProject,
+  encodeOctopolyProject,
+  OCTOPOLY_ARCHIVE_LIMITS,
+  OCTOPOLY_PROJECT_FILENAME,
+} from "../src/facial/project-codec";
+import type { FacialWorkspace } from "../src/facial/workspace";
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -18,6 +25,10 @@ class MemoryStorage {
   setItem(key: string, value: string): void {
     if (this.failWrites) throw new DOMException("quota", "QuotaExceededError");
     this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
   }
 }
 
@@ -44,6 +55,9 @@ function deferred<T>(): {
   return { promise, resolve, reject };
 }
 
+const VALID_PNG_BYTES = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1]);
+const VALID_JPEG_BYTES = new Uint8Array([255, 216, 255, 224, 1]);
+
 function seedUvWorkspace(storage: MemoryStorage): void {
   storage.values.set(FACIAL_WORKSPACE_STORAGE_KEY, JSON.stringify({
     version: 1,
@@ -67,7 +81,7 @@ describe("facial runtime composition", () => {
     const storage = new MemoryStorage();
     seedUvWorkspace(storage);
     const close = vi.fn();
-    const bitmap = { close } as unknown as ImageBitmap;
+    const bitmap = { width: 2, height: 2, close } as unknown as ImageBitmap;
     const decodeTextureImage = vi.fn(async () => bitmap);
     const setTexture = vi.fn();
     let initialScene: FacialViewportScene | undefined;
@@ -92,7 +106,7 @@ describe("facial runtime composition", () => {
       },
     });
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
-    const file = new File([new Uint8Array([1, 2, 3])], "surface.png", { type: "image/png" });
+    const file = new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" });
     Object.defineProperty(input, "files", { configurable: true, value: [file] });
 
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -103,6 +117,833 @@ describe("facial runtime composition", () => {
     expect(setTexture).toHaveBeenCalledWith("base", bitmap);
     expect(close).toHaveBeenCalledOnce();
     expect([...storage.values.values()].some((value) => value.includes("textureKey") || value.includes("surface.png"))).toBe(false);
+    runtime.dispose();
+  });
+
+  it("rejects a direct texture whose decoded dimensions exceed the project limit", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const bitmap = { width: 4097, height: 1, close: vi.fn() } as unknown as ImageBitmap;
+    const setTexture = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: vi.fn(async () => bitmap),
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([VALID_PNG_BYTES], "too-wide.png", { type: "image/png" })],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringMatching(/4096/),
+    })));
+    expect(setTexture).not.toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    runtime.dispose();
+  });
+
+  it("rejects direct texture bytes whose signature disagrees with the declared MIME", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const bitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
+    const setTexture = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: vi.fn(async () => bitmap),
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([VALID_JPEG_BYTES], "mislabeled.png", { type: "image/png" })],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringMatching(/MIME/),
+    })));
+    expect(setTexture).not.toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    runtime.dispose();
+  });
+
+  it("enforces the aggregate decoded-pixel budget across direct model textures", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const geometry = {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0, 1],
+    };
+    storage.values.set(FACIAL_WORKSPACE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      activeMeshId: "base",
+      meshes: [
+        { id: "base", name: "Base Mask", kind: "base", geometry },
+        { id: "copy-1", name: "Copy 1", kind: "copy", geometry },
+        { id: "copy-2", name: "Copy 2", kind: "copy", geometry },
+      ],
+    }));
+    const bitmaps = Array.from({ length: 3 }, () => ({
+      width: 4096,
+      height: 4096,
+      close: vi.fn(),
+    } as unknown as ImageBitmap));
+    const decodeTextureImage = vi.fn()
+      .mockResolvedValueOnce(bitmaps[0])
+      .mockResolvedValueOnce(bitmaps[1])
+      .mockResolvedValueOnce(bitmaps[2]);
+    const setTexture = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-3", parseObjText: vi.fn(), onError, decodeTextureImage,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    const load = async (meshId: string, expectedUploads: number): Promise<void> => {
+      root.querySelector<HTMLButtonElement>(`[data-mesh-id="${meshId}"]`)!.click();
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [new File([VALID_PNG_BYTES], `${meshId}.png`, { type: "image/png" })],
+      });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+      if (expectedUploads > 0) await vi.waitFor(() => expect(setTexture).toHaveBeenCalledTimes(expectedUploads));
+    };
+
+    await load("base", 1);
+    await load("copy-1", 2);
+    await load("copy-2", 0);
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringMatching(/전체 해상도/),
+    })));
+
+    expect(setTexture).toHaveBeenCalledTimes(2);
+    expect(bitmaps[2]!.close).toHaveBeenCalledOnce();
+    runtime.dispose();
+  });
+
+  it("saves the current project with source bytes retained only after a successful texture upload", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const bitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
+    const downloadProject = vi.fn();
+    const setTexture = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      decodeTextureImage: vi.fn(async () => bitmap),
+      downloadProject,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const textureBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 1, 2]);
+    const textureInput = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(textureInput, "files", {
+      configurable: true,
+      value: [new File([textureBytes], "surface.png", { type: "image/png" })],
+    });
+
+    textureInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(setTexture).toHaveBeenCalledOnce());
+    root.querySelector<HTMLButtonElement>('[data-action="save-project"]')!.click();
+
+    expect(downloadProject).toHaveBeenCalledOnce();
+    const [archive, filename] = downloadProject.mock.calls[0]!;
+    expect(filename).toBe(OCTOPOLY_PROJECT_FILENAME);
+    const restored = decodeOctopolyProject(archive);
+    expect(restored.workspace.activeMeshId).toBe("base");
+    expect(restored.selectedVertex).toBeNull();
+    expect(restored.movementState.mode).toBe("gizmo");
+    expect(restored.textures).toEqual([{
+      modelId: "base",
+      mimeType: "image/png",
+      originalFilename: "surface.png",
+      bytes: textureBytes,
+    }]);
+    expect([...storage.values.values()].some((value) => value.includes("surface.png"))).toBe(false);
+    runtime.dispose();
+  });
+
+  it("opens a validated project by staging textures before publishing workspace, selection, and movement state", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const textureBytes = new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10, 9]);
+    const projectWorkspace: FacialWorkspace = {
+      version: 1,
+      activeMeshId: "base",
+      meshes: [{
+        id: "base", name: "Base Mask", kind: "base",
+        geometry: {
+          positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+          indices: [0, 1, 2],
+          uvs: [0, 0, 1, 0, 0, 1],
+        },
+      }],
+    };
+    const archive = encodeOctopolyProject({
+      workspace: projectWorkspace,
+      selectedVertex: 2,
+      movementState: {
+        mode: "constrained-plane",
+        enabledConstrainedPlanes: ["yz", "xz"],
+        activeConstrainedPlane: "xz",
+        constrainedPlaneScreenSpace: true,
+      },
+      textures: [{ modelId: "base", mimeType: "image/png", bytes: textureBytes }],
+    });
+    const bitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
+    const commit = vi.fn();
+    const disposeStage = vi.fn();
+    const textureFinalize = vi.fn(() => { throw new Error("cleanup failed"); });
+    const prepareTextures = vi.fn(() => ({
+      commit,
+      dispose: disposeStage,
+      finalize: textureFinalize,
+    }));
+    const sceneCommit = vi.fn();
+    const sceneDispose = vi.fn();
+    const sceneFinalize = vi.fn();
+    const prepareScene = vi.fn(() => ({
+      commit: sceneCommit,
+      dispose: sceneDispose,
+      finalize: sceneFinalize,
+    }));
+    const setScene = vi.fn();
+    const onStatus = vi.fn();
+    const onError = vi.fn();
+    const downloadProject = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      decodeTextureImage: vi.fn(async () => bitmap),
+      downloadProject,
+      onStatus, onError,
+      startViewport: () => ({
+        setScene, prepareScene, prepareTextures, setTexture: vi.fn(), deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const projectInput = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(projectInput, "files", {
+      configurable: true,
+      value: [new File([new Uint8Array(archive).buffer as ArrayBuffer], "restored.octopoly", { type: "application/x-octopoly" })],
+    });
+
+    projectInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(commit).toHaveBeenCalledOnce());
+
+    expect(prepareTextures).toHaveBeenCalledWith([{ textureKey: "base", source: bitmap }]);
+    expect(prepareScene).toHaveBeenCalledWith(expect.objectContaining({
+      meshId: "base", selectedVertex: 2, textureKey: "base",
+    }));
+    expect(sceneCommit).toHaveBeenCalledOnce();
+    expect(sceneDispose).not.toHaveBeenCalled();
+    expect(sceneFinalize).toHaveBeenCalledOnce();
+    expect(textureFinalize).toHaveBeenCalledOnce();
+    expect(disposeStage).not.toHaveBeenCalled();
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    expect(onStatus).toHaveBeenCalledWith("작업 파일을 불러왔습니다.");
+    expect(onError).not.toHaveBeenCalled();
+    expect(JSON.parse(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!)).toEqual(projectWorkspace);
+    expect(setScene).not.toHaveBeenCalled();
+    expect(root.querySelector('[data-movement-mode="constrained-plane"]')?.getAttribute("aria-pressed"))
+      .toBe("true");
+    expect(root.querySelector('[data-constrained-plane="xz"]')?.getAttribute("aria-pressed"))
+      .toBe("true");
+    root.querySelector<HTMLButtonElement>('[data-action="save-project"]')!.click();
+    expect(downloadProject).toHaveBeenCalledOnce();
+    expect(decodeOctopolyProject(downloadProject.mock.calls[0]![0]).textures).toEqual([{
+      modelId: "base", mimeType: "image/png", bytes: textureBytes,
+    }]);
+    runtime.dispose();
+  });
+
+  it("disposes staged project textures and keeps prior state when project autosave fails", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const before = structuredClone(JSON.parse(JSON.stringify({
+      version: 1,
+      activeMeshId: "base",
+      meshes: [{
+        id: "base", name: "Base Mask", kind: "base",
+        geometry: { positions: [0, 0, 0, 1, 0, 0, 0, 1, 0], indices: [0, 1, 2] },
+      }],
+    })));
+    storage.values.set(FACIAL_WORKSPACE_STORAGE_KEY, JSON.stringify(before));
+    const replacement: FacialWorkspace = {
+      version: 1,
+      activeMeshId: "base",
+      meshes: [{
+        id: "base", name: "Base Mask", kind: "base",
+        geometry: { positions: [0, 0, 1, 2, 0, 1, 0, 2, 1], indices: [0, 1, 2] },
+      }],
+    };
+    const archive = encodeOctopolyProject({
+      workspace: replacement,
+      selectedVertex: 1,
+      movementState: {
+        mode: "view-plane",
+        enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy",
+        constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const commit = vi.fn();
+    const disposeStage = vi.fn();
+    const setScene = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene,
+        prepareTextures: vi.fn(() => ({ commit, dispose: disposeStage })),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    storage.failWrites = true;
+    const projectInput = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(projectInput, "files", {
+      configurable: true,
+      value: [new File([new Uint8Array(archive).buffer as ArrayBuffer], "failed.octopoly")],
+    });
+
+    projectInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(commit).toHaveBeenCalledOnce();
+    expect(disposeStage).toHaveBeenCalledOnce();
+    expect(JSON.parse(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!)).toEqual(before);
+    expect(setScene).toHaveBeenCalledTimes(2);
+    expect(root.querySelector('[data-movement-mode="gizmo"]')?.getAttribute("aria-pressed")).toBe("true");
+    runtime.dispose();
+  });
+
+  it("preserves a scene-preparation error when staged texture cleanup also throws", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const workspace = JSON.parse(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!) as FacialWorkspace;
+    const archive = encodeOctopolyProject({
+      workspace,
+      selectedVertex: null,
+      movementState: {
+        mode: "gizmo", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const sceneFailure = new Error("scene preparation failed");
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(), onError,
+      startViewport: () => ({
+        setScene: vi.fn(),
+        prepareScene: () => { throw sceneFailure; },
+        prepareTextures: () => ({
+          commit: vi.fn(),
+          dispose: () => { throw new Error("texture cleanup failed"); },
+        }),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([new Uint8Array(archive).buffer as ArrayBuffer], "scene-failure.octopoly")],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(onError).toHaveBeenCalledWith(sceneFailure);
+    runtime.dispose();
+  });
+
+  it("rolls back storage, scene, movement, and staged textures when candidate scene publication fails", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const before = storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!;
+    const replacement = JSON.parse(before) as FacialWorkspace;
+    replacement.meshes[0]!.geometry.positions[2] = 9;
+    const archive = encodeOctopolyProject({
+      workspace: replacement,
+      selectedVertex: 1,
+      movementState: {
+        mode: "view-plane", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const commit = vi.fn();
+    const disposeStage = vi.fn(() => { throw new Error("texture cleanup failed"); });
+    const setScene = vi.fn()
+      .mockImplementationOnce(() => { throw new Error("scene publication failed"); })
+      .mockImplementation(() => undefined);
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene, prepareTextures: vi.fn(() => ({ commit, dispose: disposeStage })),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([new Uint8Array(archive).buffer as ArrayBuffer], "scene-failure.octopoly")],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(before);
+    expect(setScene).toHaveBeenCalledTimes(2);
+    expect(commit).toHaveBeenCalledOnce();
+    expect(disposeStage).toHaveBeenCalledOnce();
+    expect(root.querySelector('[data-movement-mode="gizmo"]')?.getAttribute("aria-pressed")).toBe("true");
+    runtime.dispose();
+  });
+
+  it("rolls back movement and leaves the project unpublished when staged texture commit fails", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const before = storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!;
+    const replacement = JSON.parse(before) as FacialWorkspace;
+    replacement.meshes[0]!.geometry.positions[2] = 7;
+    const archive = encodeOctopolyProject({
+      workspace: replacement,
+      selectedVertex: null,
+      movementState: {
+        mode: "view-plane", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const disposeStage = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene: vi.fn(),
+        prepareTextures: vi.fn(() => ({
+          commit: () => { throw new Error("texture commit failed"); },
+          dispose: disposeStage,
+        })),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([new Uint8Array(archive).buffer as ArrayBuffer], "texture-failure.octopoly")],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(before);
+    expect(disposeStage).toHaveBeenCalledOnce();
+    expect(root.querySelector('[data-movement-mode="gizmo"]')?.getAttribute("aria-pressed")).toBe("true");
+    runtime.dispose();
+  });
+
+  it("does not publish a project whose file read completes after a newer workspace command", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const pending = deferred<ArrayBuffer>();
+    const prepareTextures = vi.fn(() => ({ commit: vi.fn(), dispose: vi.fn() }));
+    const onError = vi.fn();
+    const replacement: FacialWorkspace = {
+      version: 1,
+      activeMeshId: "base",
+      meshes: [{
+        id: "base", name: "Base Mask", kind: "base",
+        geometry: { positions: [0, 0, 2, 2, 0, 2, 0, 2, 2], indices: [0, 1, 2] },
+      }],
+    };
+    const archive = encodeOctopolyProject({
+      workspace: replacement,
+      selectedVertex: null,
+      movementState: {
+        mode: "gizmo",
+        enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy",
+        constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene: vi.fn(), prepareTextures,
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const projectInput = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(projectInput, "files", {
+      configurable: true,
+      value: [{ size: archive.length, arrayBuffer: () => pending.promise } as File],
+    });
+
+    projectInput.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')!.click();
+    pending.resolve(new Uint8Array(archive).buffer as ArrayBuffer);
+    await pending.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prepareTextures).not.toHaveBeenCalled();
+    expect(JSON.parse(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!).meshes).toHaveLength(2);
+    expect(onError).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
+
+  it("does not overwrite a newer movement-tool change with a stale project load", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const pending = deferred<ArrayBuffer>();
+    const prepareTextures = vi.fn(() => ({ commit: vi.fn(), dispose: vi.fn() }));
+    const replacement: FacialWorkspace = {
+      version: 1,
+      activeMeshId: "base",
+      meshes: [{
+        id: "base", name: "Base Mask", kind: "base",
+        geometry: { positions: [0, 0, 3, 3, 0, 3, 0, 3, 3], indices: [0, 1, 2] },
+      }],
+    };
+    const archive = encodeOctopolyProject({
+      workspace: replacement,
+      selectedVertex: null,
+      movementState: {
+        mode: "constrained-plane",
+        enabledConstrainedPlanes: ["yz", "xz"],
+        activeConstrainedPlane: "xz",
+        constrainedPlaneScreenSpace: true,
+      },
+      textures: [],
+    });
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene: vi.fn(), prepareTextures,
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const projectInput = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(projectInput, "files", {
+      configurable: true,
+      value: [{ size: archive.length, arrayBuffer: () => pending.promise } as File],
+    });
+
+    projectInput.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-movement-mode="view-plane"]')!.click();
+    pending.resolve(new Uint8Array(archive).buffer as ArrayBuffer);
+    await pending.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(prepareTextures).not.toHaveBeenCalled();
+    expect(storage.values.has(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(false);
+    expect(root.querySelector('[data-movement-mode="view-plane"]')?.getAttribute("aria-pressed")).toBe("true");
+    runtime.dispose();
+  });
+
+  it("does not overwrite a newer keyboard vertex selection with a stale project load", async () => {
+    const root = document.createElement("div");
+    const canvas = document.createElement("canvas");
+    root.append(canvas);
+    const storage = new MemoryStorage();
+    const pending = deferred<ArrayBuffer>();
+    const prepareTextures = vi.fn(() => ({ commit: vi.fn(), dispose: vi.fn() }));
+    const replacement: FacialWorkspace = {
+      version: 1,
+      activeMeshId: "base",
+      meshes: [{
+        id: "base", name: "Base Mask", kind: "base",
+        geometry: { positions: [0, 0, 4, 4, 0, 4, 0, 4, 4], indices: [0, 1, 2] },
+      }],
+    };
+    const archive = encodeOctopolyProject({
+      workspace: replacement,
+      selectedVertex: null,
+      movementState: {
+        mode: "gizmo", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const runtime = startFacialRuntime({
+      canvas, panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene: vi.fn(), prepareTextures,
+        projectVertex: vi.fn(() => ({ x: 1, y: 1 })), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const projectInput = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(projectInput, "files", {
+      configurable: true,
+      value: [{ size: archive.length, arrayBuffer: () => pending.promise } as File],
+    });
+
+    projectInput.dispatchEvent(new Event("change", { bubbles: true }));
+    canvas.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    pending.resolve(new Uint8Array(archive).buffer as ArrayBuffer);
+    await pending.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(prepareTextures).not.toHaveBeenCalled();
+    expect(storage.values.has(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(false);
+    expect(root.textContent).toContain("정점 1 선택됨");
+    runtime.dispose();
+  });
+
+  it.each(["keyboard", "button"] as const)(
+    "does not publish a pending project after a newer %s Focus command",
+    async (source) => {
+      const root = document.createElement("div");
+      const canvas = document.createElement("canvas");
+      root.append(canvas);
+      const storage = new MemoryStorage();
+      const pending = deferred<ArrayBuffer>();
+      const prepareTextures = vi.fn(() => ({ commit: vi.fn(), dispose: vi.fn() }));
+      const focusVertex = vi.fn();
+      const replacement: FacialWorkspace = {
+        version: 1,
+        activeMeshId: "base",
+        meshes: [{
+          id: "base", name: "Base Mask", kind: "base",
+          geometry: { positions: [0, 0, 7, 1, 0, 7, 0, 1, 7], indices: [0, 1, 2] },
+        }],
+      };
+      const archive = encodeOctopolyProject({
+        workspace: replacement,
+        selectedVertex: null,
+        movementState: {
+          mode: "gizmo", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+          activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+        },
+        textures: [],
+      });
+      const runtime = startFacialRuntime({
+        canvas, panelContainer: root, overlayContainer: root,
+        storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+        decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+        startViewport: () => ({
+          setScene: vi.fn(), prepareTextures, focusVertex,
+          projectVertex: vi.fn(() => ({ x: 1, y: 1 })),
+          pickVertex: vi.fn(() => null), dispose: vi.fn(),
+        }),
+      });
+      canvas.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+      const input = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+      Object.defineProperty(input, "files", {
+        configurable: true,
+        value: [{ size: archive.length, arrayBuffer: () => pending.promise } as File],
+      });
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+
+      if (source === "keyboard") {
+        canvas.dispatchEvent(new KeyboardEvent("keydown", { key: "f", bubbles: true }));
+      } else {
+        root.querySelector<HTMLButtonElement>('[data-action="focus-selected"]')!.click();
+      }
+      expect(focusVertex).toHaveBeenCalledOnce();
+      pending.resolve(new Uint8Array(archive).buffer as ArrayBuffer);
+      await pending.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(prepareTextures).not.toHaveBeenCalled();
+      expect(storage.values.has(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(false);
+      expect(root.textContent).toContain("정점 1 선택됨");
+      runtime.dispose();
+    },
+  );
+
+  it("rejects an oversized project file before reading it into memory", () => {
+    const root = document.createElement("div");
+    const arrayBuffer = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage: new MemoryStorage(), nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene: vi.fn(), prepareTextures: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ size: OCTOPOLY_ARCHIVE_LIMITS.archiveBytes + 1, arrayBuffer } as unknown as File],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(arrayBuffer).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/크기 제한/) }));
+    runtime.dispose();
+  });
+
+  it("routes a synchronous project file read failure without starting decode", () => {
+    const root = document.createElement("div");
+    const onError = vi.fn();
+    const decodeTextureImage = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage: new MemoryStorage(), nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage,
+      startViewport: () => ({
+        setScene: vi.fn(), prepareTextures: vi.fn(), setTexture: vi.fn(), deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [{ size: 1, arrayBuffer: () => { throw new Error("read failed"); } } as unknown as File],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "read failed" }));
+    expect(decodeTextureImage).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
+
+  it("stops sequential project texture decoding as soon as the aggregate pixel budget is exceeded", async () => {
+    const root = document.createElement("div");
+    const geometry = {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0, 1],
+    };
+    const workspace: FacialWorkspace = {
+      version: 1,
+      activeMeshId: "base",
+      meshes: Array.from({ length: 4 }, (_, index) => ({
+        id: index === 0 ? "base" : `mesh-${index}`,
+        name: index === 0 ? "Base Mask" : `Mesh ${index}`,
+        kind: index === 0 ? "base" as const : "copy" as const,
+        geometry,
+      })),
+    };
+    const archive = encodeOctopolyProject({
+      workspace,
+      selectedVertex: null,
+      movementState: {
+        mode: "gizmo", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+      },
+      textures: workspace.meshes.map((mesh) => ({
+        modelId: mesh.id,
+        mimeType: "image/png" as const,
+        bytes: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+      })),
+    });
+    const bitmaps = Array.from({ length: 4 }, () => ({
+      width: 4096,
+      height: 4096,
+      close: vi.fn(),
+    } as unknown as ImageBitmap));
+    const decodeTextureImage = vi.fn(async () => bitmaps[decodeTextureImage.mock.calls.length - 1]!);
+    const prepareTextures = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage: new MemoryStorage(), nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage, downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene: vi.fn(), prepareTextures,
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([new Uint8Array(archive).buffer as ArrayBuffer], "pixel-budget.octopoly")],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(decodeTextureImage).toHaveBeenCalledTimes(3);
+    expect(bitmaps.slice(0, 3).every((bitmap) => vi.mocked(bitmap.close).mock.calls.length === 1)).toBe(true);
+    expect(bitmaps[3]!.close).not.toHaveBeenCalled();
+    expect(prepareTextures).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
+
+  it("rejects a texture larger than the project per-texture limit before decode or upload", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const decodeTextureImage = vi.fn();
+    const setTexture = vi.fn();
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const oversized = new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], "huge.png", {
+      type: "image/png",
+    });
+    Object.defineProperty(oversized, "size", { value: 16 * 1024 * 1024 + 1 });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    Object.defineProperty(input, "files", { configurable: true, value: [oversized] });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+
+    expect(decodeTextureImage).not.toHaveBeenCalled();
+    expect(setTexture).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: expect.stringMatching(/크기 제한/) }));
     runtime.dispose();
   });
 
@@ -160,7 +1001,7 @@ describe("facial runtime composition", () => {
       }),
     });
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
-    const file = new File(["png"], "surface.png", { type: "image/png" });
+    const file = new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" });
     Object.defineProperty(input, "files", { configurable: true, value: [file] });
 
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -193,7 +1034,7 @@ describe("facial runtime composition", () => {
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["png"], "surface.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" })],
     });
 
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -204,13 +1045,49 @@ describe("facial runtime composition", () => {
     runtime.dispose();
   });
 
+  it("closes a late direct-texture bitmap when arrayBuffer throws synchronously", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const pending = deferred<ImageBitmap>();
+    const bitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
+    const decodeTextureImage = vi.fn(() => pending.promise);
+    const onError = vi.fn();
+    const setTexture = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), decodeTextureImage, onError,
+      startViewport: () => ({
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
+    const file = new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" });
+    Object.defineProperty(file, "arrayBuffer", {
+      value: () => { throw new Error("texture read failed"); },
+    });
+    Object.defineProperty(input, "files", { configurable: true, value: [file] });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(decodeTextureImage).toHaveBeenCalledOnce();
+    expect(onError).toHaveBeenCalledWith(expect.objectContaining({ message: "texture read failed" }));
+    pending.resolve(bitmap);
+    await pending.promise;
+    await Promise.resolve();
+
+    expect(bitmap.close).toHaveBeenCalledOnce();
+    expect(setTexture).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
+
   it("closes a decoded bitmap without upload when the active model changes during decode", async () => {
     const root = document.createElement("div");
     const storage = new MemoryStorage();
     seedUvWorkspace(storage);
     const pending = deferred<ImageBitmap>();
     const close = vi.fn();
-    const bitmap = { close } as unknown as ImageBitmap;
+    const bitmap = { width: 2, height: 2, close } as unknown as ImageBitmap;
     const setTexture = vi.fn();
     const runtime = startFacialRuntime({
       canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
@@ -224,7 +1101,7 @@ describe("facial runtime composition", () => {
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["png"], "surface.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" })],
     });
 
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -243,7 +1120,7 @@ describe("facial runtime composition", () => {
     const storage = new MemoryStorage();
     seedUvWorkspace(storage);
     const pending = deferred<ImageBitmap>();
-    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const bitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
     const setTexture = vi.fn();
     const runtime = startFacialRuntime({
       canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
@@ -257,7 +1134,7 @@ describe("facial runtime composition", () => {
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["png"], "surface.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" })],
     });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     root.querySelector<HTMLButtonElement>('[data-action="duplicate"]')!.click();
@@ -277,7 +1154,7 @@ describe("facial runtime composition", () => {
     const storage = new MemoryStorage();
     seedUvWorkspace(storage);
     const pending = deferred<ImageBitmap>();
-    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const bitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
     const setTexture = vi.fn();
     const runtime = startFacialRuntime({
       canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
@@ -295,7 +1172,7 @@ describe("facial runtime composition", () => {
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["png"], "surface.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" })],
     });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
@@ -334,7 +1211,7 @@ describe("facial runtime composition", () => {
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["png"], "surface.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" })],
     });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     root.querySelector<HTMLButtonElement>('[data-preset-id="luna"]')!.click();
@@ -355,8 +1232,8 @@ describe("facial runtime composition", () => {
     seedUvWorkspace(storage);
     const first = deferred<ImageBitmap>();
     const second = deferred<ImageBitmap>();
-    const firstBitmap = { close: vi.fn() } as unknown as ImageBitmap;
-    const secondBitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const firstBitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
+    const secondBitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
     const decodeTextureImage = vi.fn()
       .mockReturnValueOnce(first.promise)
       .mockReturnValueOnce(second.promise);
@@ -372,12 +1249,12 @@ describe("facial runtime composition", () => {
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["first"], "first.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES, "first"], "first.png", { type: "image/png" })],
     });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["second"], "second.jpg", { type: "image/jpeg" })],
+      value: [new File([VALID_JPEG_BYTES, "second"], "second.jpg", { type: "image/jpeg" })],
     });
     input.dispatchEvent(new Event("change", { bubbles: true }));
 
@@ -400,7 +1277,7 @@ describe("facial runtime composition", () => {
     const storage = new MemoryStorage();
     seedUvWorkspace(storage);
     const first = deferred<ImageBitmap>();
-    const secondBitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const secondBitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
     const decodeTextureImage = vi.fn()
       .mockReturnValueOnce(first.promise)
       .mockResolvedValueOnce(secondBitmap);
@@ -417,12 +1294,12 @@ describe("facial runtime composition", () => {
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["first"], "first.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES, "first"], "first.png", { type: "image/png" })],
     });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["second"], "second.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES, "second"], "second.png", { type: "image/png" })],
     });
     input.dispatchEvent(new Event("change", { bubbles: true }));
     await vi.waitFor(() => expect(setTexture).toHaveBeenCalledOnce());
@@ -440,7 +1317,7 @@ describe("facial runtime composition", () => {
     const storage = new MemoryStorage();
     seedUvWorkspace(storage);
     const pending = deferred<ImageBitmap>();
-    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const bitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
     const setTexture = vi.fn();
     const onError = vi.fn();
     const runtime = startFacialRuntime({
@@ -455,7 +1332,7 @@ describe("facial runtime composition", () => {
     const input = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
     Object.defineProperty(input, "files", {
       configurable: true,
-      value: [new File(["png"], "surface.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" })],
     });
 
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -473,7 +1350,7 @@ describe("facial runtime composition", () => {
     const root = document.createElement("div");
     const storage = new MemoryStorage();
     seedUvWorkspace(storage);
-    const bitmap = { close: vi.fn() } as unknown as ImageBitmap;
+    const bitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
     const setTexture = vi.fn();
     const deleteTexture = vi.fn();
     const setScene = vi.fn();
@@ -494,7 +1371,7 @@ describe("facial runtime composition", () => {
     const textureInput = root.querySelector<HTMLInputElement>('[data-texture-input]')!;
     Object.defineProperty(textureInput, "files", {
       configurable: true,
-      value: [new File(["png"], "surface.png", { type: "image/png" })],
+      value: [new File([VALID_PNG_BYTES], "surface.png", { type: "image/png" })],
     });
     textureInput.dispatchEvent(new Event("change", { bubbles: true }));
     await vi.waitFor(() => expect(setTexture).toHaveBeenCalledOnce());

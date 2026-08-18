@@ -1,6 +1,7 @@
 import {
   createVertexMovementModeState,
   getConstrainedPlaneSelectorPlanes,
+  isVertexMovementModeState,
   vertexMovementModeReducer,
   WORLD_PLANES,
   type VertexMovementMode,
@@ -15,6 +16,7 @@ export interface MovementControlsOptions {
 export interface MovementControls {
   readonly element: HTMLElement;
   readonly state: VertexMovementModeState;
+  replaceState(state: VertexMovementModeState): void;
   dispose(): void;
 }
 
@@ -203,6 +205,28 @@ export function mountMovementControls(
     element,
     get state() {
       return currentState;
+    },
+    replaceState: (state) => {
+      if (!isVertexMovementModeState(state)) {
+        throw new Error("이동 도구 상태가 올바르지 않습니다.");
+      }
+      const previousState = currentState;
+      currentState = {
+        ...state,
+        enabledConstrainedPlanes: [...state.enabledConstrainedPlanes],
+      };
+      try {
+        render();
+        publish();
+      } catch (error) {
+        currentState = previousState;
+        try {
+          render();
+        } catch (rollbackError) {
+          throw new AggregateError([error, rollbackError], "이동 도구 상태 rollback에 실패했습니다.");
+        }
+        throw error;
+      }
     },
     dispose: () => {
       if (disposed) return;

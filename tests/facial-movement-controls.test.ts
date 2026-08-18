@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { mountMovementControls } from "../src/facial/movement-controls";
+import type { VertexMovementModeState } from "../src/facial/movement-mode";
 
 describe("vertex movement controls", () => {
   it("mounts one collapsed top-tool icon and restores its focus when the mode popover closes on Escape", () => {
@@ -130,6 +131,54 @@ describe("vertex movement controls", () => {
       activeConstrainedPlane: "xy",
       constrainedPlaneScreenSpace: true,
     }));
+    controls.dispose();
+  });
+
+  it("rolls back movement state and DOM when replacement publication throws", () => {
+    const panel = document.createElement("section");
+    panel.append(document.createElement("h2"));
+    const overlay = document.createElement("div");
+    const onChange = vi.fn((state: VertexMovementModeState) => {
+      if (state.mode === "view-plane") throw new Error("movement publication failed");
+    });
+    const controls = mountMovementControls(panel, overlay, { onChange });
+
+    expect(() => controls.replaceState({
+      mode: "view-plane",
+      enabledConstrainedPlanes: ["xy", "yz", "xz"],
+      activeConstrainedPlane: "xy",
+      constrainedPlaneScreenSpace: false,
+    })).toThrow(/movement publication failed/);
+
+    expect(controls.state.mode).toBe("gizmo");
+    expect(panel.querySelector('[data-movement-mode="gizmo"]')?.getAttribute("aria-pressed")).toBe("true");
+    controls.dispose();
+  });
+
+  it("replaces movement state through a validated API and rerenders every control", () => {
+    const panel = document.createElement("section");
+    panel.append(document.createElement("h2"));
+    const overlay = document.createElement("div");
+    const onChange = vi.fn();
+    const controls = mountMovementControls(panel, overlay, { onChange });
+    const state = {
+      mode: "constrained-plane",
+      enabledConstrainedPlanes: ["yz", "xz"],
+      activeConstrainedPlane: "xz",
+      constrainedPlaneScreenSpace: true,
+    } as const;
+
+    controls.replaceState(state);
+
+    expect(controls.state).toEqual(state);
+    expect(panel.querySelector('[data-movement-mode="constrained-plane"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(panel.querySelector<HTMLInputElement>('[data-plane-enabled="xy"]')?.checked).toBe(false);
+    expect(panel.querySelector<HTMLInputElement>('[data-plane-screen-space="true"]')?.checked).toBe(true);
+    expect(overlay.querySelector('[data-constrained-plane="xz"]')?.getAttribute("aria-pressed")).toBe("true");
+    expect(onChange).toHaveBeenLastCalledWith(state);
+    expect(() => controls.replaceState({ ...state, enabledConstrainedPlanes: [] }))
+      .toThrow(/이동 도구 상태/);
+    expect(controls.state).toEqual(state);
     controls.dispose();
   });
 

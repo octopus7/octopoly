@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { createDefaultFacialWorkspace, duplicateBaseMesh } from "../src/facial/workspace";
 import { createFacialController, FacialPersistenceError } from "../src/facial/controller";
 import { FACIAL_WORKSPACE_STORAGE_KEY } from "../src/facial/storage";
 
@@ -12,6 +13,10 @@ class MemoryStorage {
 
   setItem(key: string, value: string): void {
     this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
   }
 }
 
@@ -391,6 +396,67 @@ describe("facial workspace controller", () => {
 
     expect(controller.selectedVertex).toBeNull();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("atomically autosaves and publishes a complete project workspace with its selected vertex", () => {
+    const storage = new MemoryStorage();
+    const onChange = vi.fn();
+    const controller = createFacialController({
+      storage,
+      nextCopyId: () => "copy-local",
+      onChange,
+    });
+    const workspace = duplicateBaseMesh(createDefaultFacialWorkspace(), "copy-loaded");
+
+    controller.replaceProject(workspace, 3);
+
+    expect(controller.workspace).toBe(workspace);
+    expect(controller.selectedVertex).toBe(3);
+    expect(controller.sceneRevision).toBe(1);
+    expect(JSON.parse(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!)).toEqual(workspace);
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenCalledWith(workspace, 3, 1);
+  });
+
+  it("restores an initially absent workspace key when project publication fails", () => {
+    const storage = new MemoryStorage();
+    const onChange = vi.fn()
+      .mockImplementationOnce(() => { throw new Error("scene publication failed"); })
+      .mockImplementation(() => undefined);
+    const controller = createFacialController({
+      storage,
+      nextCopyId: () => "copy-local",
+      onChange,
+    });
+    const workspace = duplicateBaseMesh(createDefaultFacialWorkspace(), "copy-loaded");
+
+    expect(() => controller.replaceProject(workspace, 3)).toThrow(/scene publication failed/);
+
+    expect(storage.values.has(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(false);
+    expect(controller.workspace).not.toBe(workspace);
+    expect(controller.selectedVertex).toBeNull();
+    expect(controller.sceneRevision).toBe(0);
+    expect(onChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not mutate storage while preparing an absent-key project transaction", () => {
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: vi.fn((key: string, value: string) => { values.set(key, value); }),
+      removeItem: vi.fn(() => { throw new Error("remove failed"); }),
+    };
+    const controller = createFacialController({
+      storage,
+      nextCopyId: () => "copy-local",
+      onChange: vi.fn(),
+    });
+    const workspace = duplicateBaseMesh(createDefaultFacialWorkspace(), "copy-loaded");
+
+    expect(() => controller.prepareProject(workspace, 3)).not.toThrow();
+    expect(values.has(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(false);
+    expect(storage.setItem).not.toHaveBeenCalled();
+    expect(storage.removeItem).not.toHaveBeenCalled();
   });
 
   it("ignores commands after idempotent disposal", () => {
