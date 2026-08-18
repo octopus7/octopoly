@@ -32,6 +32,13 @@ export interface FacialSession {
     vertexIndex: number,
     delta: VertexDelta,
   ): void;
+  moveVerticesByDelta(
+    meshId: string,
+    sceneRevision: number,
+    vertexIndex: number,
+    weights: readonly number[],
+    delta: VertexDelta,
+  ): void;
   dispose(): void;
 }
 
@@ -94,6 +101,11 @@ export function createFacialSession(options: FacialSessionOptions): FacialSessio
       if (disposed) return;
       importRevision += 1;
       options.controller.moveVertexByDelta(meshId, sceneRevision, vertexIndex, delta);
+    },
+    moveVerticesByDelta: (meshId, sceneRevision, vertexIndex, weights, delta) => {
+      if (disposed) return;
+      importRevision += 1;
+      options.controller.moveVerticesByDelta(meshId, sceneRevision, vertexIndex, weights, delta);
     },
     dispose: () => {
       if (disposed) return;

@@ -13,6 +13,7 @@ export type FacialPresetId = "luna";
 
 export interface FacialPanelCallbacks {
   readonly onImport: (file: File) => void;
+  readonly onNewProject?: () => void;
   readonly onSaveProject?: () => void;
   readonly onOpenProject?: (file: File) => void;
   readonly onLoadTexture?: (file: File) => void;
@@ -133,10 +134,19 @@ export function mountFacialPanel(
     fileMenu.hidden = !open;
     if (restoreFocus) fileMenuToggle.focus();
   };
+  const newProjectButton = document.createElement("button");
+  newProjectButton.type = "button";
+  newProjectButton.dataset.action = "new-project";
+  newProjectButton.textContent = "새작업";
+  const handleNewProject = (): void => {
+    setFileMenuOpen(false);
+    callbacks.onNewProject?.();
+  };
+  newProjectButton.addEventListener("click", handleNewProject);
   const saveProjectButton = document.createElement("button");
   saveProjectButton.type = "button";
   saveProjectButton.dataset.action = "save-project";
-  saveProjectButton.textContent = "작업 파일 저장";
+  saveProjectButton.textContent = "저장";
   const handleSaveProject = (): void => {
     callbacks.onSaveProject?.();
     setFileMenuOpen(false, true);
@@ -146,12 +156,12 @@ export function mountFacialPanel(
   projectInput.type = "file";
   projectInput.accept = ".octopoly,application/x-octopoly,application/zip";
   projectInput.dataset.projectInput = "";
-  projectInput.setAttribute("aria-label", ".octopoly 작업 파일 열기");
+  projectInput.setAttribute("aria-label", "작업 불러오기");
   projectInput.hidden = true;
   const openProjectButton = document.createElement("button");
   openProjectButton.type = "button";
   openProjectButton.dataset.action = "open-project";
-  openProjectButton.textContent = ".octopoly 작업 파일 열기";
+  openProjectButton.textContent = "불러오기";
   const handleOpenProjectButton = (): void => projectInput.click();
   const handleOpenProject = (): void => {
     const file = projectInput.files?.[0];
@@ -445,6 +455,7 @@ export function mountFacialPanel(
   fileMenu.append(
     fileHeading,
     importInput,
+    newProjectButton,
     saveProjectButton,
     openProjectButton,
     projectInput,
@@ -561,6 +572,7 @@ export function mountFacialPanel(
     dispose: () => {
       importInput.removeEventListener("change", handleImport);
       importButton.removeEventListener("click", handleImportButton);
+      newProjectButton.removeEventListener("click", handleNewProject);
       saveProjectButton.removeEventListener("click", handleSaveProject);
       projectInput.removeEventListener("change", handleOpenProject);
       openProjectButton.removeEventListener("click", handleOpenProjectButton);

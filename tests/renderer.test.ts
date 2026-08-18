@@ -633,7 +633,7 @@ describe("mesh viewport renderer", () => {
     controller.dispose();
   });
 
-  it("renders 5/8 CSS-pixel square vertex handles with LEQUAL depth testing and restores LESS", () => {
+  it("renders complete 5/8 CSS-pixel square vertex handles with a bounded depth bias and restores LESS", () => {
     const { canvas, flushFrame, gl } = createHarness({ devicePixelRatio: 1 });
     const controller = renderer.startMeshViewport(canvas, {
       geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
@@ -648,6 +648,7 @@ describe("mesh viewport renderer", () => {
       .map(([, value]) => value as number);
     expect(uniformCalls("uPointSize").slice(-2)).toEqual([5, 8]);
     expect(uniformCalls("uPointMode").slice(-2)).toEqual([0, 0]);
+    expect(uniformCalls("uPointDepthBias").slice(-4)).toEqual([0, 0, 0.002, 0.002]);
     expect(gl.disable).not.toHaveBeenCalledWith(gl.DEPTH_TEST);
 
     const pointDrawOrders = gl.drawArrays.mock.invocationCallOrder;
@@ -791,6 +792,21 @@ describe("mesh viewport renderer", () => {
     controller.dispose();
   });
 
+  it("projects a model-space influence radius into finite CSS pixels", () => {
+    const { canvas } = createHarness();
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+
+    const pixels = controller.projectRadius(2, 0.5);
+
+    expect(pixels).not.toBeNull();
+    expect(Number.isFinite(pixels)).toBe(true);
+    expect(pixels).toBeGreaterThan(0);
+    controller.dispose();
+  });
+
   it("fills a wide viewport with a shallow Facial mesh while retaining a safe border", () => {
     const width = 1280;
     const height = 577;
@@ -826,6 +842,26 @@ describe("mesh viewport renderer", () => {
     const span = Math.max(...projected.map(({ x }) => x)) - Math.min(...projected.map(({ x }) => x));
     expect(projected.every(({ x, y, depth }) => [x, y, depth].every(Number.isFinite))).toBe(true);
     expect(span).toBeGreaterThan(1280 * 0.9);
+    controller.dispose();
+  });
+
+  it("keeps a user close zoom when selection republishes the same scene", () => {
+    const { canvas } = createHarness({ width: 800, height: 500 });
+    const scene = {
+      geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    } as const;
+    const controller = renderer.startMeshViewport(canvas, scene);
+    canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: -1_000, cancelable: true }));
+    const before = [controller.projectVertex(0)!, controller.projectVertex(1)!];
+    const beforeSpan = Math.abs(before[1]!.x - before[0]!.x);
+
+    controller.setScene(scene);
+    controller.setSelectedVertex(1);
+
+    const after = [controller.projectVertex(0)!, controller.projectVertex(1)!];
+    expect(Math.abs(after[1]!.x - after[0]!.x)).toBeCloseTo(beforeSpan, 10);
+    expect(after).toEqual(before);
     controller.dispose();
   });
 

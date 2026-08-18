@@ -5,6 +5,7 @@ export interface WorkspaceElements {
   readonly panelContainer: HTMLElement;
   readonly overlayContainer: HTMLElement;
   activateMode(mode: WorkspaceMode): void;
+  resetMode(): void;
   dispose(): void;
 }
 
@@ -149,6 +150,7 @@ function attachAppMenuTabs(
 
 interface ModeSelector {
   activate(mode: WorkspaceMode): void;
+  reset(): void;
   dispose(): void;
 }
 
@@ -204,6 +206,12 @@ function attachModeSelector(
     activate: (mode) => {
       const button = buttons.find((candidate) => candidate.dataset.mode === mode);
       if (button && !button.disabled) activate(button, false);
+    },
+    reset: () => {
+      for (const button of buttons) {
+        button.setAttribute("aria-pressed", "false");
+        button.removeAttribute("aria-current");
+      }
     },
     dispose: () => disposers.forEach((dispose) => dispose()),
   };
@@ -309,6 +317,7 @@ export function mountShell(root: HTMLElement): WorkspaceElements {
     panelContainer,
     overlayContainer,
     activateMode: (mode) => modeSelector.activate(mode),
+    resetMode: () => modeSelector.reset(),
     dispose: () => {
       if (disposed) return;
       disposed = true;

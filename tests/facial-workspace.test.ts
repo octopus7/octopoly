@@ -8,6 +8,7 @@ import {
   isValidMeshGeometry,
   moveVertex,
   moveVertexByDelta,
+  moveVerticesByDelta,
   renameMesh,
   replaceBaseMesh,
   selectMesh,
@@ -247,6 +248,24 @@ describe("facial workspace", () => {
       before[2],
     ]);
     expect(workspace.meshes[0]!.geometry.positions.slice(0, 3)).toEqual(before);
+  });
+
+  it("moves weighted vertices together in one immutable workspace update", () => {
+    const source = replaceBaseMesh(createDefaultFacialWorkspace(), {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+      uvs: [0, 0, 1, 0, 0, 1],
+    });
+
+    const moved = moveVerticesByDelta(source, "base", [1, 0.5, 0], [0.4, -0.2, 0]);
+
+    expect(moved.meshes[0]!.geometry.positions).toEqual([
+      0.4, -0.2, 0,
+      1.2, -0.1, 0,
+      0, 1, 0,
+    ]);
+    expect(moved.meshes[0]!.geometry.uvs).toEqual(source.meshes[0]!.geometry.uvs);
+    expect(source.meshes[0]!.geometry.positions).toEqual([0, 0, 0, 1, 0, 0, 0, 1, 0]);
   });
 
   it("ignores a vertex move that overflows Float32", () => {

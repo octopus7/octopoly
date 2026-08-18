@@ -167,13 +167,15 @@ describe("facial workspace panel", () => {
     container.remove();
   });
 
-  it("offers accessible .octopoly save/open commands, resets same-file selection, and restores File-menu focus", () => {
+  it("offers New, Save, and Load commands, resets same-file selection, and restores File-menu focus", () => {
     const container = document.createElement("div");
     document.body.append(container);
+    const onNewProject = vi.fn();
     const onSaveProject = vi.fn();
     const onOpenProject = vi.fn();
     const panel = mountFacialPanel(container, {
       onImport: vi.fn(),
+      onNewProject,
       onSaveProject,
       onOpenProject,
       onDuplicate: vi.fn(),
@@ -182,15 +184,24 @@ describe("facial workspace panel", () => {
     });
     const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!;
     const menu = container.querySelector<HTMLElement>(".facial-file-menu")!;
+    const newProject = menu.querySelector<HTMLButtonElement>('[data-action="new-project"]')!;
     const save = menu.querySelector<HTMLButtonElement>('[data-action="save-project"]')!;
     const open = menu.querySelector<HTMLButtonElement>('[data-action="open-project"]')!;
     const input = menu.querySelector<HTMLInputElement>('[data-project-input]')!;
 
     try {
-      expect(save.textContent).toBe("작업 파일 저장");
-      expect(open.textContent).toBe(".octopoly 작업 파일 열기");
+      expect(newProject.textContent).toBe("새작업");
+      expect(save.textContent).toBe("저장");
+      expect(open.textContent).toBe("불러오기");
+      expect([...menu.querySelectorAll<HTMLButtonElement>("button")].slice(0, 3).map((button) => button.textContent))
+        .toEqual(["새작업", "저장", "불러오기"]);
       expect(input.accept).toBe(".octopoly,application/x-octopoly,application/zip");
       expect(input.hidden).toBe(true);
+
+      toggle.click();
+      newProject.click();
+      expect(onNewProject).toHaveBeenCalledOnce();
+      expect(menu.hidden).toBe(true);
 
       toggle.click();
       save.click();

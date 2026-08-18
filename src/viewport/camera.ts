@@ -11,6 +11,7 @@ export interface CameraSnapshot extends CameraState {
   readonly framingRadius: number | null;
   readonly framingHalfExtents: readonly [number, number, number] | null;
   readonly framingAspect: number | null;
+  readonly distanceUserControlled: boolean;
 }
 
 export interface CameraRay {
@@ -69,6 +70,7 @@ export class OrbitCamera {
   #framingRadius: number | null = null;
   #framingHalfExtents: Vec3 | null = null;
   #framingAspect: number | null = null;
+  #distanceUserControlled = false;
 
   state(): CameraState {
     return {
@@ -87,6 +89,7 @@ export class OrbitCamera {
       framingRadius: this.#framingRadius,
       framingHalfExtents: this.#framingHalfExtents ? [...this.#framingHalfExtents] : null,
       framingAspect: this.#framingAspect,
+      distanceUserControlled: this.#distanceUserControlled,
     };
   }
 
@@ -102,6 +105,7 @@ export class OrbitCamera {
       ? [...snapshot.framingHalfExtents] as Vec3
       : null;
     this.#framingAspect = snapshot.framingAspect;
+    this.#distanceUserControlled = snapshot.distanceUserControlled;
   }
 
   orbit(deltaX: number, deltaY: number): void {
@@ -116,11 +120,13 @@ export class OrbitCamera {
         this.#pitch,
       );
       this.#maximumDistance = Math.max(this.#maximumDistance, requiredDistance * 4);
-      this.#distance = clamp(
-        Math.max(this.#distance, requiredDistance),
-        this.#minimumDistance,
-        this.#maximumDistance,
-      );
+      if (!this.#distanceUserControlled) {
+        this.#distance = clamp(
+          Math.max(this.#distance, requiredDistance),
+          this.#minimumDistance,
+          this.#maximumDistance,
+        );
+      }
     }
   }
 
@@ -182,12 +188,15 @@ export class OrbitCamera {
   }
 
   zoomByWheel(deltaY: number): void {
+    if (!Number.isFinite(deltaY)) return;
     this.#distance = clamp(this.#distance * Math.exp(deltaY * 0.001), this.#minimumDistance, this.#maximumDistance);
+    this.#distanceUserControlled = true;
   }
 
   zoomByPinch(previousDistance: number, nextDistance: number): void {
     if (previousDistance <= 0 || nextDistance <= 0) return;
     this.#distance = clamp(this.#distance * (previousDistance / nextDistance), this.#minimumDistance, this.#maximumDistance);
+    this.#distanceUserControlled = true;
   }
 
   fitRadius(radius: number): void {
@@ -212,6 +221,7 @@ export class OrbitCamera {
     this.#minimumDistance = MIN_DISTANCE;
     this.#maximumDistance = Math.max(MAX_DISTANCE, requiredDistance * 4);
     this.#distance = clamp(requiredDistance, this.#minimumDistance, this.#maximumDistance);
+    this.#distanceUserControlled = false;
   }
 
   frameBox(center: Vec3, halfExtents: Vec3, aspect = 1): void {
@@ -230,6 +240,7 @@ export class OrbitCamera {
     this.#minimumDistance = Math.max(0.05, Math.hypot(...halfExtents) + 0.01);
     this.#maximumDistance = Math.max(MAX_DISTANCE, requiredDistance * 4);
     this.#distance = clamp(requiredDistance, this.#minimumDistance, this.#maximumDistance);
+    this.#distanceUserControlled = false;
   }
 
   updateBoxFraming(halfExtents: Vec3, aspect: number): void {
@@ -243,13 +254,18 @@ export class OrbitCamera {
     this.#framingRadius = null;
     this.#framingHalfExtents = [...halfExtents] as unknown as Vec3;
     this.#framingAspect = aspect;
-    this.#minimumDistance = Math.max(0.05, Math.hypot(...halfExtents) + 0.01);
-    this.#maximumDistance = Math.max(this.#maximumDistance, MAX_DISTANCE, requiredDistance * 4);
-    this.#distance = clamp(
-      Math.max(this.#distance, requiredDistance),
-      this.#minimumDistance,
-      this.#maximumDistance,
-    );
+    const minimumDistance = Math.max(0.05, Math.hypot(...halfExtents) + 0.01);
+    this.#minimumDistance = this.#distanceUserControlled
+      ? Math.min(this.#distance, minimumDistance)
+      : minimumDistance;
+    this.#maximumDistance = Math.max(this.#maximumDistance, MAX_DISTANCE, requiredDistance * 4, this.#distance);
+    if (!this.#distanceUserControlled) {
+      this.#distance = clamp(
+        Math.max(this.#distance, requiredDistance),
+        this.#minimumDistance,
+        this.#maximumDistance,
+      );
+    }
   }
 
   fitAspect(aspect: number): void {
@@ -260,7 +276,9 @@ export class OrbitCamera {
     if (requiredDistance === null) return;
     this.#framingAspect = aspect;
     this.#maximumDistance = Math.max(this.#maximumDistance, requiredDistance * 4);
-    this.#distance = clamp(Math.max(this.#distance, requiredDistance), this.#minimumDistance, this.#maximumDistance);
+    if (!this.#distanceUserControlled) {
+      this.#distance = clamp(Math.max(this.#distance, requiredDistance), this.#minimumDistance, this.#maximumDistance);
+    }
   }
 
   viewProjection(aspect: number): Float32Array {

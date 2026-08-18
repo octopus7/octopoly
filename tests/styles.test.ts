@@ -76,6 +76,16 @@ describe("application stacking order", () => {
       .toBeGreaterThan(Number(declarationFor(".vertex-gizmo__axis-line", "z-index")));
   });
 
+  it("keeps proportional controls touch-sized and its influence visualization non-interactive", () => {
+    expect(declarationFor(".proportional-controls__settings", "width")).toBe("2.75rem");
+    expect(declarationFor(".proportional-controls__settings", "min-width")).toBe("2.75rem");
+    expect(declarationFor(".proportional-controls__settings", "height")).toBe("2.75rem");
+    expect(declarationFor(".proportional-influence", "position")).toBe("absolute");
+    expect(declarationFor(".proportional-influence", "pointer-events")).toBe("none");
+    expect(declarationFor('.proportional-influence[hidden]', "display")).toBe("none");
+    expect(declarationFor('.proportional-controls__popover[hidden]', "display")).toBe("none");
+  });
+
   it("includes safe-area-aware narrow layouts for the drawer, top strip, and compact selection", () => {
     const mobile = stylesheet.match(/@media \(max-width: 520px\)\s*\{([\s\S]*)\}\s*$/)?.[1] ?? "";
     expect(mobile).toContain(".facial-mesh-drawer");

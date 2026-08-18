@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { mountOctoPolyApp } from "../src/app";
+import { FACIAL_WORKSPACE_STORAGE_KEY } from "../src/facial/storage";
 import type { FacialRuntimeOptions } from "../src/facial/runtime";
 
 class MemoryStorage implements Storage {
@@ -53,6 +54,80 @@ describe("OctoPoly app composition", () => {
     app.dispose();
     expect(disposeFacial).toHaveBeenCalledOnce();
   });
+
+  it("resets a Facial project to the initial cube and clears its persisted workspace", () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, "saved workspace");
+    const disposeFacial = vi.fn();
+    const disposeCube = vi.fn();
+    const startCube = vi.fn(() => disposeCube);
+    const startFacial = vi.fn((_options: FacialRuntimeOptions) => ({ dispose: disposeFacial }));
+    const app = mountOctoPolyApp(root, {
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
+      startCube,
+      startFacial,
+      startViewport: vi.fn(),
+    });
+
+    startFacial.mock.calls[0]![0].onNewProject!();
+
+    expect(disposeFacial).toHaveBeenCalledOnce();
+    expect(startCube).toHaveBeenCalledOnce();
+    expect(storage.getItem(FACIAL_WORKSPACE_STORAGE_KEY)).toBeNull();
+    expect(root.querySelector("canvas")?.getAttribute("aria-label")).toBe("기본 큐브가 있는 3D 뷰포트");
+    expect(root.querySelector(".status")?.textContent).toBe("새 작업");
+    expect(root.querySelector('[data-mode="facial"]')?.getAttribute("aria-pressed")).toBe("false");
+    expect(root.querySelector('[data-mode="facial"]')?.getAttribute("aria-current")).toBeNull();
+
+    app.dispose();
+    expect(disposeCube).toHaveBeenCalledOnce();
+  });
+
+  it.each(["cube", "storage"] as const)(
+    "rolls New Project back to the saved Facial workspace when %s reset staging fails",
+    (failure) => {
+      const root = document.createElement("div");
+      const storage = new MemoryStorage();
+      storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, "saved workspace");
+      if (failure === "storage") {
+        vi.spyOn(storage, "removeItem").mockImplementation(() => { throw new Error("remove failed"); });
+      }
+      const facialDisposers = [vi.fn(), vi.fn()];
+      const startFacial = vi.fn((_options: FacialRuntimeOptions) => ({
+        dispose: facialDisposers[startFacial.mock.calls.length - 1]!,
+      }));
+      const disposeCube = vi.fn();
+      const startCube = failure === "cube"
+        ? vi.fn(() => { throw new Error("cube failed"); })
+        : vi.fn(() => disposeCube);
+      const app = mountOctoPolyApp(root, {
+        storage,
+        nextCopyId: () => "copy-1",
+        parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+        loadPresetText: vi.fn(async () => "preset"),
+        startCube,
+        startFacial,
+        startViewport: vi.fn(),
+      });
+
+      startFacial.mock.calls[0]![0].onNewProject!();
+
+      expect(facialDisposers[0]).toHaveBeenCalledOnce();
+      expect(startFacial).toHaveBeenCalledTimes(2);
+      expect(storage.getItem(FACIAL_WORKSPACE_STORAGE_KEY)).toBe("saved workspace");
+      expect(root.querySelector("canvas")?.getAttribute("aria-label")).toBe("편집 가능한 페이셜 메시 3D 뷰포트");
+      expect(root.querySelector('[data-mode="facial"]')?.getAttribute("aria-pressed")).toBe("true");
+      expect(root.querySelector('[data-mode="facial"]')?.getAttribute("aria-current")).toBe("true");
+      if (failure === "storage") expect(disposeCube).toHaveBeenCalledOnce();
+
+      app.dispose();
+      expect(facialDisposers[1]).toHaveBeenCalledOnce();
+    },
+  );
 
   it("closes a mesh dialog on Escape without changing an open app menu", () => {
     const root = document.createElement("div");

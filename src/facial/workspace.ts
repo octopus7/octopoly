@@ -167,6 +167,39 @@ export function replaceBaseMesh(
 export type VertexAxis = "x" | "y" | "z";
 export type VertexDelta = readonly [number, number, number];
 
+export function moveVerticesByDelta(
+  workspace: FacialWorkspace,
+  meshId: string,
+  weights: readonly number[],
+  delta: VertexDelta,
+): FacialWorkspace {
+  const targetMesh = workspace.meshes.find((mesh) => mesh.id === meshId);
+  if (!targetMesh || !delta.every(Number.isFinite) || delta.every((value) => value === 0)) return workspace;
+  const vertexCount = targetMesh.geometry.positions.length / 3;
+  if (weights.length !== vertexCount
+    || weights.some((weight) => !Number.isFinite(weight) || weight < 0 || weight > 1)) return workspace;
+  const positions = [...targetMesh.geometry.positions];
+  let changed = false;
+  for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex += 1) {
+    const weight = weights[vertexIndex]!;
+    if (weight === 0) continue;
+    changed = true;
+    const offset = vertexIndex * 3;
+    for (let axis = 0; axis < 3; axis += 1) {
+      const nextCoordinate = positions[offset + axis]! + delta[axis]! * weight;
+      if (!Number.isFinite(nextCoordinate) || !Number.isFinite(Math.fround(nextCoordinate))) return workspace;
+      positions[offset + axis] = nextCoordinate;
+    }
+  }
+  if (!changed) return workspace;
+  const geometry = { ...targetMesh.geometry, positions };
+  if (!isValidMeshGeometry(geometry)) return workspace;
+  return {
+    ...workspace,
+    meshes: workspace.meshes.map((mesh) => mesh.id === meshId ? { ...mesh, geometry } : mesh),
+  };
+}
+
 export function moveVertexByDelta(
   workspace: FacialWorkspace,
   meshId: string,

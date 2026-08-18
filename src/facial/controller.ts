@@ -4,6 +4,7 @@ import {
   duplicateBaseMesh,
   moveVertex as moveWorkspaceVertex,
   moveVertexByDelta as moveWorkspaceVertexByDelta,
+  moveVerticesByDelta as moveWorkspaceVerticesByDelta,
   renameMesh,
   replaceBaseMesh,
   selectMesh,
@@ -56,6 +57,13 @@ export interface FacialController {
     meshId: string,
     sceneRevision: number,
     vertexIndex: number,
+    delta: VertexDelta,
+  ): void;
+  moveVerticesByDelta(
+    meshId: string,
+    sceneRevision: number,
+    vertexIndex: number,
+    weights: readonly number[],
     delta: VertexDelta,
   ): void;
   dispose(): void;
@@ -228,6 +236,17 @@ export function createFacialController(options: FacialControllerOptions): Facial
         || selectedRevision !== sceneRevision
         || selectedVertex !== vertexIndex) return;
       const next = moveWorkspaceVertexByDelta(workspace, meshId, vertexIndex, delta);
+      if (next === workspace) return;
+      const nextRevision = sceneRevision + 1;
+      commit(next, selectedVertex, nextRevision, nextRevision);
+    },
+    moveVerticesByDelta: (meshId, requestedRevision, vertexIndex, weights, delta) => {
+      if (disposed) return;
+      if (workspace.activeMeshId !== meshId
+        || requestedRevision !== sceneRevision
+        || selectedRevision !== sceneRevision
+        || selectedVertex !== vertexIndex) return;
+      const next = moveWorkspaceVerticesByDelta(workspace, meshId, weights, delta);
       if (next === workspace) return;
       const nextRevision = sceneRevision + 1;
       commit(next, selectedVertex, nextRevision, nextRevision);

@@ -50,20 +50,32 @@ describe("OrbitCamera", () => {
     expect([...camera.viewProjection(2)].every(Number.isFinite)).toBe(true);
   });
 
-  it("refreshes replacement box extents without resetting orientation or target", () => {
+  it("refreshes replacement box extents without resetting user camera state", () => {
     const camera = new OrbitCamera();
     camera.frameBox([0, 0, 0], [1, 0.1, 0], 2);
+    camera.zoomByWheel(-1_000);
     camera.orbit(-25, 0);
     camera.pan(10, -5, 500);
     const before = camera.state();
 
     camera.updateBoxFraming([0.1, 1, 0], 2);
 
+    expect(camera.state()).toEqual(before);
+  });
+
+  it("orbits at a user-selected close zoom without enforcing whole-model bounds", () => {
+    const camera = new OrbitCamera();
+    camera.frameBox([0, 0, 0], [1, 0.1, 0], 2);
+    camera.zoomByWheel(-1_000);
+    const before = camera.state();
+
+    camera.orbit(80, -20);
+
     const after = camera.state();
-    expect(after.yaw).toBe(before.yaw);
-    expect(after.pitch).toBe(before.pitch);
+    expect(after.distance).toBe(before.distance);
     expect(after.target).toEqual(before.target);
-    expect(after.distance).toBeGreaterThan(before.distance);
+    expect(after.yaw).not.toBe(before.yaw);
+    expect(after.pitch).not.toBe(before.pitch);
   });
 
   it("orbits and zooms while keeping a finite view-projection matrix", () => {
@@ -105,18 +117,19 @@ describe("OrbitCamera", () => {
     expect(distance).toBeCloseTo(expected, 10);
   });
 
-  it("refits a resized portrait aspect without clipping and preserves zoom limits", () => {
+  it("updates resized portrait bounds without overriding a user zoom", () => {
     const camera = new OrbitCamera();
     camera.frameBounds([0, 0, 0], 1, 1);
     camera.zoomByWheel(-100_000);
-    expect(camera.state().distance).toBe(2.2);
+    const userDistance = camera.state().distance;
+    expect(userDistance).toBe(2.2);
 
     const portraitAspect = 0.5;
     camera.fitAspect(portraitAspect);
 
     const horizontalHalfFov = Math.atan(Math.tan(Math.PI / 8) * portraitAspect);
     const requiredDistance = 1 / CAMERA_FRAMING_MARGIN / Math.sin(horizontalHalfFov);
-    expect(camera.state().distance).toBeCloseTo(requiredDistance, 10);
+    expect(camera.state().distance).toBe(userDistance);
     expect([...camera.viewProjection(portraitAspect)].every(Number.isFinite)).toBe(true);
 
     camera.zoomByWheel(100_000);

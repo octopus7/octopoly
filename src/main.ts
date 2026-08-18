@@ -80,6 +80,7 @@ mountOctoPolyApp(root, {
       prepareTextures: (entries) => viewport.prepareTextures(entries),
       deleteTexture: (textureKey) => viewport.deleteTexture(textureKey),
       projectVertex: (vertexIndex) => viewport.projectVertex(vertexIndex),
+      projectRadius: (vertexIndex, modelRadius) => viewport.projectRadius(vertexIndex, modelRadius),
       projectAxis: (vertexIndex, axis) => viewport.projectAxis(vertexIndex, axis),
       pickVertex: (x, y, radius) => viewport.pickVertex(x, y, radius),
       focusVertex: (vertexIndex) => viewport.focusVertex(vertexIndex),

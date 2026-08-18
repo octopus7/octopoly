@@ -5,6 +5,7 @@ import {
   type FacialRuntimeOptions,
   type FacialViewportPort,
 } from "./facial/runtime";
+import { FACIAL_WORKSPACE_STORAGE_KEY } from "./facial/storage";
 import type { MeshGeometry } from "./facial/workspace";
 
 interface AppStorage {
@@ -49,6 +50,77 @@ export function mountOctoPolyApp(
   const reportError = (error: unknown): void => {
     setStatus(error instanceof Error ? error.message : "페이셜 모드를 시작하지 못했습니다.", "error");
   };
+  const startFacialMode = (): (() => void) => {
+    const runtime = (dependencies.startFacial ?? startFacialRuntime)({
+      canvas,
+      panelContainer,
+      overlayContainer,
+      storage: dependencies.storage,
+      nextCopyId: dependencies.nextCopyId,
+      parseObjText: dependencies.parseObjText,
+      loadPresetText: dependencies.loadPresetText,
+      ...(dependencies.decodeTextureImage
+        ? { decodeTextureImage: dependencies.decodeTextureImage }
+        : {}),
+      ...(dependencies.downloadProject
+        ? { downloadProject: dependencies.downloadProject }
+        : {}),
+      onNewProject: resetToNewProject,
+      startViewport: dependencies.startViewport,
+      onError: reportError,
+      onStatus: (message) => setStatus(message, "ready"),
+    });
+    canvas.setAttribute("aria-label", "편집 가능한 페이셜 메시 3D 뷰포트");
+    setStatus("페이셜 모드", "ready");
+    return () => runtime.dispose();
+  };
+  const restoreFacialAfterResetFailure = (error: unknown, disposeCube?: () => void): void => {
+    const errors = [error];
+    if (disposeCube) {
+      try { disposeCube(); } catch (cleanupError) { errors.push(cleanupError); }
+    }
+    try {
+      activeDispose = startFacialMode();
+    } catch (rollbackError) {
+      errors.push(rollbackError);
+    }
+    reportError(errors.length === 1
+      ? error
+      : new AggregateError(errors, "새 작업 rollback에 실패했습니다."));
+  };
+  function resetToNewProject(): void {
+    if (disposed || !activeDispose) return;
+    const disposeCurrent = activeDispose;
+    try {
+      disposeCurrent();
+    } catch (error) {
+      reportError(error);
+      return;
+    }
+    activeDispose = undefined;
+
+    let disposeCube: () => void;
+    try {
+      disposeCube = dependencies.startCube(canvas);
+    } catch (error) {
+      restoreFacialAfterResetFailure(error);
+      return;
+    }
+    try {
+      if (!dependencies.storage.removeItem) {
+        throw new Error("새 작업을 위해 저장된 Facial 작업을 제거할 수 없습니다.");
+      }
+      dependencies.storage.removeItem(FACIAL_WORKSPACE_STORAGE_KEY);
+    } catch (error) {
+      restoreFacialAfterResetFailure(error, disposeCube);
+      return;
+    }
+
+    activeDispose = disposeCube;
+    shell.resetMode();
+    canvas.setAttribute("aria-label", "기본 큐브가 있는 3D 뷰포트");
+    setStatus("새 작업", "ready");
+  }
 
   const onModeChange = (event: Event): void => {
     if (disposed || (event as CustomEvent<{ mode?: string }>).detail?.mode !== "facial") return;
@@ -64,27 +136,7 @@ export function mountOctoPolyApp(
       activeDispose = undefined;
     }
     try {
-      const runtime = (dependencies.startFacial ?? startFacialRuntime)({
-        canvas,
-        panelContainer,
-        overlayContainer,
-        storage: dependencies.storage,
-        nextCopyId: dependencies.nextCopyId,
-        parseObjText: dependencies.parseObjText,
-        loadPresetText: dependencies.loadPresetText,
-        ...(dependencies.decodeTextureImage
-          ? { decodeTextureImage: dependencies.decodeTextureImage }
-          : {}),
-        ...(dependencies.downloadProject
-          ? { downloadProject: dependencies.downloadProject }
-          : {}),
-        startViewport: dependencies.startViewport,
-        onError: reportError,
-        onStatus: (message) => setStatus(message, "ready"),
-      });
-      activeDispose = () => runtime.dispose();
-      canvas.setAttribute("aria-label", "편집 가능한 페이셜 메시 3D 뷰포트");
-      setStatus("페이셜 모드", "ready");
+      activeDispose = startFacialMode();
     } catch (error) {
       event.preventDefault();
       try {

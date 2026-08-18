@@ -393,7 +393,8 @@ canvas:active {
 .facial-selection-card,
 .facial-mesh-drawer,
 .facial-file-menu,
-.movement-controls__popover {
+.movement-controls__popover,
+.proportional-controls__popover {
   border: 1px solid #3d4d61;
   border-radius: 0.85rem;
   background: rgb(11 16 23 / 92%);
@@ -462,6 +463,7 @@ canvas:active {
 
 .facial-file-menu[hidden],
 .movement-controls__popover[hidden],
+.proportional-controls__popover[hidden],
 .facial-mesh-row__actions[hidden] {
   display: none;
 }
@@ -488,6 +490,99 @@ canvas:active {
 
 .movement-controls {
   position: relative;
+}
+
+.proportional-controls {
+  position: relative;
+  display: flex;
+  gap: 0.2rem;
+}
+
+.proportional-controls__toggle[aria-pressed="true"] {
+  border-color: #ffb15c;
+  color: #fff4e8;
+  background: rgb(113 65 31 / 92%);
+}
+
+.proportional-controls__settings {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+}
+
+.proportional-controls__popover {
+  position: absolute;
+  top: calc(100% + 0.8rem);
+  left: 50%;
+  display: grid;
+  width: min(17rem, calc(100vw - 2rem));
+  gap: 0.65rem;
+  padding: 0.75rem;
+  transform: translateX(-50%);
+}
+
+.proportional-controls__popover[hidden] {
+  display: none;
+}
+
+.proportional-controls__radius {
+  display: grid;
+  grid-template-columns: 2.75rem minmax(4rem, 1fr) 2.75rem;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.proportional-controls__radius output {
+  color: #e5edf7;
+  font: 700 0.8rem/1 sans-serif;
+  text-align: center;
+}
+
+.proportional-controls__popover label {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  justify-content: space-between;
+  color: #c8d4e3;
+  font-size: 0.76rem;
+}
+
+.proportional-controls__popover select {
+  min-height: 2.35rem;
+  border: 1px solid #52657b;
+  border-radius: 0.5rem;
+  color: #e5edf7;
+  background: rgb(25 34 47 / 92%);
+}
+
+.proportional-influence {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+}
+
+.proportional-influence[hidden] {
+  display: none;
+}
+
+.proportional-influence__ring {
+  position: absolute;
+  border: 1px dashed rgb(255 177 92 / 88%);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(11 16 23 / 55%);
+}
+
+.proportional-influence__point {
+  position: absolute;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin: -0.25rem 0 0 -0.25rem;
+  border: 1px solid rgb(255 244 232 / 90%);
+  border-radius: 50%;
+  background: #ff9a47;
+  box-shadow: 0 0 0.45rem rgb(255 154 71 / 70%);
 }
 
 .movement-controls__popover {

@@ -53,6 +53,8 @@ export interface VertexGizmoOptions {
     to: GizmoPosition,
     screenSpace?: boolean,
   ) => void;
+  readonly onInteractionStart?: () => void;
+  readonly onInteractionEnd?: () => void;
   readonly unitsPerPixel?: number;
   readonly keyboardStep?: number;
 }
@@ -205,6 +207,7 @@ export function mountVertexGizmo(
     if (dragPlane === null || planePrevious !== null || event.isPrimary === false || event.button !== 0) return;
     planePointerId = event.pointerId;
     planePrevious = { x: event.clientX, y: event.clientY };
+    options.onInteractionStart?.();
     if (Number.isInteger(planePointerId)) planeHandle.setPointerCapture?.(planePointerId!);
   };
   const onPlanePointerMove = (event: PointerEvent): void => {
@@ -227,11 +230,13 @@ export function mountVertexGizmo(
     }
     planePointerId = undefined;
     planePrevious = null;
+    options.onInteractionEnd?.();
   };
   const losePlanePointer = (event: PointerEvent): void => {
-    if (planePointerId !== undefined && event.pointerId !== planePointerId) return;
+    if (planePrevious === null || (planePointerId !== undefined && event.pointerId !== planePointerId)) return;
     planePointerId = undefined;
     planePrevious = null;
+    options.onInteractionEnd?.();
   };
   planeHandle.addEventListener("pointerdown", onPlanePointerDown);
   planeHandle.addEventListener("pointermove", onPlanePointerMove);
@@ -239,6 +244,9 @@ export function mountVertexGizmo(
   planeHandle.addEventListener("pointercancel", releasePlanePointer);
   planeHandle.addEventListener("lostpointercapture", losePlanePointer);
   detachHandleEvents.push(() => {
+    if (planePrevious !== null) options.onInteractionEnd?.();
+    planePointerId = undefined;
+    planePrevious = null;
     planeHandle.removeEventListener("pointerdown", onPlanePointerDown);
     planeHandle.removeEventListener("pointermove", onPlanePointerMove);
     planeHandle.removeEventListener("pointerup", releasePlanePointer);
@@ -269,6 +277,7 @@ export function mountVertexGizmo(
       activePointerId = event.pointerId;
       previousX = event.clientX;
       previousY = event.clientY;
+      options.onInteractionStart?.();
       if (Number.isInteger(activePointerId)) handle.setPointerCapture?.(activePointerId!);
     };
     const onPointerMove = (event: PointerEvent): void => {
@@ -294,11 +303,13 @@ export function mountVertexGizmo(
       }
       dragging = false;
       activePointerId = undefined;
+      options.onInteractionEnd?.();
     };
     const onLostPointerCapture = (event: PointerEvent): void => {
-      if (activePointerId !== undefined && event.pointerId !== activePointerId) return;
+      if (!dragging || (activePointerId !== undefined && event.pointerId !== activePointerId)) return;
       dragging = false;
       activePointerId = undefined;
+      options.onInteractionEnd?.();
     };
     const onKeyDown = (event: KeyboardEvent): void => {
       const direction = event.key === "ArrowUp" || event.key === "ArrowRight"
@@ -307,7 +318,12 @@ export function mountVertexGizmo(
       if (direction === 0) return;
       event.preventDefault();
       event.stopPropagation();
-      options.onMove(axis, direction * keyboardStep);
+      options.onInteractionStart?.();
+      try {
+        options.onMove(axis, direction * keyboardStep);
+      } finally {
+        options.onInteractionEnd?.();
+      }
     };
     handle.addEventListener("pointerdown", onPointerDown);
     handle.addEventListener("pointermove", onPointerMove);
@@ -319,6 +335,7 @@ export function mountVertexGizmo(
       if (dragging && activePointerId !== undefined && handle.hasPointerCapture?.(activePointerId)) {
         handle.releasePointerCapture?.(activePointerId);
       }
+      if (dragging) options.onInteractionEnd?.();
       dragging = false;
       activePointerId = undefined;
       handle.removeEventListener("pointerdown", onPointerDown);
@@ -357,6 +374,7 @@ export function mountVertexGizmo(
       activePointerId = event.pointerId;
       previousX = event.clientX;
       previousY = event.clientY;
+      options.onInteractionStart?.();
       if (Number.isInteger(activePointerId)) handle.setPointerCapture?.(activePointerId!);
     };
     const onPointerMove = (event: PointerEvent): void => {
@@ -382,11 +400,13 @@ export function mountVertexGizmo(
       }
       dragging = false;
       activePointerId = undefined;
+      options.onInteractionEnd?.();
     };
     const onLostPointerCapture = (event: PointerEvent): void => {
-      if (activePointerId !== undefined && event.pointerId !== activePointerId) return;
+      if (!dragging || (activePointerId !== undefined && event.pointerId !== activePointerId)) return;
       dragging = false;
       activePointerId = undefined;
+      options.onInteractionEnd?.();
     };
     const onKeyDown = (event: KeyboardEvent): void => {
       const direction = event.key === "ArrowUp" || event.key === "ArrowRight"
@@ -395,7 +415,12 @@ export function mountVertexGizmo(
       if (direction === 0) return;
       event.preventDefault();
       event.stopPropagation();
-      options.onMove(axis, direction * keyboardStep);
+      options.onInteractionStart?.();
+      try {
+        options.onMove(axis, direction * keyboardStep);
+      } finally {
+        options.onInteractionEnd?.();
+      }
     };
     handle.addEventListener("pointerdown", onPointerDown);
     handle.addEventListener("pointermove", onPointerMove);
@@ -407,6 +432,7 @@ export function mountVertexGizmo(
       if (dragging && activePointerId !== undefined && handle.hasPointerCapture?.(activePointerId)) {
         handle.releasePointerCapture?.(activePointerId);
       }
+      if (dragging) options.onInteractionEnd?.();
       dragging = false;
       activePointerId = undefined;
       handle.removeEventListener("pointerdown", onPointerDown);

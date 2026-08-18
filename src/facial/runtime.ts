@@ -1,6 +1,8 @@
 import { createFacialController } from "./controller";
 import { mountVertexGizmo, type GizmoAxisDirections, type GizmoDragPlane, type GizmoPosition, type VertexGizmo } from "./gizmo";
 import { mountMovementControls, type MovementControls } from "./movement-controls";
+import { mountProportionalControls, type ProportionalControls } from "./proportional-controls";
+import { calculateProportionalWeights, sampleInfluencedVertexIndices } from "./proportional-edit";
 import { createVertexMovementModeState } from "./movement-mode";
 import { mountFacialPanel, type FacialPanel, type FacialPresetId } from "./panel";
 import { attachVertexPicker } from "./picker";
@@ -42,6 +44,7 @@ export interface FacialViewportPort {
   }[]): { commit(): void; dispose(): void; finalize?(): void };
   deleteTexture?(textureKey: string): void;
   projectVertex(vertexIndex: number): ScreenPoint | null;
+  projectRadius?(vertexIndex: number, modelRadius: number): number | null;
   projectAxis?(vertexIndex: number, axis: "x" | "y" | "z"): ScreenPoint | null;
   pickVertex(x: number, y: number, radius?: number): number | null;
   focusVertex?(vertexIndex: number): void;
@@ -65,6 +68,7 @@ export interface FacialRuntimeOptions {
   readonly loadPresetText?: (preset: FacialPresetId) => Promise<string>;
   readonly decodeTextureImage?: (file: File) => Promise<ImageBitmap>;
   readonly downloadProject?: (archive: Uint8Array, filename: string) => void;
+  readonly onNewProject?: () => void;
   readonly startViewport: (
     canvas: HTMLCanvasElement,
     initialScene: FacialViewportScene,
@@ -103,6 +107,17 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
   let panel: FacialPanel | undefined;
   let gizmo: VertexGizmo | undefined;
   let movementControls: MovementControls | undefined;
+  let proportionalControls: ProportionalControls | undefined;
+  let activeProportionalInfluence: {
+    readonly meshId: string;
+    readonly selectedVertex: number;
+    readonly weights: readonly number[];
+  } | null = null;
+  let movementInteractionOpen = false;
+  let activeMovementGesture: {
+    readonly meshId: string;
+    readonly selectedVertex: number;
+  } | null = null;
   let session: FacialSession | undefined;
   let detachPicker: (() => void) | undefined;
   let detachKeyboard: (() => void) | undefined;
@@ -121,12 +136,52 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
     readonly uvs: readonly number[] | undefined;
   }>();
 
+  const updateProportionalInfluence = (
+    workspace = controller.workspace,
+    selectedVertex = controller.selectedVertex,
+  ): void => {
+    const controls = proportionalControls;
+    const activeViewport = viewport;
+    const projectRadius = activeViewport?.projectRadius;
+    if (!controls || !controls.state.enabled || selectedVertex === null || !activeViewport || !projectRadius) {
+      controls?.showInfluence(null);
+      return;
+    }
+    const settings = controls.state;
+    const activeMesh = workspace.meshes.find((mesh) => mesh.id === workspace.activeMeshId);
+    if (!activeMesh) {
+      controls.showInfluence(null);
+      return;
+    }
+    const modelRadius = geometryRadius(activeMesh.geometry.positions);
+    const radius = (modelRadius > 0 ? modelRadius : 1) * settings.radiusRatio;
+    const center = activeViewport.projectVertex(selectedVertex);
+    const radiusPixels = projectRadius.call(activeViewport, selectedVertex, radius);
+    if (!center || !radiusPixels) {
+      controls.showInfluence(null);
+      return;
+    }
+    const weights = calculateProportionalWeights(
+      activeMesh.geometry,
+      selectedVertex,
+      radius,
+      settings.falloff,
+      settings.connectedOnly,
+    );
+    const points = sampleInfluencedVertexIndices(weights, 512).flatMap((vertexIndex) => {
+      const projected = activeViewport.projectVertex(vertexIndex);
+      return projected ? [{ ...projected, weight: weights[vertexIndex]! }] : [];
+    });
+    controls.showInfluence({ center, radiusPixels, points });
+  };
+
   const updateGizmo = (
     workspace = controller.workspace,
     selectedVertex = controller.selectedVertex,
   ): void => {
     if (selectedVertex === null) {
       gizmo?.show(null);
+      updateProportionalInfluence(workspace, selectedVertex);
       return;
     }
     const activeMesh = workspace.meshes.find(
@@ -145,6 +200,7 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
         ])) as unknown as GizmoAxisDirections
       : undefined;
     gizmo?.show(viewport?.projectVertex(selectedVertex) ?? null, directions);
+    updateProportionalInfluence(workspace, selectedVertex);
   };
 
   const controller = createFacialController({
@@ -196,6 +252,7 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
     disposeSafely(detachViewChange);
     disposeSafely(detachKeyboard);
     disposeSafely(detachPicker);
+    disposeSafely(proportionalControls ? () => proportionalControls?.dispose() : undefined);
     disposeSafely(movementControls ? () => movementControls?.dispose() : undefined);
     disposeSafely(gizmo ? () => gizmo?.dispose() : undefined);
     disposeSafely(panel ? () => panel?.dispose() : undefined);
@@ -226,6 +283,16 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
       parseObjText: options.parseObjText,
     });
     panel = mountFacialPanel(options.panelContainer, {
+      onNewProject: () => {
+        projectRequestEpoch += 1;
+        textureRequestEpoch += 1;
+        session?.invalidatePendingImport();
+        try {
+          options.onNewProject?.();
+        } catch (error) {
+          options.onError?.(error);
+        }
+      },
       onSaveProject: () => {
         try {
         if (!options.downloadProject) throw new Error("작업 파일 저장 기능을 사용할 수 없습니다.");
@@ -525,16 +592,71 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
         }
       },
     });
+    const proportionalInfluenceForSelection = (): typeof activeProportionalInfluence => {
+      const selectedVertex = controller.selectedVertex;
+      const settings = proportionalControls?.state;
+      const meshId = controller.workspace.activeMeshId;
+      const activeMesh = controller.workspace.meshes.find((mesh) => mesh.id === meshId);
+      if (selectedVertex === null || !settings?.enabled || !activeMesh) return null;
+      const modelRadius = geometryRadius(activeMesh.geometry.positions);
+      const radius = (modelRadius > 0 ? modelRadius : 1) * settings.radiusRatio;
+      return {
+        meshId,
+        selectedVertex,
+        weights: calculateProportionalWeights(
+          activeMesh.geometry,
+          selectedVertex,
+          radius,
+          settings.falloff,
+          settings.connectedOnly,
+        ),
+      };
+    };
+    const moveSelectedByDelta = (delta: readonly [number, number, number]): void => {
+      const selectedVertex = movementInteractionOpen
+        ? activeMovementGesture?.selectedVertex ?? null
+        : controller.selectedVertex;
+      if (selectedVertex === null) return;
+      const meshId = movementInteractionOpen
+        ? activeMovementGesture?.meshId
+        : controller.workspace.activeMeshId;
+      if (!meshId) return;
+      const sceneRevision = controller.sceneRevision;
+      const influence = activeProportionalInfluence?.meshId === meshId
+        && activeProportionalInfluence.selectedVertex === selectedVertex
+        ? activeProportionalInfluence
+        : movementInteractionOpen ? null : proportionalInfluenceForSelection();
+      if (influence) {
+        runCommand(() => session?.moveVerticesByDelta(
+          meshId,
+          sceneRevision,
+          selectedVertex,
+          influence.weights,
+          delta,
+        ));
+        return;
+      }
+      runCommand(() => session?.moveVertexByDelta(meshId, sceneRevision, selectedVertex, delta));
+    };
     gizmo = mountVertexGizmo(options.overlayContainer, {
+      onInteractionStart: () => {
+        movementInteractionOpen = true;
+        const selectedVertex = controller.selectedVertex;
+        activeMovementGesture = selectedVertex === null ? null : {
+          meshId: controller.workspace.activeMeshId,
+          selectedVertex,
+        };
+        activeProportionalInfluence = proportionalInfluenceForSelection();
+      },
+      onInteractionEnd: () => {
+        movementInteractionOpen = false;
+        activeMovementGesture = null;
+        activeProportionalInfluence = null;
+      },
       onMove: (axis, delta) => {
-        if (controller.selectedVertex === null) return;
-        runCommand(() => session?.moveVertex(
-            controller.workspace.activeMeshId,
-            controller.sceneRevision,
-            controller.selectedVertex!,
-            axis,
-            delta,
-          ));
+        const vector: [number, number, number] = [0, 0, 0];
+        vector[axis === "x" ? 0 : axis === "y" ? 1 : 2] = delta;
+        moveSelectedByDelta(vector);
       },
       onPlaneMove: (plane, from, to, screenSpace = false) => {
         const selectedVertex = controller.selectedVertex;
@@ -547,14 +669,7 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
           : [horizontal, 0, vertical] as const
           : viewport?.modelDeltaForPlaneDrag?.(selectedVertex, plane, from, to);
         if (!delta) return;
-        const meshId = controller.workspace.activeMeshId;
-        const sceneRevision = controller.sceneRevision;
-        runCommand(() => session?.moveVertexByDelta(
-            meshId,
-            sceneRevision,
-            selectedVertex,
-            delta,
-          ));
+        moveSelectedByDelta(delta);
       },
     });
     movementControls = mountMovementControls(panel.element, options.overlayContainer, {
@@ -567,6 +682,17 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
         gizmo?.setDragPlane(plane);
       },
     });
+    const toolStrip = panel.element.querySelector<HTMLElement>(".facial-tool-strip");
+    if (!toolStrip) throw new Error("페이셜 도구 모음을 찾지 못했습니다.");
+    proportionalControls = mountProportionalControls(toolStrip, options.overlayContainer, {
+      onChange: () => {
+        projectRequestEpoch += 1;
+        activeProportionalInfluence = null;
+        if (movementInteractionOpen) activeMovementGesture = null;
+        updateProportionalInfluence();
+      },
+    });
+    updateProportionalInfluence();
     detachViewChange = viewport.subscribeViewChange?.(updateGizmo);
     detachPicker = attachVertexPicker(options.canvas, ({ x, y }, gesture) => {
       if (!gesture) return;

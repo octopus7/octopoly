@@ -241,6 +241,32 @@ describe("facial runtime composition", () => {
     runtime.dispose();
   });
 
+  it("requests an app-level reset from the New Project command", () => {
+    const root = document.createElement("div");
+    const onNewProject = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"),
+      panelContainer: root,
+      overlayContainer: root,
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(),
+      onNewProject,
+      startViewport: () => ({
+        setScene: vi.fn(),
+        projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null),
+        dispose: vi.fn(),
+      }),
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-action="new-project"]')!.click();
+
+    expect(onNewProject).toHaveBeenCalledOnce();
+    runtime.dispose();
+  });
+
   it("saves the current project with source bytes retained only after a successful texture upload", async () => {
     const root = document.createElement("div");
     const storage = new MemoryStorage();
@@ -633,7 +659,60 @@ describe("facial runtime composition", () => {
     runtime.dispose();
   });
 
-  it("does not overwrite a newer movement-tool change with a stale project load", async () => {
+  it("does not publish a pending project after New Project is requested", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    const pending = deferred<ArrayBuffer>();
+    const prepareTextures = vi.fn(() => ({ commit: vi.fn(), dispose: vi.fn() }));
+    const onNewProject = vi.fn();
+    const replacement: FacialWorkspace = {
+      version: 1,
+      activeMeshId: "base",
+      meshes: [{
+        id: "base", name: "Base Mask", kind: "base",
+        geometry: { positions: [0, 0, 2, 2, 0, 2, 0, 2, 2], indices: [0, 1, 2] },
+      }],
+    };
+    const archive = encodeOctopolyProject({
+      workspace: replacement,
+      selectedVertex: null,
+      movementState: {
+        mode: "gizmo", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onNewProject,
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene: vi.fn(), prepareTextures,
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const projectInput = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(projectInput, "files", {
+      configurable: true,
+      value: [{ size: archive.length, arrayBuffer: () => pending.promise } as File],
+    });
+
+    projectInput.dispatchEvent(new Event("change", { bubbles: true }));
+    root.querySelector<HTMLButtonElement>('[data-action="new-project"]')!.click();
+    pending.resolve(new Uint8Array(archive).buffer as ArrayBuffer);
+    await pending.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(onNewProject).toHaveBeenCalledOnce();
+    expect(prepareTextures).not.toHaveBeenCalled();
+    expect(storage.values.has(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(false);
+    runtime.dispose();
+  });
+
+  it.each(["movement", "proportional"] as const)(
+    "does not overwrite a newer %s tool change with a stale project load",
+    async (tool) => {
     const root = document.createElement("div");
     const storage = new MemoryStorage();
     const pending = deferred<ArrayBuffer>();
@@ -673,7 +752,11 @@ describe("facial runtime composition", () => {
     });
 
     projectInput.dispatchEvent(new Event("change", { bubbles: true }));
-    root.querySelector<HTMLButtonElement>('[data-movement-mode="view-plane"]')!.click();
+    if (tool === "movement") {
+      root.querySelector<HTMLButtonElement>('[data-movement-mode="view-plane"]')!.click();
+    } else {
+      root.querySelector<HTMLButtonElement>('[data-action="toggle-proportional-edit"]')!.click();
+    }
     pending.resolve(new Uint8Array(archive).buffer as ArrayBuffer);
     await pending.promise;
     await Promise.resolve();
@@ -681,7 +764,11 @@ describe("facial runtime composition", () => {
 
     expect(prepareTextures).not.toHaveBeenCalled();
     expect(storage.values.has(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(false);
-    expect(root.querySelector('[data-movement-mode="view-plane"]')?.getAttribute("aria-pressed")).toBe("true");
+    if (tool === "movement") {
+      expect(root.querySelector('[data-movement-mode="view-plane"]')?.getAttribute("aria-pressed")).toBe("true");
+    } else {
+      expect(root.querySelector('[data-action="toggle-proportional-edit"]')?.getAttribute("aria-pressed")).toBe("true");
+    }
     runtime.dispose();
   });
 
@@ -1448,7 +1535,7 @@ describe("facial runtime composition", () => {
     expect(root.querySelector<HTMLElement>(".facial-mesh-row__actions")?.hidden).toBe(false);
   });
 
-  it("keeps File and movement tool popovers from remaining open together", () => {
+  it("keeps File, movement, and proportional tool popovers mutually exclusive", () => {
     const root = document.createElement("div");
     startFacialRuntime({
       canvas: document.createElement("canvas"),
@@ -1468,6 +1555,8 @@ describe("facial runtime composition", () => {
     const fileMenu = root.querySelector<HTMLElement>(".facial-file-menu")!;
     const movementToggle = root.querySelector<HTMLButtonElement>('[data-action="toggle-movement-controls"]')!;
     const movementPopover = root.querySelector<HTMLElement>(".movement-controls__popover")!;
+    const proportionalSettings = root.querySelector<HTMLButtonElement>('[data-action="toggle-proportional-settings"]')!;
+    const proportionalPopover = root.querySelector<HTMLElement>(".proportional-controls__popover")!;
 
     fileToggle.click();
     expect(fileMenu.hidden).toBe(false);
@@ -1476,10 +1565,15 @@ describe("facial runtime composition", () => {
     expect(fileMenu.hidden).toBe(true);
     expect(fileToggle.getAttribute("aria-expanded")).toBe("false");
 
-    fileToggle.click();
-    expect(fileMenu.hidden).toBe(false);
+    proportionalSettings.click();
+    expect(proportionalPopover.hidden).toBe(false);
     expect(movementPopover.hidden).toBe(true);
     expect(movementToggle.getAttribute("aria-expanded")).toBe("false");
+
+    fileToggle.click();
+    expect(fileMenu.hidden).toBe(false);
+    expect(proportionalPopover.hidden).toBe(true);
+    expect(proportionalSettings.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("loads the Luna preset through the injected text loader and publishes the saved parsed scene", async () => {
@@ -2126,5 +2220,93 @@ describe("facial runtime composition", () => {
 
     const movedScene = setScene.mock.lastCall?.[0] as FacialViewportScene | undefined;
     expect(movedScene?.geometry.positions[0]).toBeCloseTo(before + 0.1);
+  });
+
+  it("does not transfer an owned gizmo drag to a selection changed mid-gesture", () => {
+    const root = document.createElement("div");
+    const canvas = document.createElement("canvas");
+    root.append(canvas);
+    const setScene = vi.fn();
+    startFacialRuntime({
+      canvas, panelContainer: root, overlayContainer: root,
+      storage: new MemoryStorage(), nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn(() => ({ x: 120, y: 80 })),
+        pickVertex: vi.fn(() => 0),
+        dispose: vi.fn(),
+      }),
+    });
+    canvas.dispatchEvent(pointerEvent("pointerdown", 40, 60));
+    canvas.dispatchEvent(pointerEvent("pointerup", 40, 60));
+    const handle = root.querySelector<HTMLButtonElement>('[data-axis="x"]')!;
+
+    handle.dispatchEvent(pointerEvent("pointerdown", 10, 10));
+    handle.dispatchEvent(pointerEvent("pointermove", 20, 10));
+    const afterFirstMove = [...((setScene.mock.lastCall?.[0] as FacialViewportScene).geometry.positions)];
+    canvas.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    handle.dispatchEvent(pointerEvent("pointermove", 30, 10));
+    handle.dispatchEvent(pointerEvent("pointerup", 30, 10));
+
+    expect((setScene.mock.lastCall?.[0] as FacialViewportScene).geometry.positions).toEqual(afterFirstMove);
+    expect(root.textContent).toContain("정점 2 선택됨");
+  });
+
+  it("moves nearby vertices with falloff when proportional editing is enabled", () => {
+    const root = document.createElement("div");
+    const canvas = document.createElement("canvas");
+    root.append(canvas);
+    const storage = new MemoryStorage();
+    storage.values.set(FACIAL_WORKSPACE_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      activeMeshId: "base",
+      meshes: [{
+        id: "base", name: "Base Mask", kind: "base",
+        geometry: {
+          positions: [0, 0, 0, 0.1, 0, 0, 0, 1, 0],
+          indices: [0, 1, 2],
+        },
+      }],
+    }));
+    const setScene = vi.fn();
+    startFacialRuntime({
+      canvas, panelContainer: root, overlayContainer: root, storage,
+      nextCopyId: () => "copy-1", parseObjText: vi.fn(),
+      startViewport: () => ({
+        setScene,
+        projectVertex: vi.fn((index: number) => ({ x: 120 + index * 10, y: 80 })),
+        projectRadius: vi.fn(() => 40),
+        pickVertex: vi.fn(() => 0),
+        dispose: vi.fn(),
+      }),
+    });
+    canvas.dispatchEvent(pointerEvent("pointerdown", 40, 60));
+    canvas.dispatchEvent(pointerEvent("pointerup", 40, 60));
+    root.querySelector<HTMLButtonElement>('[data-action="toggle-proportional-edit"]')?.click();
+    const influence = root.querySelector<HTMLElement>(".proportional-influence")!;
+    expect(influence.hidden).toBe(false);
+    expect(influence.querySelector<HTMLElement>(".proportional-influence__ring")?.style.width).toBe("80px");
+    expect(influence.querySelectorAll(".proportional-influence__point")).toHaveLength(2);
+    const before = [...((setScene.mock.lastCall?.[0] as FacialViewportScene).geometry.positions)];
+    const handle = root.querySelector<HTMLButtonElement>('[data-axis="x"]')!;
+
+    handle.dispatchEvent(pointerEvent("pointerdown", 10, 10));
+    handle.dispatchEvent(pointerEvent("pointermove", 20, 10));
+    const afterFirstMove = [...((setScene.mock.lastCall?.[0] as FacialViewportScene).geometry.positions)];
+    handle.dispatchEvent(pointerEvent("pointermove", 30, 10));
+    handle.dispatchEvent(pointerEvent("pointerup", 30, 10));
+
+    const after = (setScene.mock.lastCall?.[0] as FacialViewportScene).geometry.positions;
+    const selectedDelta = after[0]! - before[0]!;
+    const neighborDelta = after[3]! - before[3]!;
+    const firstNeighborStep = afterFirstMove[3]! - before[3]!;
+    const secondNeighborStep = after[3]! - afterFirstMove[3]!;
+    const firstSelectedStep = afterFirstMove[0]! - before[0]!;
+    const secondSelectedStep = after[0]! - afterFirstMove[0]!;
+    expect(selectedDelta).toBeGreaterThan(0);
+    expect(neighborDelta).toBeGreaterThan(0);
+    expect(neighborDelta).toBeLessThan(selectedDelta);
+    expect(secondNeighborStep / secondSelectedStep).toBeCloseTo(firstNeighborStep / firstSelectedStep, 8);
+    expect(after[6]).toBe(before[6]);
   });
 });

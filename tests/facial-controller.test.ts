@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createDefaultFacialWorkspace, duplicateBaseMesh } from "../src/facial/workspace";
+import { createDefaultFacialWorkspace, duplicateBaseMesh, replaceBaseMesh } from "../src/facial/workspace";
 import { createFacialController, FacialPersistenceError } from "../src/facial/controller";
 import { FACIAL_WORKSPACE_STORAGE_KEY } from "../src/facial/storage";
 
@@ -255,6 +255,68 @@ describe("facial workspace controller", () => {
       before[2],
     ]);
     expect(save).toHaveBeenCalledOnce();
+  });
+
+  it("moves proportional weights through the selected stale guard with one autosave", () => {
+    const storage = new MemoryStorage();
+    const save = vi.spyOn(storage, "setItem");
+    const controller = createFacialController({
+      storage,
+      nextCopyId: () => "copy-1",
+      onChange: vi.fn(),
+    });
+    const workspace = replaceBaseMesh(createDefaultFacialWorkspace(), {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    });
+    controller.replaceProject(workspace, 0);
+    save.mockClear();
+
+    controller.moveVerticesByDelta("base", controller.sceneRevision, 0, [1, 0.5, 0], [0.2, 0, 0]);
+
+    expect(controller.workspace.meshes[0]!.geometry.positions).toEqual([
+      0.2, 0, 0,
+      1.1, 0, 0,
+      0, 1, 0,
+    ]);
+    expect(save).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the complete prior state when a proportional autosave fails", () => {
+    let failWrites = false;
+    const values = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        if (failWrites) throw new DOMException("quota", "QuotaExceededError");
+        values.set(key, value);
+      },
+    };
+    const onChange = vi.fn();
+    const controller = createFacialController({ storage, nextCopyId: () => "copy-1", onChange });
+    controller.replaceProject(replaceBaseMesh(createDefaultFacialWorkspace(), {
+      positions: [0, 0, 0, 1, 0, 0, 0, 1, 0],
+      indices: [0, 1, 2],
+    }), 0);
+    const workspaceBefore = controller.workspace;
+    const revisionBefore = controller.sceneRevision;
+    const savedBefore = values.get(FACIAL_WORKSPACE_STORAGE_KEY);
+    onChange.mockClear();
+    failWrites = true;
+
+    expect(() => controller.moveVerticesByDelta(
+      "base",
+      revisionBefore,
+      0,
+      [1, 0.5, 0],
+      [0.2, 0, 0],
+    )).toThrow("페이셜 작업을 자동 저장하지 못했습니다.");
+
+    expect(controller.workspace).toBe(workspaceBefore);
+    expect(controller.sceneRevision).toBe(revisionBefore);
+    expect(controller.selectedVertex).toBe(0);
+    expect(values.get(FACIAL_WORKSPACE_STORAGE_KEY)).toBe(savedBefore);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("ignores a stale vertex move after the active mesh changes", () => {

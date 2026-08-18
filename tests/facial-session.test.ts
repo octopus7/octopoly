@@ -339,6 +339,7 @@ describe("facial mode session", () => {
       selectVertex: vi.fn(),
       moveVertex: vi.fn(),
       moveVertexByDelta: vi.fn(),
+      moveVerticesByDelta: vi.fn(),
       dispose: vi.fn(),
     } satisfies FacialController;
     const session = createFacialSession({ controller, parseObjText: vi.fn() });
@@ -346,5 +347,23 @@ describe("facial mode session", () => {
     session.moveVertexByDelta("base", 4, 2, [0.25, -0.5, 0]);
 
     expect(controller.moveVertexByDelta).toHaveBeenCalledWith("base", 4, 2, [0.25, -0.5, 0]);
+  });
+
+  it("delegates one weighted multi-vertex delta to the controller", () => {
+    const controller = {
+      workspace: { version: 1, activeMeshId: "base", meshes: [] },
+      selectedVertex: 0,
+      sceneRevision: 4,
+      duplicateBase: vi.fn(), deleteMesh: vi.fn(), selectMesh: vi.fn(), renameMesh: vi.fn(),
+      replaceBase: vi.fn(), prepareProject: vi.fn(() => ({ commit: vi.fn() })), replaceProject: vi.fn(),
+      selectVertex: vi.fn(), moveVertex: vi.fn(), moveVertexByDelta: vi.fn(),
+      moveVerticesByDelta: vi.fn(), dispose: vi.fn(),
+    } satisfies FacialController;
+    const session = createFacialSession({ controller, parseObjText: vi.fn() });
+
+    session.moveVerticesByDelta("base", 4, 2, [1, 0.5, 0], [0.25, 0, 0]);
+
+    expect(controller.moveVerticesByDelta)
+      .toHaveBeenCalledWith("base", 4, 2, [1, 0.5, 0], [0.25, 0, 0]);
   });
 });

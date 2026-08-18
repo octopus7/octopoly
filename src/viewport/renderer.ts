@@ -13,13 +13,16 @@ in vec3 aNormal;
 in vec2 aUv;
 uniform mat4 uViewProjection;
 uniform float uPointSize;
+uniform float uPointDepthBias;
 out vec3 vNormal;
 out vec2 vUv;
 
 void main() {
   vNormal = aNormal;
   vUv = aUv;
-  gl_Position = uViewProjection * vec4(aPosition, 1.0);
+  vec4 clipPosition = uViewProjection * vec4(aPosition, 1.0);
+  clipPosition.z -= uPointDepthBias * clipPosition.w;
+  gl_Position = clipPosition;
   gl_PointSize = uPointSize;
 }`;
 
@@ -52,6 +55,7 @@ const DEFAULT_COLOR: readonly [number, number, number] = [0.23, 0.57, 0.92];
 const EDGE_COLOR: readonly [number, number, number] = [0.055, 0.09, 0.14];
 const VERTEX_COLOR: readonly [number, number, number] = [0.88, 0.94, 1];
 const SELECTED_VERTEX_COLOR: readonly [number, number, number] = [1, 0.38, 0.12];
+const VERTEX_HANDLE_DEPTH_BIAS = 0.002;
 const DEFAULT_PICK_RADIUS = 12;
 
 const CUBE_POSITIONS = [
@@ -118,6 +122,7 @@ interface ProgramInputs {
   readonly color: WebGLUniformLocation;
   readonly lighting: WebGLUniformLocation;
   readonly pointSize: WebGLUniformLocation;
+  readonly pointDepthBias: WebGLUniformLocation;
   readonly pointMode: WebGLUniformLocation;
   readonly texture: WebGLUniformLocation;
   readonly useTexture: WebGLUniformLocation;
@@ -183,6 +188,7 @@ function getProgramInputs(gl: WebGL2RenderingContext, program: WebGLProgram): Pr
     color: requireUniform(gl, program, "uColor"),
     lighting: requireUniform(gl, program, "uLighting"),
     pointSize: requireUniform(gl, program, "uPointSize"),
+    pointDepthBias: requireUniform(gl, program, "uPointDepthBias"),
     pointMode: requireUniform(gl, program, "uPointMode"),
     texture: requireUniform(gl, program, "uTexture"),
     useTexture: requireUniform(gl, program, "uUseTexture"),
@@ -731,6 +737,48 @@ export class MeshViewportController {
     return projected ? { x: projected.x + bounds.left, y: projected.y + bounds.top, depth: projected.depth } : null;
   }
 
+  projectRadius(index: number, modelRadius: number): number | null {
+    this.#assertActive();
+    if (!Number.isFinite(modelRadius) || modelRadius <= 0) return null;
+    const origin = this.projectVertex(index);
+    if (!origin) return null;
+    const bounds = this.#canvas.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return null;
+    const normalizedRadius = modelRadius / this.#scene.renderScale;
+    if (!Number.isFinite(normalizedRadius) || normalizedRadius <= 0) return null;
+    const offset = index * 3;
+    const center = [
+      this.#scene.renderPositions[offset]!,
+      this.#scene.renderPositions[offset + 1]!,
+      this.#scene.renderPositions[offset + 2]!,
+    ] as const;
+    let radiusPixels = 0;
+    for (let x = -1; x <= 1; x += 1) {
+      for (let y = -1; y <= 1; y += 1) {
+        for (let z = -1; z <= 1; z += 1) {
+          const length = Math.hypot(x, y, z);
+          if (length === 0) continue;
+          const projected = projectPosition(
+            [
+              center[0] + x / length * normalizedRadius,
+              center[1] + y / length * normalizedRadius,
+              center[2] + z / length * normalizedRadius,
+            ],
+            this.#camera.viewProjection(bounds.width / bounds.height),
+            bounds.width,
+            bounds.height,
+          );
+          if (!projected) continue;
+          radiusPixels = Math.max(radiusPixels, Math.hypot(
+            projected.x + bounds.left - origin.x,
+            projected.y + bounds.top - origin.y,
+          ));
+        }
+      }
+    }
+    return radiusPixels > 0 && Number.isFinite(radiusPixels) ? radiusPixels : null;
+  }
+
   focusVertex(index: number): void {
     this.#assertActive();
     if (!Number.isInteger(index) || index < 0 || index >= this.#scene.positions.length / 3) {
@@ -998,10 +1046,10 @@ export class MeshViewportController {
           gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#edgeBuffer);
           gl.drawElements(gl.LINES, this.#scene.edgeIndices.length, this.#scene.indexType, 0);
 
-          this.#setStyle(VERTEX_COLOR, 0, 5 * devicePixelRatio, false);
+          this.#setStyle(VERTEX_COLOR, 0, 5 * devicePixelRatio, false, false, VERTEX_HANDLE_DEPTH_BIAS);
           gl.drawArrays(gl.POINTS, 0, this.#scene.positions.length / 3);
           if (this.#selectedVertex !== null) {
-            this.#setStyle(SELECTED_VERTEX_COLOR, 0, 8 * devicePixelRatio, false);
+            this.#setStyle(SELECTED_VERTEX_COLOR, 0, 8 * devicePixelRatio, false, false, VERTEX_HANDLE_DEPTH_BIAS);
             gl.drawArrays(gl.POINTS, this.#selectedVertex, 1);
           }
         } finally {
@@ -1021,11 +1069,13 @@ export class MeshViewportController {
     pointSize: number,
     pointMode: boolean,
     useTexture = false,
+    pointDepthBias = 0,
   ): void {
     const gl = this.#gl;
     gl.uniform3fv(this.#inputs.color, color);
     gl.uniform1f(this.#inputs.lighting, lighting);
     gl.uniform1f(this.#inputs.pointSize, pointSize);
+    gl.uniform1f(this.#inputs.pointDepthBias, pointDepthBias);
     gl.uniform1f(this.#inputs.pointMode, pointMode ? 1 : 0);
     gl.uniform1f(this.#inputs.useTexture, useTexture ? 1 : 0);
   }
