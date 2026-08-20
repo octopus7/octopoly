@@ -1,4 +1,4 @@
-import { OrbitCamera } from "./camera";
+import { OrbitCamera, type CameraState } from "./camera";
 import { attachCameraControls } from "./controls";
 import {
   interleavePositionsAndNormals,
@@ -8,22 +8,17 @@ import {
 } from "./mesh-utils";
 
 const VERTEX_SHADER = `#version 300 es
-in vec3 aPosition;
-in vec3 aNormal;
-in vec2 aUv;
+layout(location = 0) in vec3 aPosition;
+layout(location = 1) in vec3 aNormal;
+layout(location = 2) in vec2 aUv;
 uniform mat4 uViewProjection;
-uniform float uPointSize;
-uniform float uPointDepthBias;
 out vec3 vNormal;
 out vec2 vUv;
 
 void main() {
   vNormal = aNormal;
   vUv = aUv;
-  vec4 clipPosition = uViewProjection * vec4(aPosition, 1.0);
-  clipPosition.z -= uPointDepthBias * clipPosition.w;
-  gl_Position = clipPosition;
-  gl_PointSize = uPointSize;
+  gl_Position = uViewProjection * vec4(aPosition, 1.0);
 }`;
 
 const FRAGMENT_SHADER = `#version 300 es
@@ -34,11 +29,9 @@ uniform vec3 uColor;
 uniform sampler2D uTexture;
 uniform float uUseTexture;
 uniform float uLighting;
-uniform float uPointMode;
 out vec4 outColor;
 
 void main() {
-  if (uPointMode > 0.5 && distance(gl_PointCoord, vec2(0.5)) > 0.5) discard;
   if (uLighting < 0.5) {
     outColor = vec4(uColor, 1.0);
     return;
@@ -51,11 +44,47 @@ void main() {
   outColor = vec4(surface.rgb * intensity, surface.a);
 }`;
 
+const HANDLE_VERTEX_SHADER = `#version 300 es
+precision highp float;
+layout(location = 0) in vec3 aPosition;
+uniform mat4 uViewProjection;
+uniform sampler2D uMeshDepth;
+uniform float uPointSize;
+
+void main() {
+  vec4 clip = uViewProjection * vec4(aPosition, 1.0);
+  gl_PointSize = uPointSize;
+  bool visible = false;
+  if (clip.w > 0.0
+    && abs(clip.x) <= clip.w
+    && abs(clip.y) <= clip.w
+    && abs(clip.z) <= clip.w) {
+    vec3 ndc = clip.xyz / clip.w;
+    ivec2 size = textureSize(uMeshDepth, 0);
+    ivec2 pixel = clamp(
+      ivec2(floor((ndc.xy * 0.5 + 0.5) * vec2(size))),
+      ivec2(0),
+      size - ivec2(1)
+    );
+    float centerDepth = ndc.z * 0.5 + 0.5;
+    float meshDepth = texelFetch(uMeshDepth, pixel, 0).r;
+    visible = centerDepth <= meshDepth;
+  }
+  gl_Position = visible ? clip : vec4(2.0, 2.0, 2.0, 1.0);
+}`;
+
+const HANDLE_FRAGMENT_SHADER = `#version 300 es
+precision highp float;
+uniform vec3 uColor;
+out vec4 outColor;
+void main() {
+  outColor = vec4(uColor, 1.0);
+}`;
+
 const DEFAULT_COLOR: readonly [number, number, number] = [0.23, 0.57, 0.92];
 const EDGE_COLOR: readonly [number, number, number] = [0.055, 0.09, 0.14];
 const VERTEX_COLOR: readonly [number, number, number] = [0.88, 0.94, 1];
 const SELECTED_VERTEX_COLOR: readonly [number, number, number] = [1, 0.38, 0.12];
-const VERTEX_HANDLE_DEPTH_BIAS = 0.002;
 const DEFAULT_PICK_RADIUS = 12;
 
 const CUBE_POSITIONS = [
@@ -121,11 +150,22 @@ interface ProgramInputs {
   readonly viewProjection: WebGLUniformLocation;
   readonly color: WebGLUniformLocation;
   readonly lighting: WebGLUniformLocation;
-  readonly pointSize: WebGLUniformLocation;
-  readonly pointDepthBias: WebGLUniformLocation;
-  readonly pointMode: WebGLUniformLocation;
   readonly texture: WebGLUniformLocation;
   readonly useTexture: WebGLUniformLocation;
+}
+
+interface HandleProgramInputs {
+  readonly viewProjection: WebGLUniformLocation;
+  readonly meshDepth: WebGLUniformLocation;
+  readonly pointSize: WebGLUniformLocation;
+  readonly color: WebGLUniformLocation;
+}
+
+interface VisibilityDepthTarget {
+  readonly texture: WebGLTexture;
+  readonly framebuffer: WebGLFramebuffer;
+  readonly width: number;
+  readonly height: number;
 }
 
 function compileShader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
@@ -141,12 +181,16 @@ function compileShader(gl: WebGL2RenderingContext, type: number, source: string)
   return shader;
 }
 
-function createProgram(gl: WebGL2RenderingContext): WebGLProgram {
-  const vertex = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
+function createProgram(
+  gl: WebGL2RenderingContext,
+  vertexSource = VERTEX_SHADER,
+  fragmentSource = FRAGMENT_SHADER,
+): WebGLProgram {
+  const vertex = compileShader(gl, gl.VERTEX_SHADER, vertexSource);
   let fragment: WebGLShader | null = null;
   let program: WebGLProgram | null = null;
   try {
-    fragment = compileShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
+    fragment = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
     program = gl.createProgram();
     if (!program) throw new Error("WebGL 프로그램을 생성하지 못했습니다.");
     gl.attachShader(program, vertex);
@@ -187,11 +231,17 @@ function getProgramInputs(gl: WebGL2RenderingContext, program: WebGLProgram): Pr
     viewProjection: requireUniform(gl, program, "uViewProjection"),
     color: requireUniform(gl, program, "uColor"),
     lighting: requireUniform(gl, program, "uLighting"),
-    pointSize: requireUniform(gl, program, "uPointSize"),
-    pointDepthBias: requireUniform(gl, program, "uPointDepthBias"),
-    pointMode: requireUniform(gl, program, "uPointMode"),
     texture: requireUniform(gl, program, "uTexture"),
     useTexture: requireUniform(gl, program, "uUseTexture"),
+  };
+}
+
+function getHandleProgramInputs(gl: WebGL2RenderingContext, program: WebGLProgram): HandleProgramInputs {
+  return {
+    viewProjection: requireUniform(gl, program, "uViewProjection"),
+    meshDepth: requireUniform(gl, program, "uMeshDepth"),
+    pointSize: requireUniform(gl, program, "uPointSize"),
+    color: requireUniform(gl, program, "uColor"),
   };
 }
 
@@ -328,20 +378,6 @@ function sceneBounds(positions: readonly number[]): SceneBounds {
   };
 }
 
-function shouldReframe(previous: SceneBounds, next: SceneBounds): boolean {
-  const centerShift = Math.hypot(
-    previous.center[0] - next.center[0],
-    previous.center[1] - next.center[1],
-    previous.center[2] - next.center[2],
-  );
-  const previousScale = previous.radius > 0 ? previous.radius : 1;
-  const nextScale = next.radius > 0 ? next.radius : 1;
-  const scaleRatio = nextScale / previousScale;
-  return centerShift > Math.max(previous.radius, next.radius, Number.EPSILON) * 0.25
-    || scaleRatio > 1.5
-    || scaleRatio < 2 / 3;
-}
-
 type Vec3 = readonly [number, number, number];
 
 function dot(a: Vec3, b: Vec3): number {
@@ -374,17 +410,21 @@ export class MeshViewportController {
   readonly #gl: WebGL2RenderingContext;
   readonly #program: WebGLProgram;
   readonly #inputs: ProgramInputs;
+  readonly #handleProgram: WebGLProgram;
+  readonly #handleInputs: HandleProgramInputs;
   #vertexArray: WebGLVertexArrayObject;
   #vertexBuffer: WebGLBuffer;
   #uvBuffer: WebGLBuffer;
   #triangleBuffer: WebGLBuffer;
   #edgeBuffer: WebGLBuffer;
   #textures = new Map<string, WebGLTexture>();
+  #visibilityDepthTarget: VisibilityDepthTarget | null = null;
   readonly #camera = new OrbitCamera();
+  readonly #initialFrameCenter: readonly [number, number, number];
+  readonly #initialFrameHalfExtents: readonly [number, number, number];
   readonly #resizeObserver: ResizeObserver;
   readonly #detachControls: () => void;
   #scene: PreparedScene;
-  #bounds: SceneBounds;
   #selectedVertex: number | null = null;
   readonly #viewChangeListeners = new Set<() => void>();
   #frame = 0;
@@ -397,6 +437,7 @@ export class MeshViewportController {
     if (!gl) throw new Error("이 브라우저에서는 WebGL2를 사용할 수 없습니다.");
 
     const program = createProgram(gl);
+    let handleProgram: WebGLProgram | null = null;
     let vertexArray: WebGLVertexArrayObject | null = null;
     let vertexBuffer: WebGLBuffer | null = null;
     let uvBuffer: WebGLBuffer | null = null;
@@ -406,6 +447,8 @@ export class MeshViewportController {
     let detachControls: (() => void) | null = null;
     try {
       const inputs = getProgramInputs(gl, program);
+      handleProgram = createProgram(gl, HANDLE_VERTEX_SHADER, HANDLE_FRAGMENT_SHADER);
+      const handleInputs = getHandleProgramInputs(gl, handleProgram);
       vertexArray = gl.createVertexArray();
       vertexBuffer = gl.createBuffer();
       uvBuffer = gl.createBuffer();
@@ -419,15 +462,18 @@ export class MeshViewportController {
       this.#gl = gl;
       this.#program = program;
       this.#inputs = inputs;
+      this.#handleProgram = handleProgram;
+      this.#handleInputs = handleInputs;
       this.#vertexArray = vertexArray;
       this.#vertexBuffer = vertexBuffer;
       this.#uvBuffer = uvBuffer;
       this.#triangleBuffer = triangleBuffer;
       this.#edgeBuffer = edgeBuffer;
       this.#scene = prepareScene(gl, initialScene);
-      this.#bounds = sceneBounds(this.#scene.positions);
       const initialBounds = canvas.getBoundingClientRect();
       const initialRenderBounds = sceneBounds(this.#scene.renderPositions);
+      this.#initialFrameCenter = initialRenderBounds.center;
+      this.#initialFrameHalfExtents = initialRenderBounds.halfExtents;
       const hasInitialLayout = Number.isFinite(initialBounds.width)
         && Number.isFinite(initialBounds.height)
         && initialBounds.width > 0
@@ -460,11 +506,8 @@ export class MeshViewportController {
         if (hasLayout) {
           const aspect = bounds.width / bounds.height;
           if (this.#awaitingInitialLayout) {
-            const renderBounds = sceneBounds(this.#scene.renderPositions);
-            this.#camera.frameBox(renderBounds.center, renderBounds.halfExtents, aspect);
+            this.#camera.frameBox(this.#initialFrameCenter, this.#initialFrameHalfExtents, aspect);
             this.#awaitingInitialLayout = false;
-          } else {
-            this.#camera.fitAspect(aspect);
           }
         }
         this.#notifyViewChange();
@@ -483,6 +526,7 @@ export class MeshViewportController {
       if (triangleBuffer) gl.deleteBuffer(triangleBuffer);
       if (edgeBuffer) gl.deleteBuffer(edgeBuffer);
       if (vertexArray) gl.deleteVertexArray(vertexArray);
+      if (handleProgram) gl.deleteProgram(handleProgram);
       gl.deleteProgram(program);
       throw error;
     }
@@ -499,10 +543,20 @@ export class MeshViewportController {
     }
   }
 
+  cameraState(): CameraState {
+    this.#assertActive();
+    return this.#camera.state();
+  }
+
+  restoreCameraState(state: CameraState): void {
+    this.#assertActive();
+    this.#camera.restoreState(state);
+    this.#notifyViewChange();
+  }
+
   prepareScene(scene: ViewportScene): { commit(): void; dispose(): void; finalize(): void } {
     this.#assertActive();
     const prepared = prepareScene(this.#gl, scene);
-    const bounds = sceneBounds(prepared.positions);
     const candidate = this.#createSceneResources(prepared);
     const previous: SceneResources = {
       vertexArray: this.#vertexArray,
@@ -512,10 +566,7 @@ export class MeshViewportController {
       edgeBuffer: this.#edgeBuffer,
     };
     const previousScene = this.#scene;
-    const previousBounds = this.#bounds;
     const previousSelectedVertex = this.#selectedVertex;
-    const previousAwaitingInitialLayout = this.#awaitingInitialLayout;
-    const previousCamera = this.#camera.snapshot();
     let state: "pending" | "committed" | "finished" = "pending";
     return {
       commit: () => {
@@ -523,7 +574,7 @@ export class MeshViewportController {
         this.invalidate();
         this.#setSceneResources(candidate);
         state = "committed";
-        this.#applyPreparedScene(prepared, bounds);
+        this.#applyPreparedScene(prepared);
       },
       dispose: () => {
         if (state === "finished") return;
@@ -531,10 +582,7 @@ export class MeshViewportController {
         if (wasCommitted) {
           this.#setSceneResources(previous);
           this.#scene = previousScene;
-          this.#bounds = previousBounds;
           this.#selectedVertex = previousSelectedVertex;
-          this.#awaitingInitialLayout = previousAwaitingInitialLayout;
-          this.#camera.restore(previousCamera);
         }
         state = "finished";
         this.#deleteSceneResources(candidate);
@@ -882,7 +930,13 @@ export class MeshViewportController {
     this.#gl.deleteBuffer(this.#triangleBuffer);
     this.#gl.deleteBuffer(this.#edgeBuffer);
     this.#gl.deleteVertexArray(this.#vertexArray);
+    if (this.#visibilityDepthTarget) {
+      this.#gl.deleteFramebuffer(this.#visibilityDepthTarget.framebuffer);
+      this.#gl.deleteTexture(this.#visibilityDepthTarget.texture);
+      this.#visibilityDepthTarget = null;
+    }
     this.#gl.useProgram(null);
+    this.#gl.deleteProgram(this.#handleProgram);
     this.#gl.deleteProgram(this.#program);
   }
 
@@ -971,24 +1025,8 @@ export class MeshViewportController {
     }
   }
 
-  #applyPreparedScene(scene: PreparedScene, bounds: SceneBounds): void {
-    const reframe = shouldReframe(this.#bounds, bounds);
+  #applyPreparedScene(scene: PreparedScene): void {
     this.#scene = scene;
-    this.#bounds = bounds;
-    const canvasBounds = this.#canvas.getBoundingClientRect();
-    const renderBounds = sceneBounds(scene.renderPositions);
-    const hasLayout = Number.isFinite(canvasBounds.width)
-      && Number.isFinite(canvasBounds.height)
-      && canvasBounds.width > 0
-      && canvasBounds.height > 0;
-    const aspect = hasLayout ? canvasBounds.width / canvasBounds.height : 1;
-    if (reframe) {
-      this.#awaitingInitialLayout = !hasLayout;
-      this.#camera.frameBox(renderBounds.center, renderBounds.halfExtents, aspect);
-    } else {
-      if (!hasLayout) this.#awaitingInitialLayout = true;
-      this.#camera.updateBoxFraming(renderBounds.halfExtents, aspect);
-    }
     if (this.#selectedVertex !== null && this.#selectedVertex >= scene.positions.length / 3) {
       this.#selectedVertex = null;
     }
@@ -1004,6 +1042,63 @@ export class MeshViewportController {
     }, this.#scene);
   }
 
+  #ensureVisibilityDepthTarget(width: number, height: number): VisibilityDepthTarget {
+    const current = this.#visibilityDepthTarget;
+    if (current?.width === width && current.height === height) return current;
+    const gl = this.#gl;
+    const texture = gl.createTexture();
+    const framebuffer = gl.createFramebuffer();
+    if (!texture || !framebuffer) {
+      if (texture) gl.deleteTexture(texture);
+      if (framebuffer) gl.deleteFramebuffer(framebuffer);
+      throw new Error("정점 가시성 depth target을 생성하지 못했습니다.");
+    }
+    let published = false;
+    try {
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_COMPARE_MODE, gl.NONE);
+      gl.texStorage2D(gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, width, height);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.framebufferTexture2D(
+        gl.FRAMEBUFFER,
+        gl.DEPTH_ATTACHMENT,
+        gl.TEXTURE_2D,
+        texture,
+        0,
+      );
+      gl.drawBuffers([gl.NONE]);
+      gl.readBuffer(gl.NONE);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+        throw new Error("정점 가시성 framebuffer가 완전하지 않습니다.");
+      }
+      const allocationError = gl.getError();
+      if (allocationError !== gl.NO_ERROR) {
+        throw new Error(`정점 가시성 depth target 오류 (0x${allocationError.toString(16)})`);
+      }
+      const candidate = { texture, framebuffer, width, height };
+      this.#visibilityDepthTarget = candidate;
+      published = true;
+      if (current) {
+        try { gl.deleteFramebuffer(current.framebuffer); } catch { /* candidate remains authoritative */ }
+        try { gl.deleteTexture(current.texture); } catch { /* candidate remains authoritative */ }
+      }
+      return candidate;
+    } finally {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.activeTexture(gl.TEXTURE0);
+      if (!published) {
+        try { gl.deleteFramebuffer(framebuffer); } catch { /* preserve allocation failure */ }
+        try { gl.deleteTexture(texture); } catch { /* preserve allocation failure */ }
+      }
+    }
+  }
+
   #draw(): void {
     this.#frame = 0;
     if (this.#disposed) return;
@@ -1015,17 +1110,42 @@ export class MeshViewportController {
       this.#canvas.width = width;
       this.#canvas.height = height;
     }
+    const viewProjection = this.#camera.viewProjection(width / height);
 
-    gl.viewport(0, 0, width, height);
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.enable(gl.DEPTH_TEST);
-    gl.depthFunc(gl.LESS);
-    gl.enable(gl.CULL_FACE);
-    gl.useProgram(this.#program);
     try {
+      gl.viewport(0, 0, width, height);
+      gl.enable(gl.DEPTH_TEST);
+      gl.depthFunc(gl.LESS);
+      gl.depthMask(true);
+      gl.depthRange(0, 1);
+      gl.enable(gl.CULL_FACE);
+
+      let visibilityTarget: VisibilityDepthTarget | null = null;
+      if (this.#scene.editable) {
+        visibilityTarget = this.#ensureVisibilityDepthTarget(width, height);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, visibilityTarget.framebuffer);
+        gl.viewport(0, 0, width, height);
+        gl.colorMask(false, false, false, false);
+        try {
+          gl.clear(gl.DEPTH_BUFFER_BIT);
+          gl.useProgram(this.#program);
+          gl.bindVertexArray(this.#vertexArray);
+          gl.uniformMatrix4fv(this.#inputs.viewProjection, false, viewProjection);
+          this.#setStyle(this.#scene.color, 1);
+          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#triangleBuffer);
+          gl.drawElements(gl.TRIANGLES, this.#scene.triangleIndices.length, this.#scene.indexType, 0);
+        } finally {
+          gl.colorMask(true, true, true, true);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          gl.viewport(0, 0, width, height);
+        }
+      }
+
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.useProgram(this.#program);
       gl.bindVertexArray(this.#vertexArray);
-      gl.uniformMatrix4fv(this.#inputs.viewProjection, false, this.#camera.viewProjection(width / height));
+      gl.uniformMatrix4fv(this.#inputs.viewProjection, false, viewProjection);
 
       const texture = this.#scene.uvs && this.#scene.textureKey
         ? this.#textures.get(this.#scene.textureKey)
@@ -1033,32 +1153,43 @@ export class MeshViewportController {
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, texture ?? null);
       gl.uniform1i(this.#inputs.texture, 0);
-      this.#setStyle(this.#scene.color, 1, 1, false, Boolean(texture));
+      this.#setStyle(this.#scene.color, 1, Boolean(texture));
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#triangleBuffer);
       gl.drawElements(gl.TRIANGLES, this.#scene.triangleIndices.length, this.#scene.indexType, 0);
 
-      if (!this.#scene.editable) return;
+      if (!this.#scene.editable || !visibilityTarget) return;
       gl.disable(gl.CULL_FACE);
-      try {
-        gl.depthFunc(gl.LEQUAL);
-        try {
-          this.#setStyle(EDGE_COLOR, 0, 1, false);
-          gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#edgeBuffer);
-          gl.drawElements(gl.LINES, this.#scene.edgeIndices.length, this.#scene.indexType, 0);
+      gl.depthFunc(gl.LEQUAL);
+      this.#setStyle(EDGE_COLOR, 0);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.#edgeBuffer);
+      gl.drawElements(gl.LINES, this.#scene.edgeIndices.length, this.#scene.indexType, 0);
 
-          this.#setStyle(VERTEX_COLOR, 0, 5 * devicePixelRatio, false, false, VERTEX_HANDLE_DEPTH_BIAS);
-          gl.drawArrays(gl.POINTS, 0, this.#scene.positions.length / 3);
-          if (this.#selectedVertex !== null) {
-            this.#setStyle(SELECTED_VERTEX_COLOR, 0, 8 * devicePixelRatio, false, false, VERTEX_HANDLE_DEPTH_BIAS);
-            gl.drawArrays(gl.POINTS, this.#selectedVertex, 1);
-          }
-        } finally {
-          gl.depthFunc(gl.LESS);
-        }
-      } finally {
-        gl.enable(gl.CULL_FACE);
+      gl.useProgram(this.#handleProgram);
+      gl.uniformMatrix4fv(this.#handleInputs.viewProjection, false, viewProjection);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, visibilityTarget.texture);
+      gl.uniform1i(this.#handleInputs.meshDepth, 1);
+      gl.depthMask(false);
+      gl.depthRange(0, 0);
+      gl.uniform3fv(this.#handleInputs.color, VERTEX_COLOR);
+      gl.uniform1f(this.#handleInputs.pointSize, 5 * devicePixelRatio);
+      gl.drawArrays(gl.POINTS, 0, this.#scene.positions.length / 3);
+      if (this.#selectedVertex !== null) {
+        gl.uniform3fv(this.#handleInputs.color, SELECTED_VERTEX_COLOR);
+        gl.uniform1f(this.#handleInputs.pointSize, 8 * devicePixelRatio);
+        gl.drawArrays(gl.POINTS, this.#selectedVertex, 1);
       }
     } finally {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, width, height);
+      gl.colorMask(true, true, true, true);
+      gl.depthMask(true);
+      gl.depthRange(0, 1);
+      gl.depthFunc(gl.LESS);
+      gl.enable(gl.CULL_FACE);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.activeTexture(gl.TEXTURE0);
       gl.useProgram(null);
     }
   }
@@ -1066,17 +1197,11 @@ export class MeshViewportController {
   #setStyle(
     color: readonly [number, number, number],
     lighting: number,
-    pointSize: number,
-    pointMode: boolean,
     useTexture = false,
-    pointDepthBias = 0,
   ): void {
     const gl = this.#gl;
     gl.uniform3fv(this.#inputs.color, color);
     gl.uniform1f(this.#inputs.lighting, lighting);
-    gl.uniform1f(this.#inputs.pointSize, pointSize);
-    gl.uniform1f(this.#inputs.pointDepthBias, pointDepthBias);
-    gl.uniform1f(this.#inputs.pointMode, pointMode ? 1 : 0);
     gl.uniform1f(this.#inputs.useTexture, useTexture ? 1 : 0);
   }
 }

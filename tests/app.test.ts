@@ -129,6 +129,175 @@ describe("OctoPoly app composition", () => {
     },
   );
 
+  it("restores saved workspace bytes when removeItem deletes before throwing", () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, "saved workspace");
+    vi.spyOn(storage, "removeItem").mockImplementation((key) => {
+      storage.values.delete(key);
+      throw new Error("remove failed after delete");
+    });
+    const observedWorkspace = vi.fn(() => storage.getItem(FACIAL_WORKSPACE_STORAGE_KEY));
+    const startFacial = vi.fn((_options: FacialRuntimeOptions) => {
+      observedWorkspace();
+      return { dispose: vi.fn() };
+    });
+    const app = mountOctoPolyApp(root, {
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
+      startCube: vi.fn(() => vi.fn()),
+      startFacial,
+      startViewport: vi.fn(),
+    });
+
+    startFacial.mock.calls[0]![0].onNewProject!();
+
+    expect(observedWorkspace.mock.results.map(({ value }) => value))
+      .toEqual(["saved workspace", "saved workspace"]);
+    expect(storage.getItem(FACIAL_WORKSPACE_STORAGE_KEY)).toBe("saved workspace");
+    app.dispose();
+  });
+
+  it("keeps the cube until saved workspace restoration succeeds on retry", () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, "saved workspace");
+    vi.spyOn(storage, "removeItem").mockImplementation((key) => {
+      storage.values.delete(key);
+      throw new Error("remove failed after delete");
+    });
+    vi.spyOn(storage, "setItem")
+      .mockImplementationOnce(() => { throw new Error("restore failed"); })
+      .mockImplementation((key, value) => storage.values.set(key, value));
+    const cubeDispose = vi.fn();
+    const observedWorkspace = vi.fn(() => storage.getItem(FACIAL_WORKSPACE_STORAGE_KEY));
+    const startFacial = vi.fn((_options: FacialRuntimeOptions) => {
+      observedWorkspace();
+      return { dispose: vi.fn() };
+    });
+    const app = mountOctoPolyApp(root, {
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
+      startCube: vi.fn(() => cubeDispose),
+      startFacial,
+      startViewport: vi.fn(),
+    });
+    const facial = root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!;
+
+    startFacial.mock.calls[0]![0].onNewProject!();
+
+    expect(startFacial).toHaveBeenCalledOnce();
+    expect(cubeDispose).not.toHaveBeenCalled();
+    expect(facial.getAttribute("aria-current")).not.toBe("true");
+    facial.click();
+    expect(storage.getItem(FACIAL_WORKSPACE_STORAGE_KEY)).toBe("saved workspace");
+    expect(cubeDispose).toHaveBeenCalledOnce();
+    expect(startFacial).toHaveBeenCalledTimes(2);
+    expect(observedWorkspace.mock.results.at(-1)?.value).toBe("saved workspace");
+    app.dispose();
+  });
+
+  it("keeps one cube owner and permits retry when New Project rollback cleanup throws", () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, "saved workspace");
+    vi.spyOn(storage, "removeItem").mockImplementation(() => { throw new Error("remove failed"); });
+    const cubeDispose = vi.fn()
+      .mockImplementationOnce(() => { throw new Error("cube cleanup failed"); })
+      .mockImplementationOnce(() => undefined);
+    const facialDisposers = [vi.fn(), vi.fn()];
+    const startFacial = vi.fn((_options: FacialRuntimeOptions) => ({
+      dispose: facialDisposers[startFacial.mock.calls.length - 1]!,
+    }));
+    const app = mountOctoPolyApp(root, {
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
+      startCube: vi.fn(() => cubeDispose),
+      startFacial,
+      startViewport: vi.fn(),
+    });
+    const facial = root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!;
+
+    startFacial.mock.calls[0]![0].onNewProject!();
+
+    expect(startFacial).toHaveBeenCalledOnce();
+    expect(cubeDispose).toHaveBeenCalledOnce();
+    expect(facial.getAttribute("aria-current")).not.toBe("true");
+    facial.click();
+    expect(cubeDispose).toHaveBeenCalledTimes(2);
+    expect(startFacial).toHaveBeenCalledTimes(2);
+    expect(facial.getAttribute("aria-current")).toBe("true");
+    app.dispose();
+  });
+
+  it("permits retry when restarting Facial during New Project rollback throws", () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, "saved workspace");
+    vi.spyOn(storage, "removeItem").mockImplementation(() => { throw new Error("remove failed"); });
+    const initialDispose = vi.fn();
+    const retryDispose = vi.fn();
+    const startFacial = vi.fn()
+      .mockImplementationOnce(() => ({ dispose: initialDispose }))
+      .mockImplementationOnce(() => { throw new Error("rollback startup failed"); })
+      .mockImplementationOnce(() => ({ dispose: retryDispose }));
+    const app = mountOctoPolyApp(root, {
+      storage,
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
+      startCube: vi.fn(() => vi.fn()),
+      startFacial,
+      startViewport: vi.fn(),
+    });
+    const facial = root.querySelector<HTMLButtonElement>('[data-mode="facial"]')!;
+
+    startFacial.mock.calls[0]![0].onNewProject!();
+
+    expect(startFacial).toHaveBeenCalledTimes(2);
+    expect(facial.getAttribute("aria-current")).not.toBe("true");
+    facial.click();
+    expect(startFacial).toHaveBeenCalledTimes(3);
+    expect(facial.getAttribute("aria-current")).toBe("true");
+    app.dispose();
+    expect(retryDispose).toHaveBeenCalledOnce();
+  });
+
+  it("moves focus to the canvas after keyboard-activated New Project", () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const app = mountOctoPolyApp(root, {
+      storage: new MemoryStorage(),
+      nextCopyId: () => "copy-1",
+      parseObjText: vi.fn(() => ({ positions: [], indices: [] })),
+      loadPresetText: vi.fn(async () => "preset"),
+      startCube: vi.fn(() => vi.fn()),
+      startViewport: vi.fn(() => ({
+        setScene: vi.fn(), projectVertex: vi.fn(() => null),
+        pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      })),
+    });
+    try {
+      root.querySelector<HTMLButtonElement>('[data-action="toggle-file-menu"]')!.click();
+      const newProject = root.querySelector<HTMLButtonElement>('[data-action="new-project"]')!;
+      const canvas = root.querySelector<HTMLCanvasElement>("canvas")!;
+      newProject.focus();
+
+      newProject.click();
+
+      expect(document.activeElement).toBe(canvas);
+    } finally {
+      app.dispose();
+      root.remove();
+    }
+  });
+
   it("closes a mesh dialog on Escape without changing an open app menu", () => {
     const root = document.createElement("div");
     document.body.append(root);

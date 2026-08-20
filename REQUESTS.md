@@ -92,3 +92,11 @@
 - strict RED→GREEN으로 topology geodesic, weighted atomicity, gesture ownership, menu/reset/stale/rollback, point depth bias 및 camera zoom 불변성을 고정했다. 최종 CI는 typecheck, **25 test files / 367 tests**, production build `index-BQaVPIRu.js`, artifact 6 files / 1,248,830 bytes / warnings 0 / failures 0, `git diff --check` 및 `npm audit --omit=dev` 0 vulnerabilities를 통과했다.
 - 실제 desktop browser에서 온전한 square vertex handle, `새작업 / 저장 / 불러오기`, 새작업→기본 cube→Facial 재진입, 근접 wheel zoom 뒤 정점 선택과 빈 공간 orbit의 zoom 유지, 비례 편집 toggle/settings/influence overlay 및 console/JavaScript error 0건을 확인했다.
 - immutable exact source candidate `02f662669bdeab8b013f29da9906cb0c19fc254d62819ab01ccab6fa0c88ca7f`에 대한 독립 fail-closed review는 identity 일치, security concern 0건, logic error 0건, release blocker 0건으로 `passed:true`를 반환했다. Physical iPad Safari와 Apple Pencil은 장치 부재로 `NOT_RUN`이다.
+
+## 카메라 불변성·프로젝트 카메라 저장·정점 가시성 보강 | 시작: 2026-08-18 14:39:40 KST | 종료: 2026-08-20 10:51:53 KST | 소요: 2652분
+
+- 최초 framing 이후 정점 편집, selection, scene publication, OBJ/Luna import, project load 및 resize가 camera pose/zoom을 암묵적으로 변경하지 않도록 고정했다.
+- `.octopoly` format v2에 render-safe camera yaw/pitch/distance/target을 저장하고 load transaction에서 exact restore 및 rollback하며, camera snapshot/restore capability가 없거나 Float32/WebGL에서 안전하지 않은 값은 staging 전에 fail closed한다.
+- stale proportional drag, invalid pinch, 새작업 storage rollback/retry/focus ownership을 보강했다.
+- editable face depth prepass와 center-depth 판정으로 실제 보이는 정점 handle만 온전한 square로 표시하며 후면 정점의 x-ray 노출을 차단했다.
+- 최종 CI는 typecheck, **25 test files / 384 tests**, production build와 artifact baseline을 통과했고 `npm audit --omit=dev`는 0 vulnerabilities, `git diff --check`는 PASS다. Physical iPad Safari와 Apple Pencil은 장치 부재로 `NOT_RUN`이다.

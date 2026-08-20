@@ -3,9 +3,10 @@ import { Inflate, strToU8, zipSync } from "fflate";
 import { isVertexMovementModeState, type VertexMovementModeState } from "./movement-mode";
 import { isFacialWorkspace } from "./storage";
 import type { FacialWorkspace } from "./workspace";
+import { isCameraState, type CameraState } from "../viewport/camera";
 
 export const OCTOPOLY_FORMAT = "octopoly";
-export const OCTOPOLY_FORMAT_VERSION = 1;
+export const OCTOPOLY_FORMAT_VERSION = 2;
 export const OCTOPOLY_PROJECT_FILENAME = "octopoly-project.octopoly";
 
 export const OCTOPOLY_ARCHIVE_LIMITS = Object.freeze({
@@ -35,6 +36,7 @@ export interface OctopolyProjectSnapshot {
   readonly workspace: FacialWorkspace;
   readonly selectedVertex: number | null;
   readonly movementState: VertexMovementModeState;
+  readonly cameraState: CameraState;
   readonly textures: readonly OctopolyProjectTexture[];
 }
 
@@ -52,6 +54,7 @@ interface ProjectManifest {
   readonly workspace: FacialWorkspace;
   readonly selectedVertex: number | null;
   readonly movementState: VertexMovementModeState;
+  readonly cameraState: CameraState;
   readonly textures: readonly TextureDescriptor[];
 }
 
@@ -472,7 +475,7 @@ function parseManifest(bytes: Uint8Array): ProjectManifest {
   if (!isRecord(value)
     || !hasExactKeys(value, [
       "format", "formatVersion", "historyPolicy", "workspace",
-      "selectedVertex", "movementState", "textures",
+      "selectedVertex", "movementState", "cameraState", "textures",
     ])) fail("manifest.json 스키마가 올바르지 않습니다.");
   if (value.format !== OCTOPOLY_FORMAT) fail("형식 식별자가 일치하지 않습니다.");
   assertSupportedOctopolyVersion(value.formatVersion);
@@ -481,6 +484,7 @@ function parseManifest(bytes: Uint8Array): ProjectManifest {
   if (!isFacialWorkspace(workspace)) fail("작업 공간 데이터가 올바르지 않습니다.");
   validateSelection(workspace, value.selectedVertex);
   if (!isVertexMovementModeState(value.movementState)) fail("이동 도구 상태가 올바르지 않습니다.");
+  if (!isCameraState(value.cameraState)) fail("카메라 상태가 올바르지 않습니다.");
   if (!Array.isArray(value.textures) || value.textures.length > OCTOPOLY_ARCHIVE_LIMITS.textureCount) {
     fail("텍스처 목록 크기 제한을 벗어났습니다.");
   }
@@ -501,6 +505,7 @@ function parseManifest(bytes: Uint8Array): ProjectManifest {
     workspace,
     selectedVertex: value.selectedVertex,
     movementState: value.movementState,
+    cameraState: value.cameraState,
     textures,
   };
 }
@@ -520,6 +525,7 @@ export function encodeOctopolyProject(snapshot: OctopolyProjectSnapshot): Uint8A
   if (!isFacialWorkspace(snapshot.workspace)) fail("작업 공간 데이터가 올바르지 않습니다.");
   validateSelection(snapshot.workspace, snapshot.selectedVertex);
   if (!isVertexMovementModeState(snapshot.movementState)) fail("이동 도구 상태가 올바르지 않습니다.");
+  if (!isCameraState(snapshot.cameraState)) fail("카메라 상태가 올바르지 않습니다.");
   if (snapshot.textures.length > OCTOPOLY_ARCHIVE_LIMITS.textureCount) fail("텍스처가 너무 많습니다.");
 
   const modelIds = new Set<string>();
@@ -559,6 +565,7 @@ export function encodeOctopolyProject(snapshot: OctopolyProjectSnapshot): Uint8A
     workspace: snapshot.workspace,
     selectedVertex: snapshot.selectedVertex,
     movementState: snapshot.movementState,
+    cameraState: snapshot.cameraState,
     textures: descriptors,
   };
   const manifestBytes = strToU8(JSON.stringify(manifest));
@@ -606,6 +613,7 @@ export function decodeOctopolyProject(input: ArrayBuffer | Uint8Array): Octopoly
     workspace: manifest.workspace,
     selectedVertex: manifest.selectedVertex,
     movementState: manifest.movementState,
+    cameraState: manifest.cameraState,
     textures,
   };
 }

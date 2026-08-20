@@ -60,6 +60,29 @@ function boxFramingDistance(halfExtents: Vec3, aspect: number, yaw: number, pitc
   ) / CAMERA_FRAMING_MARGIN;
 }
 
+export function isCameraState(value: unknown): value is CameraState {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const state = value as Record<string, unknown>;
+  if (Object.keys(state).length !== 4
+    || !Object.hasOwn(state, "yaw")
+    || !Object.hasOwn(state, "pitch")
+    || !Object.hasOwn(state, "distance")
+    || !Object.hasOwn(state, "target")) return false;
+  const finiteRenderable = (candidate: unknown): candidate is number => typeof candidate === "number"
+    && Number.isFinite(candidate)
+    && Number.isFinite(Math.fround(candidate));
+  return finiteRenderable(state.yaw)
+    && finiteRenderable(state.pitch)
+    && state.pitch >= MIN_PITCH
+    && state.pitch <= MAX_PITCH
+    && finiteRenderable(state.distance)
+    && state.distance > 0
+    && Number.isFinite(Math.fround(state.distance * 8))
+    && Array.isArray(state.target)
+    && state.target.length === 3
+    && state.target.every(finiteRenderable);
+}
+
 export class OrbitCamera {
   #yaw = 0;
   #pitch = 0;
@@ -91,6 +114,22 @@ export class OrbitCamera {
       framingAspect: this.#framingAspect,
       distanceUserControlled: this.#distanceUserControlled,
     };
+  }
+
+  restoreState(state: CameraState): void {
+    if (!isCameraState(state)) {
+      throw new RangeError("Project camera state is invalid.");
+    }
+    this.#yaw = state.yaw;
+    this.#pitch = state.pitch;
+    this.#distance = state.distance;
+    this.#minimumDistance = Math.min(MIN_DISTANCE, state.distance);
+    this.#maximumDistance = Math.max(MAX_DISTANCE, state.distance);
+    this.#target = [...state.target] as Vec3;
+    this.#framingRadius = null;
+    this.#framingHalfExtents = null;
+    this.#framingAspect = null;
+    this.#distanceUserControlled = true;
   }
 
   restore(snapshot: CameraSnapshot): void {
@@ -194,7 +233,12 @@ export class OrbitCamera {
   }
 
   zoomByPinch(previousDistance: number, nextDistance: number): void {
-    if (previousDistance <= 0 || nextDistance <= 0) return;
+    if (
+      !Number.isFinite(previousDistance)
+      || !Number.isFinite(nextDistance)
+      || previousDistance <= 0
+      || nextDistance <= 0
+    ) return;
     this.#distance = clamp(this.#distance * (previousDistance / nextDistance), this.#minimumDistance, this.#maximumDistance);
     this.#distanceUserControlled = true;
   }

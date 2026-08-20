@@ -63,6 +63,26 @@ describe("OrbitCamera", () => {
     expect(camera.state()).toEqual(before);
   });
 
+  it("restores an exact validated project camera without retaining bounds framing", () => {
+    const camera = new OrbitCamera();
+    camera.frameBox([0, 0, 0], [1, 1, 1], 1);
+    const saved = {
+      yaw: 0.7,
+      pitch: -0.4,
+      distance: 3.25,
+      target: [0.2, -0.3, 0.4] as const,
+    };
+
+    camera.restoreState(saved);
+    camera.fitAspect(0.25);
+
+    expect(camera.state()).toEqual(saved);
+    expect(() => camera.restoreState({ ...saved, distance: Number.NaN })).toThrow(/camera/i);
+    expect(() => camera.restoreState({ ...saved, distance: 1e308 })).toThrow(/camera/i);
+    expect(() => camera.restoreState({ ...saved, target: [1e308, 0, 0] })).toThrow(/camera/i);
+    expect(camera.state()).toEqual(saved);
+  });
+
   it("orbits at a user-selected close zoom without enforcing whole-model bounds", () => {
     const camera = new OrbitCamera();
     camera.frameBox([0, 0, 0], [1, 0.1, 0], 2);
@@ -100,6 +120,10 @@ describe("OrbitCamera", () => {
     expect(camera.state().distance).toBe(2.2);
     camera.zoomByPinch(0, 100);
     expect(camera.state().distance).toBe(2.2);
+    camera.zoomByPinch(Number.NaN, 100);
+    camera.zoomByPinch(100, Number.POSITIVE_INFINITY);
+    expect(camera.state().distance).toBe(2.2);
+    expect([...camera.viewProjection(1)].every(Number.isFinite)).toBe(true);
     camera.zoomByWheel(100_000);
     expect(camera.state().distance).toBe(14);
   });

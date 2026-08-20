@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import * as renderer from "../src/viewport/renderer";
 
 type FakeWebGL = WebGL2RenderingContext & {
+  activeTexture: ReturnType<typeof vi.fn>;
+  bindFramebuffer: ReturnType<typeof vi.fn>;
   bindTexture: ReturnType<typeof vi.fn>;
   bufferData: ReturnType<typeof vi.fn>;
   depthFunc: ReturnType<typeof vi.fn>;
@@ -15,11 +17,19 @@ type FakeWebGL = WebGL2RenderingContext & {
   deleteVertexArray: ReturnType<typeof vi.fn>;
   deleteTexture: ReturnType<typeof vi.fn>;
   createTexture: ReturnType<typeof vi.fn>;
+  createFramebuffer: ReturnType<typeof vi.fn>;
+  createProgram: ReturnType<typeof vi.fn>;
+  deleteFramebuffer: ReturnType<typeof vi.fn>;
   getError: ReturnType<typeof vi.fn>;
   shaderSource: ReturnType<typeof vi.fn>;
   texImage2D: ReturnType<typeof vi.fn>;
   uniform1f: ReturnType<typeof vi.fn>;
+  uniform2f: ReturnType<typeof vi.fn>;
   useProgram: ReturnType<typeof vi.fn>;
+  colorMask: ReturnType<typeof vi.fn>;
+  depthMask: ReturnType<typeof vi.fn>;
+  depthRange: ReturnType<typeof vi.fn>;
+  viewport: ReturnType<typeof vi.fn>;
 };
 
 function createFakeWebGL(): FakeWebGL {
@@ -32,22 +42,30 @@ function createFakeWebGL(): FakeWebGL {
     COMPILE_STATUS: 0x8b81,
     CULL_FACE: 0x0b44,
     DEPTH_BUFFER_BIT: 0x0100,
+    DEPTH_ATTACHMENT: 0x8d00,
+    DEPTH_COMPONENT24: 0x81a6,
     DEPTH_TEST: 0x0b71,
     DYNAMIC_DRAW: 0x88e8,
     ELEMENT_ARRAY_BUFFER: 0x8893,
     FLOAT: 0x1406,
+    FRAMEBUFFER: 0x8d40,
+    FRAMEBUFFER_COMPLETE: 0x8cd5,
     FRAGMENT_SHADER: 0x8b30,
     LESS: 0x0201,
     LEQUAL: 0x0203,
     LINES: 0x0001,
     LINK_STATUS: 0x8b82,
     NO_ERROR: 0,
+    NONE: 0,
+    NEAREST: 0x2600,
     INVALID_VALUE: 0x0501,
     POINTS: 0x0000,
     TEXTURE0: 0x84c0,
+    TEXTURE1: 0x84c1,
     TEXTURE_2D: 0x0de1,
     TEXTURE_MAG_FILTER: 0x2800,
     TEXTURE_MIN_FILTER: 0x2801,
+    TEXTURE_COMPARE_MODE: 0x884c,
     TEXTURE_WRAP_S: 0x2802,
     TEXTURE_WRAP_T: 0x2803,
     LINEAR: 0x2601,
@@ -61,30 +79,39 @@ function createFakeWebGL(): FakeWebGL {
     UNSIGNED_SHORT: 0x1403,
     VERTEX_SHADER: 0x8b31,
     attachShader: noop,
-    activeTexture: noop,
+    activeTexture: vi.fn(),
+    bindFramebuffer: vi.fn(),
     bindBuffer: noop,
     bindTexture: vi.fn(),
     bindVertexArray: noop,
     bufferData: vi.fn(),
     clear: noop,
     clearColor: noop,
+    colorMask: vi.fn(),
     compileShader: noop,
     createBuffer: vi.fn(object),
+    createFramebuffer: vi.fn(object),
     createProgram: vi.fn(object),
     createShader: vi.fn(object),
     createTexture: vi.fn(object),
     createVertexArray: vi.fn(object),
     deleteBuffer: vi.fn(),
+    deleteFramebuffer: vi.fn(),
     deleteProgram: vi.fn(),
     deleteShader: noop,
     deleteTexture: vi.fn(),
     deleteVertexArray: vi.fn(),
     depthFunc: vi.fn(),
+    depthMask: vi.fn(),
+    depthRange: vi.fn(),
     disable: vi.fn(),
     drawArrays: vi.fn(),
     drawElements: vi.fn(),
     enable: vi.fn(),
     enableVertexAttribArray: noop,
+    checkFramebufferStatus: vi.fn(() => 0x8cd5),
+    drawBuffers: noop,
+    framebufferTexture2D: noop,
     getAttribLocation: vi.fn((_program: WebGLProgram, name: string) => name === "aPosition" ? 0 : name === "aNormal" ? 1 : 2),
     getError: vi.fn(() => 0),
     getProgramInfoLog: vi.fn(() => ""),
@@ -95,16 +122,19 @@ function createFakeWebGL(): FakeWebGL {
     lineWidth: noop,
     linkProgram: noop,
     pixelStorei: noop,
+    readBuffer: noop,
     shaderSource: vi.fn(),
     texImage2D: vi.fn(),
+    texStorage2D: vi.fn(),
     texParameteri: noop,
     uniform1f: vi.fn(),
+    uniform2f: vi.fn(),
     uniform1i: noop,
     uniform3fv: noop,
     uniformMatrix4fv: noop,
     useProgram: vi.fn(),
     vertexAttribPointer: noop,
-    viewport: noop,
+    viewport: vi.fn(),
   } as unknown as FakeWebGL;
 }
 
@@ -272,14 +302,14 @@ describe("mesh viewport renderer", () => {
       gl.UNSIGNED_BYTE,
       bitmap,
     );
-    const faceDraw = gl.drawElements.mock.invocationCallOrder[0]!;
-    const edgeDraw = gl.drawElements.mock.invocationCallOrder[1]!;
+    const faceDraw = gl.drawElements.mock.invocationCallOrder[1]!;
+    const edgeDraw = gl.drawElements.mock.invocationCallOrder[2]!;
     const pointDraw = gl.drawArrays.mock.invocationCallOrder[0]!;
     expect(faceDraw).toBeLessThan(edgeDraw);
     expect(edgeDraw).toBeLessThan(pointDraw);
 
     controller.dispose();
-    expect(gl.deleteTexture).toHaveBeenCalledOnce();
+    expect(gl.deleteTexture).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the prior GL texture when replacement upload fails, then deletes it exactly once on disposal", () => {
@@ -558,7 +588,7 @@ describe("mesh viewport renderer", () => {
     controller.dispose();
   });
 
-  it("restores prior scene resources and camera after a committed scene transaction rolls back", () => {
+  it("restores prior scene resources after a committed scene transaction rolls back", () => {
     const { canvas, flushFrame, gl } = createHarness();
     const original = {
       positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0],
@@ -633,7 +663,7 @@ describe("mesh viewport renderer", () => {
     controller.dispose();
   });
 
-  it("renders complete 5/8 CSS-pixel square vertex handles with a bounded depth bias and restores LESS", () => {
+  it("classifies handle centers against an unbiased face-depth prepass before drawing complete squares", () => {
     const { canvas, flushFrame, gl } = createHarness({ devicePixelRatio: 1 });
     const controller = renderer.startMeshViewport(canvas, {
       geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
@@ -643,36 +673,58 @@ describe("mesh viewport renderer", () => {
 
     flushFrame();
 
-    const uniformCalls = (name: string): number[] => gl.uniform1f.mock.calls
-      .filter(([location]) => (location as { name?: string }).name === name)
-      .map(([, value]) => value as number);
-    expect(uniformCalls("uPointSize").slice(-2)).toEqual([5, 8]);
-    expect(uniformCalls("uPointMode").slice(-2)).toEqual([0, 0]);
-    expect(uniformCalls("uPointDepthBias").slice(-4)).toEqual([0, 0, 0.002, 0.002]);
-    expect(gl.disable).not.toHaveBeenCalledWith(gl.DEPTH_TEST);
+    expect(gl.createProgram).toHaveBeenCalledTimes(2);
+    expect(gl.createFramebuffer).toHaveBeenCalledOnce();
+    const depthFramebuffer = gl.createFramebuffer.mock.results[0]!.value;
+    const depthTexture = gl.createTexture.mock.results[0]!.value;
+    expect(gl.texStorage2D).toHaveBeenCalledWith(
+      gl.TEXTURE_2D, 1, gl.DEPTH_COMPONENT24, 400, 200,
+    );
+    expect(gl.bindFramebuffer).toHaveBeenCalledWith(gl.FRAMEBUFFER, depthFramebuffer);
+    expect(gl.bindFramebuffer).toHaveBeenCalledWith(gl.FRAMEBUFFER, null);
+
+    const shaderSources = gl.shaderSource.mock.calls.map(([, source]) => source as string);
+    const handleVertexSource = shaderSources.find((source) => source.includes("uMeshDepth"));
+    const handleFragmentSource = shaderSources.find((source) => source.includes("out vec4 outColor")
+      && !source.includes("uLighting"));
+    expect(handleVertexSource).toContain("texelFetch");
+    expect(handleVertexSource).toContain("centerDepth <= meshDepth");
+    expect(handleVertexSource).not.toMatch(/epsilon|bias/i);
+    expect(handleFragmentSource).not.toContain("discard");
+    expect(shaderSources.some((source) => source.includes("clipPosition.z -="))).toBe(false);
+    expect(shaderSources.some((source) => source.includes("inverse(uViewProjection)"))).toBe(false);
+
+    const triangleDrawOrders = gl.drawElements.mock.calls
+      .map(([mode], index) => mode === gl.TRIANGLES ? gl.drawElements.mock.invocationCallOrder[index]! : -1)
+      .filter((order) => order >= 0);
+    expect(triangleDrawOrders).toHaveLength(2);
+    const unbindOrder = gl.bindFramebuffer.mock.calls
+      .map(([target, framebuffer], index) => target === gl.FRAMEBUFFER && framebuffer === null
+        ? gl.bindFramebuffer.mock.invocationCallOrder[index]!
+        : -1)
+      .find((order) => order > triangleDrawOrders[0]!)!;
+    expect(unbindOrder).toBeLessThan(triangleDrawOrders[1]!);
 
     const pointDrawOrders = gl.drawArrays.mock.invocationCallOrder;
-    const lastCallIndex = (calls: readonly (readonly unknown[])[], expected: number): number => {
-      for (let index = calls.length - 1; index >= 0; index -= 1) {
-        if (calls[index]?.[0] === expected) return index;
-      }
-      return -1;
-    };
-    const lequalIndex = lastCallIndex(gl.depthFunc.mock.calls, gl.LEQUAL);
-    const finalLessIndex = lastCallIndex(gl.depthFunc.mock.calls, gl.LESS);
     expect(pointDrawOrders).toHaveLength(2);
-    expect(gl.depthFunc.mock.invocationCallOrder[lequalIndex]!).toBeLessThan(pointDrawOrders[0]!);
-    expect(gl.depthFunc.mock.invocationCallOrder[finalLessIndex]!).toBeGreaterThan(pointDrawOrders[1]!);
+    const handleProgram = gl.createProgram.mock.results[1]!.value;
+    const handleProgramUseOrder = gl.useProgram.mock.calls
+      .map(([program], index) => program === handleProgram ? gl.useProgram.mock.invocationCallOrder[index]! : -1)
+      .find((order) => order >= 0)!;
+    expect(handleProgramUseOrder).toBeLessThan(pointDrawOrders[0]!);
+    expect(gl.activeTexture).toHaveBeenCalledWith(gl.TEXTURE1);
+    expect(gl.bindTexture).toHaveBeenCalledWith(gl.TEXTURE_2D, depthTexture);
+    expect(gl.disable).not.toHaveBeenCalledWith(gl.DEPTH_TEST);
+    expect(gl.depthMask).toHaveBeenCalledWith(false);
+    expect(gl.depthRange).toHaveBeenCalledWith(0, 0);
+    expect(gl.depthMask).toHaveBeenLastCalledWith(true);
+    expect(gl.depthRange).toHaveBeenLastCalledWith(0, 1);
     expect(gl.depthFunc).toHaveBeenLastCalledWith(gl.LESS);
-    const cullDisableIndex = gl.disable.mock.calls.findIndex(([capability]) => capability === gl.CULL_FACE);
-    const cullEnableIndices = gl.enable.mock.calls
-      .map(([capability], index) => capability === gl.CULL_FACE ? index : -1)
-      .filter((index) => index >= 0);
-    const finalCullEnableIndex = cullEnableIndices.at(-1)!;
-    expect(gl.enable.mock.invocationCallOrder[finalCullEnableIndex]!)
-      .toBeGreaterThan(gl.disable.mock.invocationCallOrder[cullDisableIndex]!);
-    expect(gl.enable.mock.invocationCallOrder[finalCullEnableIndex]!).toBeGreaterThan(pointDrawOrders[1]!);
+
     controller.dispose();
+    expect(gl.deleteFramebuffer).toHaveBeenCalledWith(depthFramebuffer);
+    expect(gl.deleteTexture).toHaveBeenCalledWith(depthTexture);
+    expect(gl.deleteProgram).toHaveBeenCalledTimes(2);
   });
 
   it("restores editable WebGL state and releases the program when edge drawing throws", () => {
@@ -682,6 +734,7 @@ describe("mesh viewport renderer", () => {
       editable: true,
     });
     gl.drawElements
+      .mockImplementationOnce(() => undefined)
       .mockImplementationOnce(() => undefined)
       .mockImplementationOnce(() => { throw new Error("edge draw failed"); });
 
@@ -845,6 +898,50 @@ describe("mesh viewport renderer", () => {
     controller.dispose();
   });
 
+  it("keeps camera state unchanged after post-initial viewport resize", () => {
+    const harness = createHarness({ width: 800, height: 500 });
+    const controller = renderer.startMeshViewport(harness.canvas, {
+      geometry: {
+        positions: [-2, -0.5, 0, 2, -0.5, 0, 2, 0.5, 0, -2, 0.5, 0],
+        indices: [0, 1, 2, 0, 2, 3],
+      },
+      editable: true,
+    });
+    const before = controller.cameraState();
+
+    harness.resize(300, 900);
+
+    expect(controller.cameraState()).toEqual(before);
+    controller.dispose();
+  });
+
+  it("uses only the constructor scene for deferred initial framing", () => {
+    const initialScene = {
+      geometry: {
+        positions: [-1, -0.3, 0, 1, -0.3, 0, 1, 0.3, 0, -1, 0.3, 0],
+        indices: [0, 1, 2, 0, 2, 3],
+      },
+      editable: true,
+    } as const;
+    const deferredHarness = createHarness({ width: 0, height: 0 });
+    const deferred = renderer.startMeshViewport(deferredHarness.canvas, initialScene);
+    deferred.setScene({
+      geometry: {
+        positions: [-0.1, -10, 0, 0.1, -10, 0, 0.1, 10, 0, -0.1, 10, 0],
+        indices: [0, 1, 2, 0, 2, 3],
+      },
+      editable: true,
+    });
+    deferredHarness.resize(1280, 577);
+
+    const referenceHarness = createHarness({ width: 1280, height: 577 });
+    const reference = renderer.startMeshViewport(referenceHarness.canvas, initialScene);
+
+    expect(deferred.cameraState()).toEqual(reference.cameraState());
+    deferred.dispose();
+    reference.dispose();
+  });
+
   it("keeps a user close zoom when selection republishes the same scene", () => {
     const { canvas } = createHarness({ width: 800, height: 500 });
     const scene = {
@@ -865,7 +962,28 @@ describe("mesh viewport renderer", () => {
     controller.dispose();
   });
 
-  it("refreshes box framing when replacement geometry keeps the same center and radius", () => {
+  it("keeps a user close zoom when a large geometry edit refreshes bounds", () => {
+    const { canvas } = createHarness({ width: 800, height: 500 });
+    const scene = {
+      geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    } as const;
+    const controller = renderer.startMeshViewport(canvas, scene);
+    canvas.dispatchEvent(new WheelEvent("wheel", { deltaY: -1_000, cancelable: true }));
+    const before = [controller.projectVertex(0)!, controller.projectVertex(1)!];
+    const beforeSpan = Math.abs(before[1]!.x - before[0]!.x);
+
+    controller.setScene({
+      geometry: { positions: [-2, -2, 0, 2, -2, 0, 0, 2, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+
+    const after = [controller.projectVertex(0)!, controller.projectVertex(1)!];
+    expect(Math.abs(after[1]!.x - after[0]!.x)).toBeCloseTo(beforeSpan, 10);
+    controller.dispose();
+  });
+
+  it("never adjusts camera state when replacement geometry changes bounds", () => {
     const width = 400;
     const height = 200;
     const { canvas } = createHarness({ width, height });
@@ -876,20 +994,36 @@ describe("mesh viewport renderer", () => {
       },
       editable: true,
     });
+    const initialCamera = controller.cameraState();
 
     controller.setScene({
       geometry: {
-        positions: [-0.1, -1, 0, 0.1, -1, 0, 0.1, 1, 0, -0.1, 1, 0],
+        positions: [-100, -1, 0, 0.1, -1, 0, 0.1, 100, 0, -0.1, 1, 0],
         indices: [0, 1, 2, 0, 2, 3],
       },
       editable: true,
     });
 
-    const projected = [0, 1, 2, 3].map((index) => controller.projectVertex(index)!);
-    expect(projected.every(({ x, y, depth }) =>
-      [x, y, depth].every(Number.isFinite)
-      && x >= 10 && x <= 10 + width
-      && y >= 20 && y <= 20 + height)).toBe(true);
+    expect(controller.cameraState()).toEqual(initialCamera);
+    controller.dispose();
+  });
+
+  it("restores project camera state explicitly without consulting scene bounds", () => {
+    const { canvas } = createHarness();
+    const controller = renderer.startMeshViewport(canvas, {
+      geometry: { positions: [-1, -1, 0, 1, -1, 0, 0, 1, 0], indices: [0, 1, 2] },
+      editable: true,
+    });
+    const saved = {
+      yaw: -0.8,
+      pitch: 0.35,
+      distance: 4.2,
+      target: [0.1, 0.2, -0.3] as const,
+    };
+
+    controller.restoreCameraState(saved);
+
+    expect(controller.cameraState()).toEqual(saved);
     controller.dispose();
   });
 
@@ -1102,7 +1236,7 @@ describe("mesh viewport renderer", () => {
     expect(observerDisconnect).toHaveBeenCalledTimes(expectedDisconnects);
     expect(gl.deleteBuffer).toHaveBeenCalledTimes(4);
     expect(gl.deleteVertexArray).toHaveBeenCalledOnce();
-    expect(gl.deleteProgram).toHaveBeenCalledOnce();
+    expect(gl.deleteProgram).toHaveBeenCalledTimes(2);
   });
 
   it("unbinds the current program after rendering and before disposal", () => {
@@ -1136,7 +1270,7 @@ describe("mesh viewport renderer", () => {
     expect(observerDisconnect).toHaveBeenCalledOnce();
     expect(gl.deleteBuffer).toHaveBeenCalledTimes(4);
     expect(gl.deleteVertexArray).toHaveBeenCalledOnce();
-    expect(gl.deleteProgram).toHaveBeenCalledOnce();
+    expect(gl.deleteProgram).toHaveBeenCalledTimes(2);
   });
 
   it("keeps the legacy cube starter as a non-editable 36-index render", () => {

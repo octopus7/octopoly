@@ -8,11 +8,25 @@ import type { FacialViewportScene } from "../src/facial/scene";
 import { FACIAL_WORKSPACE_STORAGE_KEY } from "../src/facial/storage";
 import {
   decodeOctopolyProject,
-  encodeOctopolyProject,
+  encodeOctopolyProject as encodeProjectArchive,
   OCTOPOLY_ARCHIVE_LIMITS,
   OCTOPOLY_PROJECT_FILENAME,
+  type OctopolyProjectSnapshot,
 } from "../src/facial/project-codec";
 import type { FacialWorkspace } from "../src/facial/workspace";
+
+const TEST_CAMERA_STATE = Object.freeze({
+  yaw: 0.4,
+  pitch: -0.2,
+  distance: 3.8,
+  target: [0.1, 0.2, -0.1] as const,
+});
+
+function encodeOctopolyProject(
+  snapshot: Omit<OctopolyProjectSnapshot, "cameraState"> & Partial<Pick<OctopolyProjectSnapshot, "cameraState">>,
+): Uint8Array {
+  return encodeProjectArchive({ ...snapshot, cameraState: snapshot.cameraState ?? TEST_CAMERA_STATE });
+}
 
 class MemoryStorage {
   readonly values = new Map<string, string>();
@@ -274,13 +288,14 @@ describe("facial runtime composition", () => {
     const bitmap = { width: 2, height: 2, close: vi.fn() } as unknown as ImageBitmap;
     const downloadProject = vi.fn();
     const setTexture = vi.fn();
+    const cameraState = vi.fn(() => TEST_CAMERA_STATE);
     const runtime = startFacialRuntime({
       canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
       storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(),
       decodeTextureImage: vi.fn(async () => bitmap),
       downloadProject,
       startViewport: () => ({
-        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(),
+        setScene: vi.fn(), setTexture, deleteTexture: vi.fn(), cameraState,
         projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
       }),
     });
@@ -302,6 +317,7 @@ describe("facial runtime composition", () => {
     expect(restored.workspace.activeMeshId).toBe("base");
     expect(restored.selectedVertex).toBeNull();
     expect(restored.movementState.mode).toBe("gizmo");
+    expect(restored.cameraState).toEqual(TEST_CAMERA_STATE);
     expect(restored.textures).toEqual([{
       modelId: "base",
       mimeType: "image/png",
@@ -357,6 +373,9 @@ describe("facial runtime composition", () => {
       finalize: sceneFinalize,
     }));
     const setScene = vi.fn();
+    let activeCameraState = { yaw: 0, pitch: 0, distance: 6.5, target: [0, 0, 0] as readonly [number, number, number] };
+    const cameraState = vi.fn(() => activeCameraState);
+    const restoreCameraState = vi.fn((state: typeof activeCameraState) => { activeCameraState = state; });
     const onStatus = vi.fn();
     const onError = vi.fn();
     const downloadProject = vi.fn();
@@ -368,6 +387,7 @@ describe("facial runtime composition", () => {
       onStatus, onError,
       startViewport: () => ({
         setScene, prepareScene, prepareTextures, setTexture: vi.fn(), deleteTexture: vi.fn(),
+        cameraState, restoreCameraState,
         projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
       }),
     });
@@ -385,6 +405,7 @@ describe("facial runtime composition", () => {
       meshId: "base", selectedVertex: 2, textureKey: "base",
     }));
     expect(sceneCommit).toHaveBeenCalledOnce();
+    expect(restoreCameraState).toHaveBeenCalledWith(TEST_CAMERA_STATE);
     expect(sceneDispose).not.toHaveBeenCalled();
     expect(sceneFinalize).toHaveBeenCalledOnce();
     expect(textureFinalize).toHaveBeenCalledOnce();
@@ -400,7 +421,9 @@ describe("facial runtime composition", () => {
       .toBe("true");
     root.querySelector<HTMLButtonElement>('[data-action="save-project"]')!.click();
     expect(downloadProject).toHaveBeenCalledOnce();
-    expect(decodeOctopolyProject(downloadProject.mock.calls[0]![0]).textures).toEqual([{
+    const savedProject = decodeOctopolyProject(downloadProject.mock.calls[0]![0]);
+    expect(savedProject.cameraState).toEqual(TEST_CAMERA_STATE);
+    expect(savedProject.textures).toEqual([{
       modelId: "base", mimeType: "image/png", bytes: textureBytes,
     }]);
     runtime.dispose();
@@ -440,6 +463,8 @@ describe("facial runtime composition", () => {
     const commit = vi.fn();
     const disposeStage = vi.fn();
     const setScene = vi.fn();
+    const previousCameraState = { yaw: 0, pitch: 0, distance: 6.5, target: [0, 0, 0] as const };
+    const restoreCameraState = vi.fn();
     const onError = vi.fn();
     const runtime = startFacialRuntime({
       canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
@@ -447,6 +472,8 @@ describe("facial runtime composition", () => {
       decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
       startViewport: () => ({
         setScene,
+        cameraState: () => previousCameraState,
+        restoreCameraState,
         prepareTextures: vi.fn(() => ({ commit, dispose: disposeStage })),
         projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
       }),
@@ -465,7 +492,89 @@ describe("facial runtime composition", () => {
     expect(disposeStage).toHaveBeenCalledOnce();
     expect(JSON.parse(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!)).toEqual(before);
     expect(setScene).toHaveBeenCalledTimes(2);
+    expect(restoreCameraState.mock.calls).toEqual([[TEST_CAMERA_STATE], [previousCameraState]]);
     expect(root.querySelector('[data-movement-mode="gizmo"]')?.getAttribute("aria-pressed")).toBe("true");
+    runtime.dispose();
+  });
+
+  it("snapshots camera before allocating staged project resources", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const workspace = JSON.parse(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!) as FacialWorkspace;
+    const archive = encodeOctopolyProject({
+      workspace,
+      selectedVertex: null,
+      movementState: {
+        mode: "gizmo", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const cameraFailure = new Error("camera snapshot failed");
+    const prepareTextures = vi.fn(() => ({ commit: vi.fn(), dispose: vi.fn() }));
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene: vi.fn(),
+        cameraState: () => { throw cameraFailure; },
+        restoreCameraState: vi.fn(),
+        prepareTextures,
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const projectInput = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(projectInput, "files", {
+      configurable: true,
+      value: [new File([new Uint8Array(archive).buffer as ArrayBuffer], "camera-failed.octopoly")],
+    });
+
+    projectInput.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledWith(cameraFailure));
+
+    expect(prepareTextures).not.toHaveBeenCalled();
+    runtime.dispose();
+  });
+
+  it("rejects project load before staging when the viewport cannot snapshot and restore camera state", async () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const workspace = JSON.parse(storage.values.get(FACIAL_WORKSPACE_STORAGE_KEY)!) as FacialWorkspace;
+    const archive = encodeOctopolyProject({
+      workspace,
+      selectedVertex: null,
+      movementState: {
+        mode: "gizmo", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const prepareTextures = vi.fn(() => ({ commit: vi.fn(), dispose: vi.fn() }));
+    const onError = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), onError,
+      decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
+      startViewport: () => ({
+        setScene: vi.fn(), prepareTextures,
+        projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+    const input = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(input, "files", {
+      configurable: true,
+      value: [new File([new Uint8Array(archive).buffer as ArrayBuffer], "missing-camera-port.octopoly")],
+    });
+
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledOnce());
+
+    expect(String(onError.mock.calls[0]?.[0])).toMatch(/camera|카메라/i);
+    expect(prepareTextures).not.toHaveBeenCalled();
     runtime.dispose();
   });
 
@@ -491,6 +600,7 @@ describe("facial runtime composition", () => {
       decodeTextureImage: vi.fn(), downloadProject: vi.fn(), onError,
       startViewport: () => ({
         setScene: vi.fn(),
+        cameraState: vi.fn(() => TEST_CAMERA_STATE), restoreCameraState: vi.fn(),
         prepareScene: () => { throw sceneFailure; },
         prepareTextures: () => ({
           commit: vi.fn(),
@@ -540,6 +650,7 @@ describe("facial runtime composition", () => {
       decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
       startViewport: () => ({
         setScene, prepareTextures: vi.fn(() => ({ commit, dispose: disposeStage })),
+        cameraState: vi.fn(() => TEST_CAMERA_STATE), restoreCameraState: vi.fn(),
         projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
       }),
     });
@@ -584,6 +695,7 @@ describe("facial runtime composition", () => {
       decodeTextureImage: vi.fn(), downloadProject: vi.fn(),
       startViewport: () => ({
         setScene: vi.fn(),
+        cameraState: vi.fn(() => TEST_CAMERA_STATE), restoreCameraState: vi.fn(),
         prepareTextures: vi.fn(() => ({
           commit: () => { throw new Error("texture commit failed"); },
           dispose: disposeStage,
@@ -1441,6 +1553,7 @@ describe("facial runtime composition", () => {
     const setTexture = vi.fn();
     const deleteTexture = vi.fn();
     const setScene = vi.fn();
+    const restoreCameraState = vi.fn();
     const runtime = startFacialRuntime({
       canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
       storage, nextCopyId: () => "copy-1",
@@ -1452,6 +1565,8 @@ describe("facial runtime composition", () => {
       decodeTextureImage: vi.fn(async () => bitmap),
       startViewport: () => ({
         setScene, setTexture, deleteTexture,
+        cameraState: () => TEST_CAMERA_STATE,
+        restoreCameraState,
         projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
       }),
     });
@@ -1468,6 +1583,7 @@ describe("facial runtime composition", () => {
 
     expect(deleteTexture).toHaveBeenCalledOnce();
     expect(deleteTexture).toHaveBeenCalledWith("base");
+    expect(restoreCameraState).not.toHaveBeenCalled();
     runtime.dispose();
   });
 
@@ -2250,6 +2366,66 @@ describe("facial runtime composition", () => {
 
     expect((setScene.mock.lastCall?.[0] as FacialViewportScene).geometry.positions).toEqual(afterFirstMove);
     expect(root.textContent).toContain("정점 2 선택됨");
+  });
+
+  it("does not rebase an active proportional drag onto a newly loaded project", async () => {
+    const root = document.createElement("div");
+    const canvas = document.createElement("canvas");
+    root.append(canvas);
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const pending = deferred<ArrayBuffer>();
+    const replacementPositions = [10, 0, 0, 10.1, 0, 0, 10, 1, 0];
+    const archive = encodeOctopolyProject({
+      workspace: {
+        version: 1,
+        activeMeshId: "base",
+        meshes: [{
+          id: "base", name: "Base Mask", kind: "base",
+          geometry: { positions: replacementPositions, indices: [0, 1, 2] },
+        }],
+      },
+      selectedVertex: 0,
+      movementState: {
+        mode: "gizmo", enabledConstrainedPlanes: ["xy", "yz", "xz"],
+        activeConstrainedPlane: "xy", constrainedPlaneScreenSpace: false,
+      },
+      textures: [],
+    });
+    const setScene = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas, panelContainer: root, overlayContainer: root, storage,
+      nextCopyId: () => "copy-1", parseObjText: vi.fn(), decodeTextureImage: vi.fn(),
+      startViewport: () => ({
+        setScene,
+        cameraState: vi.fn(() => TEST_CAMERA_STATE), restoreCameraState: vi.fn(),
+        prepareTextures: vi.fn(() => ({ commit: vi.fn(), dispose: vi.fn() })),
+        projectVertex: vi.fn((index: number) => ({ x: 120 + index * 10, y: 80 })),
+        projectRadius: vi.fn(() => 40), pickVertex: vi.fn(() => 0), dispose: vi.fn(),
+      }),
+    });
+    canvas.dispatchEvent(pointerEvent("pointerdown", 40, 60));
+    canvas.dispatchEvent(pointerEvent("pointerup", 40, 60));
+    root.querySelector<HTMLButtonElement>('[data-action="toggle-proportional-edit"]')!.click();
+    const projectInput = root.querySelector<HTMLInputElement>('[data-project-input]')!;
+    Object.defineProperty(projectInput, "files", {
+      configurable: true,
+      value: [{ size: archive.length, arrayBuffer: () => pending.promise } as File],
+    });
+    projectInput.dispatchEvent(new Event("change", { bubbles: true }));
+    const handle = root.querySelector<HTMLButtonElement>('[data-axis="x"]')!;
+    handle.dispatchEvent(pointerEvent("pointerdown", 10, 10));
+
+    pending.resolve(new Uint8Array(archive).buffer as ArrayBuffer);
+    await pending.promise;
+    await Promise.resolve();
+    await Promise.resolve();
+    handle.dispatchEvent(pointerEvent("pointermove", 20, 10));
+    handle.dispatchEvent(pointerEvent("pointerup", 20, 10));
+
+    expect((setScene.mock.lastCall?.[0] as FacialViewportScene).geometry.positions)
+      .toEqual(replacementPositions);
+    runtime.dispose();
   });
 
   it("moves nearby vertices with falloff when proportional editing is enabled", () => {

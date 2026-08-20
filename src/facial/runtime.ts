@@ -9,6 +9,7 @@ import { attachVertexPicker } from "./picker";
 import { createFacialScene, type FacialViewportScene } from "./scene";
 import { createFacialSession, type FacialSession } from "./session";
 import type { MeshGeometry } from "./workspace";
+import type { CameraState } from "../viewport/camera";
 import {
   decodeOctopolyProject,
   encodeOctopolyProject,
@@ -32,6 +33,8 @@ interface ScreenPoint {
 
 export interface FacialViewportPort {
   setScene(scene: FacialViewportScene): void;
+  cameraState?(): CameraState;
+  restoreCameraState?(state: CameraState): void;
   prepareScene?(scene: FacialViewportScene): { commit(): void; dispose(): void; finalize?(): void };
   setTexture?(textureKey: string, source: TexImageSource): void;
   replaceTextures?(entries: readonly {
@@ -117,6 +120,7 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
   let activeMovementGesture: {
     readonly meshId: string;
     readonly selectedVertex: number;
+    sceneRevision: number;
   } | null = null;
   let session: FacialSession | undefined;
   let detachPicker: (() => void) | undefined;
@@ -296,10 +300,13 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
       onSaveProject: () => {
         try {
         if (!options.downloadProject) throw new Error("작업 파일 저장 기능을 사용할 수 없습니다.");
+        const cameraState = viewport?.cameraState?.();
+        if (!cameraState) throw new Error("카메라 상태를 저장할 수 없습니다.");
         const archive = encodeOctopolyProject({
           workspace: controller.workspace,
           selectedVertex: controller.selectedVertex,
           movementState: movementControls?.state ?? createVertexMovementModeState(),
+          cameraState,
           textures: [...textureAssets.values()].map((texture) => ({
             ...texture,
             bytes: texture.bytes.slice(),
@@ -375,6 +382,10 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
               candidateTextureAssets.set(texture.modelId, { ...texture, bytes: texture.bytes.slice() });
               candidateTexturePixels.set(texture.modelId, bitmap.width * bitmap.height);
             }
+            if (!viewport?.cameraState || !viewport.restoreCameraState) {
+              throw new Error("카메라 상태를 저장하고 복원할 수 없습니다.");
+            }
+            const previousCameraState = viewport.cameraState();
             const transaction = prepareTextures.call(viewport, project.textures.map((texture, index) => ({
               textureKey: texture.modelId,
               source: bitmaps[index]!,
@@ -391,6 +402,7 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
               controller.sceneRevision + 1,
             );
             let fallbackSceneCommitAttempted = false;
+            let cameraRestoreAttempted = false;
             let sceneTransaction: { commit(): void; dispose(): void; finalize?(): void };
             try {
               sceneTransaction = viewport?.prepareScene
@@ -419,6 +431,8 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
               }
               transaction.commit();
               sceneTransaction.commit();
+              cameraRestoreAttempted = true;
+              viewport.restoreCameraState(project.cameraState);
               publishingProject = true;
               try {
                 projectTransaction.commit();
@@ -433,6 +447,13 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
               publishingProject = false;
               disposeSafely(() => sceneTransaction.dispose());
               disposeSafely(() => transaction.dispose());
+              if (cameraRestoreAttempted && previousCameraState) {
+                try {
+                  viewport.restoreCameraState(previousCameraState);
+                } catch {
+                  // Continue reporting the original publication failure after best-effort rollback.
+                }
+              }
               if (previousMovementState) {
                 restoringProjectMovement = true;
                 try {
@@ -621,7 +642,12 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
         ? activeMovementGesture?.meshId
         : controller.workspace.activeMeshId;
       if (!meshId) return;
-      const sceneRevision = controller.sceneRevision;
+      const sceneRevision = movementInteractionOpen
+        ? activeMovementGesture?.sceneRevision
+        : controller.sceneRevision;
+      if (sceneRevision === undefined) return;
+      const revisionBeforeMove = controller.sceneRevision;
+      if (movementInteractionOpen && revisionBeforeMove !== sceneRevision) return;
       const influence = activeProportionalInfluence?.meshId === meshId
         && activeProportionalInfluence.selectedVertex === selectedVertex
         ? activeProportionalInfluence
@@ -634,9 +660,19 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
           influence.weights,
           delta,
         ));
+        if (movementInteractionOpen
+          && activeMovementGesture
+          && controller.sceneRevision !== revisionBeforeMove) {
+          activeMovementGesture.sceneRevision = controller.sceneRevision;
+        }
         return;
       }
       runCommand(() => session?.moveVertexByDelta(meshId, sceneRevision, selectedVertex, delta));
+      if (movementInteractionOpen
+        && activeMovementGesture
+        && controller.sceneRevision !== revisionBeforeMove) {
+        activeMovementGesture.sceneRevision = controller.sceneRevision;
+      }
     };
     gizmo = mountVertexGizmo(options.overlayContainer, {
       onInteractionStart: () => {
@@ -645,6 +681,7 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
         activeMovementGesture = selectedVertex === null ? null : {
           meshId: controller.workspace.activeMeshId,
           selectedVertex,
+          sceneRevision: controller.sceneRevision,
         };
         activeProportionalInfluence = proportionalInfluenceForSelection();
       },

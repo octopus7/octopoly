@@ -42,6 +42,7 @@ export function mountOctoPolyApp(
   const document = root.ownerDocument;
   let disposed = false;
   let activeDispose: (() => void) | undefined;
+  let pendingWorkspaceRestore: string | undefined;
   const setStatus = (message: string, state: "ready" | "error"): void => {
     status.textContent = message;
     status.classList.toggle("status--ready", state === "ready");
@@ -77,12 +78,22 @@ export function mountOctoPolyApp(
   const restoreFacialAfterResetFailure = (error: unknown, disposeCube?: () => void): void => {
     const errors = [error];
     if (disposeCube) {
-      try { disposeCube(); } catch (cleanupError) { errors.push(cleanupError); }
+      try {
+        disposeCube();
+      } catch (cleanupError) {
+        errors.push(cleanupError);
+        activeDispose = disposeCube;
+        shell.resetMode();
+        reportError(new AggregateError(errors, "새 작업 rollback에 실패했습니다."));
+        return;
+      }
     }
     try {
       activeDispose = startFacialMode();
     } catch (rollbackError) {
       errors.push(rollbackError);
+      activeDispose = undefined;
+      shell.resetMode();
     }
     reportError(errors.length === 1
       ? error
@@ -90,6 +101,13 @@ export function mountOctoPolyApp(
   };
   function resetToNewProject(): void {
     if (disposed || !activeDispose) return;
+    let savedWorkspace: string | null;
+    try {
+      savedWorkspace = dependencies.storage.getItem(FACIAL_WORKSPACE_STORAGE_KEY);
+    } catch (error) {
+      reportError(error);
+      return;
+    }
     const disposeCurrent = activeDispose;
     try {
       disposeCurrent();
@@ -112,7 +130,25 @@ export function mountOctoPolyApp(
       }
       dependencies.storage.removeItem(FACIAL_WORKSPACE_STORAGE_KEY);
     } catch (error) {
-      restoreFacialAfterResetFailure(error, disposeCube);
+      const errors = [error];
+      if (savedWorkspace !== null) {
+        try {
+          dependencies.storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, savedWorkspace);
+        } catch (restoreError) {
+          errors.push(restoreError);
+          pendingWorkspaceRestore = savedWorkspace;
+        }
+      }
+      if (pendingWorkspaceRestore !== undefined) {
+        activeDispose = disposeCube;
+        shell.resetMode();
+        reportError(new AggregateError(errors, "저장된 Facial 작업 복원에 실패했습니다."));
+        return;
+      }
+      restoreFacialAfterResetFailure(
+        errors.length === 1 ? error : new AggregateError(errors, "저장된 Facial 작업 복원에 실패했습니다."),
+        disposeCube,
+      );
       return;
     }
 
@@ -120,10 +156,21 @@ export function mountOctoPolyApp(
     shell.resetMode();
     canvas.setAttribute("aria-label", "기본 큐브가 있는 3D 뷰포트");
     setStatus("새 작업", "ready");
+    canvas.focus();
   }
 
   const onModeChange = (event: Event): void => {
     if (disposed || (event as CustomEvent<{ mode?: string }>).detail?.mode !== "facial") return;
+    if (pendingWorkspaceRestore !== undefined) {
+      try {
+        dependencies.storage.setItem(FACIAL_WORKSPACE_STORAGE_KEY, pendingWorkspaceRestore);
+        pendingWorkspaceRestore = undefined;
+      } catch (error) {
+        event.preventDefault();
+        reportError(error);
+        return;
+      }
+    }
     const disposeCurrent = activeDispose;
     if (disposeCurrent) {
       try {

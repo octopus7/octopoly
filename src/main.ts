@@ -76,6 +76,8 @@ mountOctoPolyApp(root, {
         };
       },
       setTexture: (textureKey, source) => viewport.setTexture(textureKey, source),
+      cameraState: () => viewport.cameraState(),
+      restoreCameraState: (state) => viewport.restoreCameraState(state),
       replaceTextures: (entries) => viewport.replaceTextures(entries),
       prepareTextures: (entries) => viewport.prepareTextures(entries),
       deleteTexture: (textureKey) => viewport.deleteTexture(textureKey),

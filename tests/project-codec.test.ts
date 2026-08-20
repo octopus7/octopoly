@@ -29,6 +29,12 @@ function projectSnapshot(): OctopolyProjectSnapshot {
       activeConstrainedPlane: "xz",
       constrainedPlaneScreenSpace: true,
     },
+    cameraState: {
+      yaw: 0.75,
+      pitch: -0.25,
+      distance: 3.5,
+      target: [0.1, -0.2, 0.3],
+    },
     textures: [{
       modelId: "unsafe/../copy",
       mimeType: "image/png",
@@ -58,7 +64,7 @@ describe(".octopoly project codec", () => {
     const manifest = JSON.parse(new TextDecoder().decode(zipped["manifest.json"]));
     expect(manifest).toMatchObject({
       format: "octopoly",
-      formatVersion: 1,
+      formatVersion: 2,
       historyPolicy: "reset-on-load",
     });
     const restored = decodeOctopolyProject(archive);
@@ -82,22 +88,35 @@ describe(".octopoly project codec", () => {
     expect(() => decodeOctopolyProject(zipSync(files))).toThrow(/MIME/);
   });
 
+  it.each([
+    ["yaw", Number.NaN],
+    ["pitch", Math.PI],
+    ["distance", 0],
+    ["target", [0, Number.POSITIVE_INFINITY, 0]],
+  ] as const)("rejects invalid project camera %s", (field, value) => {
+    expect(() => decodeOctopolyProject(replaceManifest(
+      encodeOctopolyProject(projectSnapshot()),
+      (manifest) => { manifest.cameraState[field] = value; },
+    ))).toThrow(/camera|카메라/i);
+  });
+
   it("rejects unsupported project versions before returning workspace state", () => {
     const files = unzipSync(encodeOctopolyProject(projectSnapshot()));
     const manifest = JSON.parse(new TextDecoder().decode(files["manifest.json"]));
-    manifest.formatVersion = 2;
+    manifest.formatVersion = 3;
     files["manifest.json"] = new TextEncoder().encode(JSON.stringify(manifest));
 
     expect(() => decodeOctopolyProject(zipSync(files))).toThrow(/지원하지 않는 형식 버전/);
   });
 
-  it("rejects unknown fields at every exact-v1 manifest schema layer", () => {
+  it("rejects unknown fields at every exact-v2 manifest schema layer", () => {
     const mutations: ((manifest: Record<string, any>) => void)[] = [
       (manifest) => { manifest.history = []; },
       (manifest) => { manifest.workspace.localStorageImageBytes = "data:image/png;base64,..."; },
       (manifest) => { manifest.workspace.meshes[0].futureField = true; },
       (manifest) => { manifest.workspace.meshes[0].geometry.proportionalWeights = []; },
       (manifest) => { manifest.movementState.futureMode = "proportional"; },
+      (manifest) => { manifest.cameraState.futureCamera = true; },
       (manifest) => { manifest.textures[0].futureField = true; },
     ];
 
