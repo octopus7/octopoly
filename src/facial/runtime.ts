@@ -4,6 +4,7 @@ import { mountMovementControls, type MovementControls } from "./movement-control
 import { mountProportionalControls, type ProportionalControls } from "./proportional-controls";
 import { calculateProportionalWeights, sampleInfluencedVertexIndices } from "./proportional-edit";
 import { createVertexMovementModeState } from "./movement-mode";
+import { serializeWorkspaceObj } from "./export-obj";
 import { mountFacialPanel, type FacialPanel, type FacialPresetId } from "./panel";
 import { attachVertexPicker } from "./picker";
 import { createFacialScene, type FacialViewportScene } from "./scene";
@@ -71,6 +72,7 @@ export interface FacialRuntimeOptions {
   readonly loadPresetText?: (preset: FacialPresetId) => Promise<string>;
   readonly decodeTextureImage?: (file: File) => Promise<ImageBitmap>;
   readonly downloadProject?: (archive: Uint8Array, filename: string) => void;
+  readonly downloadObj?: (source: string, filename: string) => void;
   readonly onNewProject?: () => void;
   readonly startViewport: (
     canvas: HTMLCanvasElement,
@@ -314,6 +316,24 @@ export function startFacialRuntime(options: FacialRuntimeOptions): FacialRuntime
         });
         options.downloadProject(archive, OCTOPOLY_PROJECT_FILENAME);
         options.onStatus?.("작업 파일을 저장했습니다.");
+        } catch (error) {
+          options.onError?.(error);
+        }
+      },
+      onExportAllObj: () => {
+        try {
+          if (!options.downloadObj) throw new Error("OBJ 내보내기 기능을 사용할 수 없습니다.");
+          options.downloadObj(serializeWorkspaceObj(controller.workspace, "all"), "octopoly-all.obj");
+          options.onStatus?.("전체 모델을 OBJ로 내보냈습니다.");
+        } catch (error) {
+          options.onError?.(error);
+        }
+      },
+      onExportActiveObj: () => {
+        try {
+          if (!options.downloadObj) throw new Error("OBJ 내보내기 기능을 사용할 수 없습니다.");
+          options.downloadObj(serializeWorkspaceObj(controller.workspace, "active"), "octopoly-current.obj");
+          options.onStatus?.("현재 모델을 OBJ로 내보냈습니다.");
         } catch (error) {
           options.onError?.(error);
         }

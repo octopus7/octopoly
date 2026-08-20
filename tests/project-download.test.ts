@@ -1,6 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createProjectDownloader } from "../src/facial/project-download";
+import { createObjDownloader, createProjectDownloader } from "../src/facial/project-download";
+
+describe("OBJ browser download", () => {
+  it("downloads UTF-8 OBJ text with the standard MIME type", async () => {
+    const createObjectURL = vi.fn<(blob: Blob) => string>(() => "blob:octopoly-obj");
+    const revokeObjectURL = vi.fn();
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    const download = createObjDownloader(document, createObjectURL, revokeObjectURL);
+
+    download("# OctoPoly\no Base\n", "octopoly-all.obj");
+
+    const blob = createObjectURL.mock.calls[0]?.[0] as Blob;
+    expect(blob.type).toBe("text/plain;charset=utf-8");
+    expect(await blob.text()).toBe("# OctoPoly\no Base\n");
+    expect(click).toHaveBeenCalledOnce();
+    await Promise.resolve();
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:octopoly-obj");
+    click.mockRestore();
+  });
+});
 
 describe(".octopoly browser download", () => {
   it("downloads one ZIP Blob through a temporary anchor and revokes the object URL", async () => {

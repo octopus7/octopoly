@@ -100,3 +100,11 @@
 - stale proportional drag, invalid pinch, 새작업 storage rollback/retry/focus ownership을 보강했다.
 - editable face depth prepass와 center-depth 판정으로 실제 보이는 정점 handle만 온전한 square로 표시하며 후면 정점의 x-ray 노출을 차단했다.
 - 최종 CI는 typecheck, **25 test files / 384 tests**, production build와 artifact baseline을 통과했고 `npm audit --omit=dev`는 0 vulnerabilities, `git diff --check`는 PASS다. Physical iPad Safari와 Apple Pencil은 장치 부재로 `NOT_RUN`이다.
+
+## +4차 OBJ 익스포트 | 시작: 2026-08-20 10:53:30 KST | 종료: 2026-08-20 11:05:40 KST | 소요: 12분
+
+- 파일 메뉴에 `전체 OBJ 내보내기`와 `현재 모델 OBJ 내보내기`를 별도 한국어 command로 추가했다.
+- deterministic UTF-8 single-file OBJ serializer가 workspace order, global vertex/UV offset, sanitized object name과 complete UV를 보존한다. 전체 filename은 `octopoly-all.obj`, 현재 모델 filename은 `octopoly-current.obj`다.
+- texture binary/MTL은 OBJ에 포함하지 않고 `.octopoly` 저장과 외부 geometry export를 분리했다. Embedded texture 교환은 +5차 GLB 범위이며 이번 작업에서는 진행하지 않았다.
+- strict RED→GREEN focused gate는 4 files / 102 tests, 최종 CI는 **26 test files / 390 tests**, production build와 artifact baseline을 통과했다. `npm audit --omit=dev` 0 vulnerabilities, `git diff --check` PASS다.
+- 실제 브라우저에서 두 command 노출과 download를 확인했다. Base-only workspace에서 두 파일은 각각 9,315 bytes, UTF-8, 1 object / 200 faces였고 console/JavaScript error는 0건이었다.

@@ -16,6 +16,8 @@ export interface FacialPanelCallbacks {
   readonly onNewProject?: () => void;
   readonly onSaveProject?: () => void;
   readonly onOpenProject?: (file: File) => void;
+  readonly onExportAllObj?: () => void;
+  readonly onExportActiveObj?: () => void;
   readonly onLoadTexture?: (file: File) => void;
   readonly onLoadPreset?: (preset: FacialPresetId) => void;
   readonly onDuplicate: () => void;
@@ -176,6 +178,24 @@ export function mountFacialPanel(
   };
   openProjectButton.addEventListener("click", handleOpenProjectButton);
   projectInput.addEventListener("change", handleOpenProject);
+  const exportAllObjButton = document.createElement("button");
+  exportAllObjButton.type = "button";
+  exportAllObjButton.dataset.action = "export-all-obj";
+  exportAllObjButton.textContent = "전체 OBJ 내보내기";
+  const handleExportAllObj = (): void => {
+    callbacks.onExportAllObj?.();
+    setFileMenuOpen(false, true);
+  };
+  exportAllObjButton.addEventListener("click", handleExportAllObj);
+  const exportActiveObjButton = document.createElement("button");
+  exportActiveObjButton.type = "button";
+  exportActiveObjButton.dataset.action = "export-active-obj";
+  exportActiveObjButton.textContent = "현재 모델 OBJ 내보내기";
+  const handleExportActiveObj = (): void => {
+    callbacks.onExportActiveObj?.();
+    setFileMenuOpen(false, true);
+  };
+  exportActiveObjButton.addEventListener("click", handleExportActiveObj);
   const textureInput = document.createElement("input");
   textureInput.type = "file";
   textureInput.accept = ".png,.jpg,.jpeg,image/png,image/jpeg";
@@ -459,6 +479,8 @@ export function mountFacialPanel(
     saveProjectButton,
     openProjectButton,
     projectInput,
+    exportAllObjButton,
+    exportActiveObjButton,
     importButton,
     textureButton,
     textureInput,
@@ -576,6 +598,8 @@ export function mountFacialPanel(
       saveProjectButton.removeEventListener("click", handleSaveProject);
       projectInput.removeEventListener("change", handleOpenProject);
       openProjectButton.removeEventListener("click", handleOpenProjectButton);
+      exportAllObjButton.removeEventListener("click", handleExportAllObj);
+      exportActiveObjButton.removeEventListener("click", handleExportActiveObj);
       textureInput.removeEventListener("change", handleTexture);
       textureButton.removeEventListener("click", handleTextureButton);
       lunaButton.removeEventListener("click", handleLunaPreset);

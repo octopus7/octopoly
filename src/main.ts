@@ -3,7 +3,7 @@ import { mountOctoPolyApp } from "./app";
 import { parseObjMesh } from "./facial/obj";
 import { createPresetTextLoader } from "./facial/preset-loader";
 import { createTextureImageDecoder } from "./facial/texture-loader";
-import { createProjectDownloader } from "./facial/project-download";
+import { createObjDownloader, createProjectDownloader } from "./facial/project-download";
 import type { FacialViewportScene } from "./facial/scene";
 import {
   startCubeViewport,
@@ -31,6 +31,11 @@ const downloadProject = createProjectDownloader(
   (blob) => URL.createObjectURL(blob),
   (url) => URL.revokeObjectURL(url),
 );
+const downloadObj = createObjDownloader(
+  document,
+  (blob) => URL.createObjectURL(blob),
+  (url) => URL.revokeObjectURL(url),
+);
 
 mountOctoPolyApp(root, {
   storage: {
@@ -43,6 +48,7 @@ mountOctoPolyApp(root, {
   loadPresetText,
   decodeTextureImage,
   downloadProject,
+  downloadObj,
   startCube: startCubeViewport,
   startViewport: (canvas, initialScene) => {
     const viewport = startMeshViewport(canvas, initialScene);

@@ -134,7 +134,7 @@ describe("facial workspace panel", () => {
     expect(menu.hidden).toBe(true);
     expect(menu.querySelector("h2")?.textContent).toBe("파일");
     expect(importAction.textContent).toBe("OBJ 가져오기");
-    expect(container.textContent).not.toMatch(/Export|내보내기/);
+    expect(container.textContent).not.toMatch(/Export/);
 
     toggle.click();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
@@ -165,6 +165,26 @@ describe("facial workspace panel", () => {
 
     panel.dispose();
     container.remove();
+  });
+
+  it("offers distinct whole-workspace and active-model OBJ export commands", () => {
+    const container = document.createElement("div");
+    const onExportAllObj = vi.fn();
+    const onExportActiveObj = vi.fn();
+    const panel = mountFacialPanel(container, {
+      onImport: vi.fn(), onDuplicate: vi.fn(), onSelectMesh: vi.fn(), onRenameMesh: vi.fn(),
+      onExportAllObj, onExportActiveObj,
+    });
+
+    const all = container.querySelector<HTMLButtonElement>('[data-action="export-all-obj"]');
+    const active = container.querySelector<HTMLButtonElement>('[data-action="export-active-obj"]');
+    expect(all?.textContent).toBe("전체 OBJ 내보내기");
+    expect(active?.textContent).toBe("현재 모델 OBJ 내보내기");
+    all?.click();
+    active?.click();
+    expect(onExportAllObj).toHaveBeenCalledOnce();
+    expect(onExportActiveObj).toHaveBeenCalledOnce();
+    panel.dispose();
   });
 
   it("offers New, Save, and Load commands, resets same-file selection, and restores File-menu focus", () => {
@@ -300,7 +320,7 @@ describe("facial workspace panel", () => {
       expect(presetGroup.getAttribute("role")).toBe("group");
       expect(heading.textContent).toBe("프리셋");
       expect(presetButtons.map((button) => button.textContent)).toEqual(["Luna"]);
-      expect(container.textContent).not.toMatch(/Export|내보내기/);
+      expect(container.textContent).not.toMatch(/Export/);
 
       toggle.click();
       presetButtons[0]!.focus();

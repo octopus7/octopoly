@@ -328,6 +328,30 @@ describe("facial runtime composition", () => {
     runtime.dispose();
   });
 
+  it("downloads distinct deterministic OBJ files for all models and the active model", () => {
+    const root = document.createElement("div");
+    const storage = new MemoryStorage();
+    seedUvWorkspace(storage);
+    const downloadObj = vi.fn();
+    const runtime = startFacialRuntime({
+      canvas: document.createElement("canvas"), panelContainer: root, overlayContainer: root,
+      storage, nextCopyId: () => "copy-1", parseObjText: vi.fn(), downloadObj,
+      startViewport: () => ({
+        setScene: vi.fn(), projectVertex: vi.fn(() => null), pickVertex: vi.fn(() => null), dispose: vi.fn(),
+      }),
+    });
+
+    root.querySelector<HTMLButtonElement>('[data-action="export-all-obj"]')!.click();
+    root.querySelector<HTMLButtonElement>('[data-action="export-active-obj"]')!.click();
+
+    expect(downloadObj).toHaveBeenCalledTimes(2);
+    expect(downloadObj.mock.calls[0]?.[1]).toBe("octopoly-all.obj");
+    expect(downloadObj.mock.calls[1]?.[1]).toBe("octopoly-current.obj");
+    expect(downloadObj.mock.calls[0]?.[0]).toContain("# OctoPoly OBJ export");
+    expect(downloadObj.mock.calls[1]?.[0]).toContain("o Base_Mask");
+    runtime.dispose();
+  });
+
   it("opens a validated project by staging textures before publishing workspace, selection, and movement state", async () => {
     const root = document.createElement("div");
     const storage = new MemoryStorage();

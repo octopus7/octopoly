@@ -55,7 +55,7 @@ Blender의 Proportional Editing과 유사하게 선택 정점을 중심으로 �
 - icon 옆 dropdown을 열면 radius, falloff 및 `Connected only` 등 상세 설정을 표시한다.
 - toggle 상태와 dropdown의 상세 설정은 접근성 상태와 함께 일관되게 유지한다.
 
-## +4차: 익스포트
+## +4차: 익스포트 — 완료 (2026-08-20)
 
 편집 결과를 내보낼 때 scope를 명시적으로 선택할 수 있게 한다.
 
@@ -64,6 +64,8 @@ Blender의 Proportional Editing과 유사하게 선택 정점을 중심으로 �
 - 두 scope는 서로 혼동되지 않는 별도 command로 제공하고, 실행 전 포함 대상을 확인할 수 있게 한다.
 - 출력 형식, 여러 모델의 single-file/multi-file 구성, texture embedding 및 filename 정책은 구현 착수 시 확정한다.
 - project 작업 상태를 보존하는 `.octopoly` 저장과 외부 도구에서 사용할 모델 익스포트를 구분한다.
+- 구현 결정: UTF-8 single-file OBJ를 사용한다. 전체 scope는 workspace order의 Base와 모든 작업 모델을 별도 `o` object로 합치고, 현재 scope는 active model 하나만 쓴다. filename은 각각 `octopoly-all.obj`, `octopoly-current.obj`다.
+- complete UV는 `vt`와 face UV reference로 보존한다. OBJ에는 texture binary를 embed할 수 없으므로 texture/MTL은 포함하지 않으며 embedded texture 교환은 +5차 GLB 범위로 남긴다.
 
 ## +5차: GLB 임포트·익스포트
 
